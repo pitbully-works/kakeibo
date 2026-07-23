@@ -451,6 +451,9 @@
     for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= cut) { lo = i; break; } }
     acc = 0;
     for (let i = 255; i >= 0; i--) { acc += hist[i]; if (acc >= cut) { hi = i; break; } }
+    /* 濃淡の幅が極端に狭いときに無理やり伸ばすと、明暗が逆転しかねない。
+       その場合はグレースケールのままにしておく。 */
+    if (hi - lo < 8) return data;
     const range = Math.max(1, hi - lo);
     for (let i = 0; i < data.length; i += 4) {
       let v = ((data[i] - lo) * 215) / range + 20;
@@ -460,30 +463,22 @@
     return data;
   }
 
-  /* 読み取りの手順。速い組合せから順に試し、取れたらそこで止める。
-     image: bw=二値化 / plain=コントラスト最大 / soft=ゆるいグレースケール
-     psm  : 7=1行 / 8=単語ひとつ / 13=生の1行 / 6=かたまり */
-  const OCR_STAGES = [
-    [ { image: "bw", psm: "7" }, { image: "plain", psm: "7" } ],
-    [ { image: "bw", psm: "8" }, { image: "soft", psm: "7" } ],
-    [ { image: "bw", psm: "13" }, { image: "plain", psm: "6" } ],
-  ];
-
   /* もう次の段階に進まなくてよいか。
-     ・同じ金額が2回以上出た（偶然は重ならない）
-     ・または、信頼度70以上で読めた */
+     条件はただ一つ：**異なる読み取り実行で同じ金額が2回以上出たこと**。
+     Tesseractは誤読にも高い信頼度を付けることがあるため、
+     1件だけの結果では——信頼度がいくら高くても——打ち切らない。 */
   function ocrEnough(candidates) {
     const ok = (candidates || []).filter(function (c) {
       return c && Number.isFinite(c.amount) && c.amount > 0;
     });
-    if (!ok.length) return false;
+    if (ok.length < 2) return false;
     const votes = {};
     for (const c of ok) {
       const k = String(c.amount);
       votes[k] = (votes[k] || 0) + 1;
       if (votes[k] >= 2) return true;
     }
-    return ok.some(function (c) { return (Number(c.confidence) || 0) >= 70; });
+    return false;
   }
 
   /* 何回か読んだ結果から、いちばん確からしい金額を選ぶ。
@@ -601,6 +596,19 @@
     return data;
   }
 
+  /* 読み取り前の下ごしらえを1か所にまとめる。
+     ここでだけ反転を判断するので、二重に反転して元へ戻ることが起きない。
+     出来上がりは必ず「明るい背景・暗い文字」。 */
+  function prepareForOcr(data, w, h, style) {
+    if (shouldInvert(data)) invertForOcr(data);   // 白抜き文字のときだけ、ここで1回
+    if (style === "bw") binarizeForOcr(data);
+    else if (style === "soft") softenForOcr(data);
+    else if (style === "sharp") sharpenForOcr(data, w, h);
+    else if (style === "adaptive") adaptiveBinarize(data, w, h);
+    else enhanceForOcr(data);
+    return data;
+  }
+
   /* 白黒反転が必要か（背景が暗い＝白抜き文字のとき） */
   function shouldInvert(data) {
     let total = 0, n = 0;
@@ -638,8 +646,10 @@
     return out;
   }
 
-  /* 画像の真ん中に近いほど1.0（利用者は合計を枠の中央に置くため） */
-  function centerness(d) {
+  /* OCRが返した「文字列の中で」中央寄りかを0〜1で返す。
+     画像座標ではない。bbox を使っていないため、画像上の位置は分からない。
+     行の中ほど・行内の中ほどに現れた数字をわずかに優遇するだけの弱い手がかり。 */
+  function textPositionScore(d) {
     if (!d) return 0.5;
     const vy = d.lineCount > 1 ? d.line / (d.lineCount - 1) : 0.5;
     const rawLen = String(d.raw || "").length;
@@ -671,7 +681,7 @@
     s += Math.min(40, (Number(c.confidence) || 0) * 0.4);          // 読み取り信頼度：最大40
     s += Math.min(30, Math.max(0, (Number(c.agree) || 1) - 1) * 15); // 一致数：最大30
     s += commaScore(c.raw) * 15;                                   // 桁区切り：最大15
-    s += (Number.isFinite(c.center) ? c.center : 0.5) * 10;        // 中央寄り：最大10
+    s += (Number.isFinite(c.posScore) ? c.posScore : 0.5) * 10;    // 文字列内で中央寄り：最大10
     return Math.round(Math.min(100, s));
   }
 
@@ -682,12 +692,12 @@
       if (!c || !Number.isFinite(c.amount) || c.amount <= 0) return;
       const k = String(c.amount);
       if (!byAmount[k]) {
-        byAmount[k] = { amount: c.amount, agree: 0, confidence: 0, raw: c.raw, center: 0 };
+        byAmount[k] = { amount: c.amount, agree: 0, confidence: 0, raw: c.raw, posScore: 0 };
       }
       const b = byAmount[k];
       b.agree += 1;
       b.confidence = Math.max(b.confidence, Number(c.confidence) || 0);
-      b.center = Math.max(b.center, Number.isFinite(c.center) ? c.center : 0.5);
+      b.posScore = Math.max(b.posScore, Number.isFinite(c.posScore) ? c.posScore : 0.5);
       if (commaScore(c.raw) > commaScore(b.raw)) b.raw = c.raw;
     });
     const ranked = Object.keys(byAmount).map(function (k) {
@@ -721,7 +731,7 @@
     [ { crop: "base",  image: "sharp",    psm: "13" },
       { crop: "wide",  image: "adaptive", psm: "6" },
       { crop: "tight", image: "soft",     psm: "8" },
-      { crop: "base",  image: "invert",   psm: "7" } ],
+      { crop: "wide",  image: "sharp",    psm: "7" } ],
   ];
   const OCR_MAX_RUNS = OCR_PLAN.reduce(function (a, st) { return a + st.length; }, 0);
 
@@ -795,16 +805,16 @@
     binarizeForOcr: binarizeForOcr,
     pickBestAmount: pickBestAmount,
     ocrEnough: ocrEnough,
-    OCR_STAGES: OCR_STAGES,
     padCrop: padCrop,
     cropVariant: cropVariant,
     CROP_VARIANTS: CROP_VARIANTS,
     sharpenForOcr: sharpenForOcr,
     adaptiveBinarize: adaptiveBinarize,
+    prepareForOcr: prepareForOcr,
     shouldInvert: shouldInvert,
     invertForOcr: invertForOcr,
     amountDetails: amountDetails,
-    centerness: centerness,
+    textPositionScore: textPositionScore,
     commaScore: commaScore,
     scoreCandidate: scoreCandidate,
     rankCandidates: rankCandidates,

@@ -591,6 +591,7 @@ function onPhotoPicked(file){
       const hires =await resizeDataUrl(reader.result, Core.PHOTO_OCR_MAX, 0.95);
       ensureSheetForPhoto();
       if(!shrunk || shrunk.length<100){ setStatus("この形式の写真は表示できませんでした。もう一度撮ってください"); return; }
+      releaseOcrImage(sheetState);        // 前の写真の高解像度版を先に手放す
       sheetState.photo=shrunk;
       sheetState.photoHi=hires||shrunk;   // メモリ内だけ。localStorageには入れない
       sheetState.crop=Object.assign({},Core.CROP_DEFAULT);
@@ -681,7 +682,10 @@ async function readCrop(){
     setStatus(`読み取れませんでした：${why}。金額は手で入れられます`);
     renderSheet();
   }finally{
-    releaseOcrImage(st);   // 高解像度画像・加工画像はここで手放す
+    /* 高解像度画像はここでは解放しない。
+       枠を直してもう一度読み取るとき、表示用(1600px)へ落ちてしまうため。
+       解放するのは：シートを閉じた時／写真を消した時／写真を撮り直した時／記録を確定した時。
+       加工画像 cache はこの関数のローカル変数なので、抜ければ参照が消える。 */
   }
 }
 
@@ -700,13 +704,7 @@ function cropToDataUrl(src, crop, style){
         cx.drawImage(im, r.x, r.y, r.w, r.h, 0, 0, out.w, out.h);
         try{
           const d=cx.getImageData(0,0,out.w,out.h);
-          if(Core.shouldInvert(d.data)) Core.invertForOcr(d.data);   // 白抜き文字のときだけ反転
-          if(style==="bw")            Core.binarizeForOcr(d.data);
-          else if(style==="soft")     Core.softenForOcr(d.data);
-          else if(style==="sharp")    Core.sharpenForOcr(d.data, out.w, out.h);
-          else if(style==="adaptive") Core.adaptiveBinarize(d.data, out.w, out.h);
-          else if(style==="invert"){ Core.invertForOcr(d.data); Core.binarizeForOcr(d.data); }
-          else                        Core.enhanceForOcr(d.data);
+          Core.prepareForOcr(d.data, out.w, out.h, style);  // 反転の判断もここ1か所だけ
           cx.putImageData(d,0,0);
         }catch(e){}
         resolve(cv.toDataURL("image/png"));
@@ -797,7 +795,7 @@ async function ocrCandidates(jobs){
         const { data } = await worker.recognize(job.img);
         const conf = data.confidence||0;
         Core.amountDetails(data.text).forEach(d=>{
-          out.push({ amount:d.amount, raw:d.raw, confidence:conf, center:Core.centerness(d) });
+          out.push({ amount:d.amount, raw:d.raw, confidence:conf, posScore:Core.textPositionScore(d) });
         });
       }catch(e){}
     }

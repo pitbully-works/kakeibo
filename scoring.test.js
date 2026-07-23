@@ -73,31 +73,31 @@ test("3種の枠は、いずれも元画像の座標に正しく変換できる"
 
 /* ---------- 3. 同じ金額が複数回出たら点数が上がる ---------- */
 test("同じ金額が複数の切り抜きで出ると、点数が上がる", () => {
-  const one = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 1, center: 0.5 });
-  const two = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 2, center: 0.5 });
-  const three = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 3, center: 0.5 });
+  const one = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 1, posScore: 0.5 });
+  const two = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 2, posScore: 0.5 });
+  const three = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 3, posScore: 0.5 });
   assert.ok(two > one, "2回一致で上がっていない");
   assert.ok(three > two, "3回一致で上がっていない");
 });
 
 test("並べ替えで、一致回数の多い候補が上に来る", () => {
   const ranked = Core.rankCandidates([
-    { amount: 7285, raw: "7,285", confidence: 88, center: 0.5 },
-    { amount: 1285, raw: "1,285", confidence: 55, center: 0.9 },
-    { amount: 1285, raw: "1,285", confidence: 52, center: 0.9 },
-    { amount: 1285, raw: "1,285", confidence: 50, center: 0.8 },
+    { amount: 7285, raw: "7,285", confidence: 88, posScore: 0.5 },
+    { amount: 1285, raw: "1,285", confidence: 55, posScore: 0.9 },
+    { amount: 1285, raw: "1,285", confidence: 52, posScore: 0.9 },
+    { amount: 1285, raw: "1,285", confidence: 50, posScore: 0.8 },
   ]);
   assert.equal(ranked[0].amount, 1285, "一致の多い候補が1位でない");
   assert.equal(ranked[0].agree, 3);
 });
 
-test("信頼度・中央寄りも点数に効く", () => {
-  const low = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 20, agree: 1, center: 0.5 });
-  const high = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 90, agree: 1, center: 0.5 });
+test("信頼度・文字列内の位置も点数に効く", () => {
+  const low = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 20, agree: 1, posScore: 0.5 });
+  const high = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 90, agree: 1, posScore: 0.5 });
   assert.ok(high > low, "信頼度が効いていない");
-  const edge = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 1, center: 0 });
-  const mid = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 1, center: 1 });
-  assert.ok(mid > edge, "中央寄りが効いていない");
+  const edge = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 1, posScore: 0 });
+  const mid = Core.scoreCandidate({ amount: 1285, raw: "1,285", confidence: 60, agree: 1, posScore: 1 });
+  assert.ok(mid > edge, "文字列内の位置が効いていない");
 });
 
 /* ---------- 4. 不自然な桁区切りは低評価 ---------- */
@@ -106,35 +106,35 @@ test("カンマの位置が不自然な候補は0点になる", () => {
   assert.equal(Core.commaScore("12,85"), 0, "3桁区切りでないのに合格している");
   assert.equal(Core.commaScore("1,2,85"), 0);
   assert.equal(Core.commaScore("1285,"), 0);
-  assert.equal(Core.scoreCandidate({ amount: 1285, raw: "12,85", confidence: 95, agree: 3, center: 1 }), 0,
+  assert.equal(Core.scoreCandidate({ amount: 1285, raw: "12,85", confidence: 95, agree: 3, posScore: 1 }), 0,
     "桁区切りが壊れているのに高得点になっている");
 });
 
 test("カンマ無しの4桁以上は、カンマありより低い", () => {
-  const withComma = Core.scoreCandidate({ amount: 3555, raw: "3,555", confidence: 70, agree: 1, center: 0.5 });
-  const without = Core.scoreCandidate({ amount: 3555, raw: "3555", confidence: 70, agree: 1, center: 0.5 });
+  const withComma = Core.scoreCandidate({ amount: 3555, raw: "3,555", confidence: 70, agree: 1, posScore: 0.5 });
+  const without = Core.scoreCandidate({ amount: 3555, raw: "3555", confidence: 70, agree: 1, posScore: 0.5 });
   assert.ok(withComma > without, "カンマありが優遇されていない");
   assert.ok(without > 0, "カンマ無しを弾きすぎている");
 });
 
 test("範囲外の金額は0点", () => {
-  assert.equal(Core.scoreCandidate({ amount: 0, raw: "0", confidence: 99, agree: 5, center: 1 }), 0);
-  assert.equal(Core.scoreCandidate({ amount: 1000000, raw: "1,000,000", confidence: 99, agree: 5, center: 1 }), 0);
-  assert.ok(Core.scoreCandidate({ amount: 999999, raw: "999,999", confidence: 70, agree: 1, center: 0.5 }) > 0);
-  assert.ok(Core.scoreCandidate({ amount: 1, raw: "1", confidence: 70, agree: 1, center: 0.5 }) > 0);
+  assert.equal(Core.scoreCandidate({ amount: 0, raw: "0", confidence: 99, agree: 5, posScore: 1 }), 0);
+  assert.equal(Core.scoreCandidate({ amount: 1000000, raw: "1,000,000", confidence: 99, agree: 5, posScore: 1 }), 0);
+  assert.ok(Core.scoreCandidate({ amount: 999999, raw: "999,999", confidence: 70, agree: 1, posScore: 0.5 }) > 0);
+  assert.ok(Core.scoreCandidate({ amount: 1, raw: "1", confidence: 70, agree: 1, posScore: 0.5 }) > 0);
 });
 
 /* ---------- 5. 低確信度なら候補選択、高確信度なら自動入力 ---------- */
 test("確信度が低ければ、利用者に選んでもらう", () => {
   const ranked = Core.rankCandidates([
-    { amount: 1285, raw: "1,285", confidence: 30, center: 0.5 },
-    { amount: 7285, raw: "7,285", confidence: 28, center: 0.5 },
+    { amount: 1285, raw: "1,285", confidence: 30, posScore: 0.5 },
+    { amount: 7285, raw: "7,285", confidence: 28, posScore: 0.5 },
   ]);
   assert.ok(ranked[0].score < Core.SCORE_CONFIRM, "点数が高すぎて検証にならない");
   assert.equal(Core.needsConfirmation(ranked), true, "選択画面にならない");
 
   // 候補が1つだけ＝点差の条件が効かない場面でも、点数が低ければ選択画面にする
-  const only = Core.rankCandidates([{ amount: 1285, raw: "1,285", confidence: 30, center: 0.5 }]);
+  const only = Core.rankCandidates([{ amount: 1285, raw: "1,285", confidence: 30, posScore: 0.5 }]);
   assert.equal(only.length, 1);
   assert.ok(only[0].score < Core.SCORE_CONFIRM, "点数が高すぎて検証にならない: " + only[0].score);
   assert.equal(Core.needsConfirmation(only), true, "1件だけのとき、低確信でも自動確定している");
@@ -142,10 +142,10 @@ test("確信度が低ければ、利用者に選んでもらう", () => {
 
 test("1位と2位の差が小さいときも、選んでもらう", () => {
   const ranked = Core.rankCandidates([
-    { amount: 1285, raw: "1,285", confidence: 92, center: 0.9 },
-    { amount: 1285, raw: "1,285", confidence: 90, center: 0.9 },
-    { amount: 1265, raw: "1,265", confidence: 92, center: 0.9 },
-    { amount: 1265, raw: "1,265", confidence: 90, center: 0.9 },
+    { amount: 1285, raw: "1,285", confidence: 92, posScore: 0.9 },
+    { amount: 1285, raw: "1,285", confidence: 90, posScore: 0.9 },
+    { amount: 1265, raw: "1,265", confidence: 92, posScore: 0.9 },
+    { amount: 1265, raw: "1,265", confidence: 90, posScore: 0.9 },
   ]);
   assert.ok(ranked.length >= 2);
   assert.ok(Math.abs(ranked[0].score - ranked[1].score) < Core.SCORE_GAP, "点差が開いていて検証にならない");
@@ -154,10 +154,10 @@ test("1位と2位の差が小さいときも、選んでもらう", () => {
 
 test("確信度が高く、2位を引き離していれば自動入力", () => {
   const ranked = Core.rankCandidates([
-    { amount: 3555, raw: "3,555", confidence: 93, center: 0.95 },
-    { amount: 3555, raw: "3,555", confidence: 91, center: 0.95 },
-    { amount: 3555, raw: "3,555", confidence: 88, center: 0.9 },
-    { amount: 263, raw: "263", confidence: 40, center: 0.1 },
+    { amount: 3555, raw: "3,555", confidence: 93, posScore: 0.95 },
+    { amount: 3555, raw: "3,555", confidence: 91, posScore: 0.95 },
+    { amount: 3555, raw: "3,555", confidence: 88, posScore: 0.9 },
+    { amount: 263, raw: "263", confidence: 40, posScore: 0.1 },
   ]);
   assert.equal(ranked[0].amount, 3555);
   assert.ok(ranked[0].score >= Core.SCORE_CONFIRM, "点数が上がらない: " + ranked[0].score);
@@ -193,12 +193,14 @@ test("段階ごとに、いま何をしているかを表示する", () => {
   assert.match(appSrc, /もう少し詳しく確認しています…/, "追加処理中の表示が無い");
 });
 
-test("読み取りは段階式で、最大9回に収まる", () => {
+test("読み取りは段階式で、最大9回に収まる（無条件反転の候補は持たない）", () => {
+  assert.equal(Core.OCR_PLAN.flat().some((s) => s.image === "invert"), false,
+    "無条件で反転する候補が残っている（自動反転と二重になる）");
   assert.equal(Core.OCR_MAX_RUNS, 9, "最大実行回数が想定と違う: " + Core.OCR_MAX_RUNS);
   assert.equal(Core.OCR_PLAN[0].length, 2, "1段目が重い");
   assert.match(appSrc, /if\(Core\.ocrEnough\(candidates\)\) break;/, "取れた時点で止めていない");
   const styles = new Set(Core.OCR_PLAN.flat().map((s) => s.image));
-  for (const need of ["soft", "bw", "adaptive", "sharp", "invert"]) {
+  for (const need of ["soft", "bw", "adaptive", "sharp"]) {
     assert.ok(styles.has(need), need + " が候補に無い");
   }
   const crops = new Set(Core.OCR_PLAN.flat().map((s) => s.crop));
@@ -279,11 +281,64 @@ test("記録・保存・写真削除・容量制限が残っている", () => {
   assert.match(appSrc, /この内容で記録する/, "記録ボタンが消えた");
 });
 
-test("高解像度・加工画像は保存されず、終わったら解放される", () => {
+test("高解像度・加工画像は保存されず、決められた場面で解放される", () => {
   const read = appSrc.slice(appSrc.indexOf("async function readCrop()"), appSrc.indexOf("function cropToDataUrl"));
-  assert.match(read, /\}finally\{\s*releaseOcrImage\(st\);/, "解放していない");
+  assert.equal(/finally\{[\s\S]*?releaseOcrImage\(/.test(read), false,
+    "読み取り終了時に解放している（再試行で表示用画像に落ちる）");
   assert.match(read, /const cache=\{\};/, "加工画像を使い回していない");
+  // 解放されるのは4つの場面
+  assert.match(appSrc, /if\(!on\)\{ releaseOcrImage\(sheetState\);/, "シートを閉じたとき");
+  assert.match(appSrc, /rm-photo"\)\{[\s\S]{0,120}releaseOcrImage\(sheetState\)/, "写真を消したとき");
+  assert.match(appSrc, /releaseOcrImage\(sheetState\);\s*\/\/ 前の写真の高解像度版/, "写真を撮り直したとき");
+  const save = appSrc.slice(appSrc.indexOf("async function saveTx()"), appSrc.indexOf("function delTx()"));
+  assert.match(save, /releaseOcrImage\(st\);/, "記録を確定したとき");
   const rec = /state\.tx\.push\(\{([^}]*)\}\)/.exec(appSrc);
   assert.equal(rec[1].includes("photoHi"), false, "記録に高解像度画像が入っている");
   assert.equal(rec[1].includes("ocrChoices"), false, "記録に候補が入っている");
+});
+
+/* ---------- 反転の二重適用が起きない ---------- */
+function grayImage(w, h, fill) {
+  const d = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) { const p = i * 4; d[p] = d[p + 1] = d[p + 2] = fill(i % w, (i / w) | 0); d[p + 3] = 255; }
+  return d;
+}
+const meanOf = (d) => { let t = 0, n = 0; for (let i = 0; i < d.length; i += 4) { t += d[i]; n++; } return t / n; };
+
+test("暗い背景の画像は1回だけ反転され、明るい背景・暗い文字になる", () => {
+  const w = 10, h = 6;
+  // 背景が暗く、文字（1画素）が明るい＝白抜き文字
+  // 白抜き文字（背景が暗い）。文字は一定の面積を持ち、紙の濃淡もある。
+  const src = grayImage(w, h, (x, y) => (y === 3 && x >= 2 && x <= 6 ? 225 + (x % 3) * 8 : 28 + (x % 4) * 5));
+  const out = Core.prepareForOcr(src, w, h, "soft");
+  const at = (x, y) => out[(y * w + x) * 4];
+  assert.ok(meanOf(out) > 128, "背景が明るくなっていない（反転されていないか、二重に反転した）");
+  assert.ok(at(4, 3) < at(0, 0), "文字が背景より暗くなっていない");
+});
+
+test("明るい背景の画像は反転されない", () => {
+  const w = 10, h = 6;
+  const src = grayImage(w, h, (x, y) => (y === 3 && x >= 2 && x <= 6 ? 38 + (x % 3) * 6 : 228 + (x % 4) * 5));
+  const out = Core.prepareForOcr(src, w, h, "soft");
+  const at = (x, y) => out[(y * w + x) * 4];
+  assert.ok(meanOf(out) > 128, "明るい背景が暗くなった（不要な反転が入った）");
+  assert.ok(at(4, 3) < at(0, 0), "文字が背景より暗くない");
+});
+
+test("どの画像処理を選んでも、二重反転で元へ戻らない", () => {
+  const w = 12, h = 8;
+  for (const style of ["soft", "bw", "sharp", "adaptive", "plain"]) {
+    const src = grayImage(w, h, (x, y) => (y === 4 && x >= 3 && x <= 6 ? 235 : 25)); // 白抜き文字
+    const out = Core.prepareForOcr(src, w, h, style);
+    const ink = out[(4 * w + 4) * 4];
+    const bg = out[(1 * w + 1) * 4];
+    assert.ok(ink < bg, `${style}: 文字が背景より暗くない（二重反転の疑い）ink=${ink} bg=${bg}`);
+  }
+});
+
+test("画面側は自前で反転せず、prepareForOcr に任せている", () => {
+  const crop = appSrc.slice(appSrc.indexOf("function cropToDataUrl"), appSrc.indexOf("async function ocrCandidates"));
+  assert.match(crop, /Core\.prepareForOcr\(d\.data, out\.w, out\.h, style\)/, "下ごしらえを任せていない");
+  assert.equal(/Core\.invertForOcr/.test(crop), false, "画面側でも反転している（二重適用の原因）");
+  assert.equal(/Core\.shouldInvert/.test(crop), false, "画面側でも反転判定している");
 });
