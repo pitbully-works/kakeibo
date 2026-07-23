@@ -854,8 +854,9 @@ async function saveTx(){
   if(!amount||amount<=0){ toast("金額を入れてね"); const ai=$("s-amt"); if(ai) ai.focus(); return; }
 
   /* 保存用に写真を小さくする（そのままだと保存領域を超えて何も残らない）。
-     読み取り用の高解像度画像は保存対象にしない。 */
-  releaseOcrImage(st);
+     読み取り用の高解像度画像は、保存が成功してから手放す。
+     ここで手放すと、保存に失敗してシートが残ったとき、
+     枠を直して読み直すと表示用(1600px)へ落ちてしまう。 */
   let photo = st.photo || null;
   if(photo) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);
 
@@ -868,6 +869,7 @@ async function saveTx(){
   }
 
   if(save()){
+    releaseOcrImage(st);            // 記録が確定した。高解像度はここで手放す
     showSheet(false); render(); toast(st.mode==="edit"?"更新しました":"記録できました ✓");
     return;
   }
@@ -877,13 +879,15 @@ async function saveTx(){
     const t2 = st.mode==="edit" ? state.tx.find(x=>x.id===st.id) : state.tx[state.tx.length-1];
     if(t2) t2.photo=null;
     if(save()){
+      releaseOcrImage(st);          // 写真は諦めたが記録は確定した
       showSheet(false); render();
       toast("記録しました（写真は容量オーバーで保存できません）");
       return;
     }
   }
 
-  /* それでも駄目なら元に戻して、理由をはっきり伝える */
+  /* それでも駄目なら元に戻して、理由をはっきり伝える。
+     シートは開いたままなので、photoHi は解放しない（枠を直して読み直せるように）。 */
   state.tx = JSON.parse(before);
   const msg = isQuotaError(lastSaveError)
     ? "保存できません。せっていの「写真をすべて消す」で空きを作ってください"

@@ -189,66 +189,22 @@ test("進み具合を表示し、写真が入った時点で先読みする", ()
 });
 
 /* ---------- 保存の成否を、実際に動かして確かめる ---------- */
-const vm = require("node:vm");
-const coreSrc = fs.readFileSync(path.join(__dirname, "core.js"), "utf8");
-
-/* storageFull=true なら localStorage が必ず失敗する状態で起動する */
-function bootApp2(storageFull) {
-  const els = {};
-  const makeEl = (id) => ({
-    id, innerHTML: "", textContent: "", value: "", dataset: {}, style: {},
-    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-    addEventListener() {}, appendChild() {}, click() {}, focus() {}, remove() {},
-    closest: () => null, querySelectorAll: () => [], getBoundingClientRect: () => ({ width: 100, height: 100 }),
-  });
-  const get = (id) => (els[id] = els[id] || makeEl(id));
-  const store = {};
-  const setItem = storageFull
-    ? () => { const e = new Error("QuotaExceededError"); e.name = "QuotaExceededError"; e.code = 22; throw e; }
-    : (k, v) => { store[k] = String(v); };
-  const sandbox = {
-    console,
-    localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem },
-    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-    navigator: { onLine: true },
-    setTimeout: (f) => { try { f(); } catch (e) {} return 0; },
-    clearTimeout() {}, scrollTo() {},
-    Blob: function () {}, URL: { createObjectURL: () => "blob:", revokeObjectURL() {} },
-    FileReader: function () {}, Image: function () {},
-  };
-  sandbox.document = {
-    getElementById: get, querySelector: () => null, querySelectorAll: () => [],
-    addEventListener() {}, createElement: () => makeEl("tmp"),
-    head: { appendChild() {} }, body: makeEl("body"),
-  };
-  sandbox.window = sandbox; sandbox.self = sandbox;
-  const ctx = vm.createContext(sandbox);
-  vm.runInContext(coreSrc, ctx, { filename: "core.js" });
-  vm.runInContext(appSrc, ctx, { filename: "index.html:inline" });
-  return { ctx, toastText: () => get("toast").innerHTML, saved: () => store["kakeibo:v1:state"] };
-}
-
-const recordOnce = (ctx, amount) => vm.runInContext(
-  `(async()=>{ openRecord(null);
-     document.getElementById("s-amt").value="${amount}";
-     document.getElementById("s-date").value="2026-07-24";
-     sheetState.cat="food";
-     await saveTx(); })()`, ctx);
+const { bootApp } = require("./boot-app.cjs");
 
 test("保存に失敗したら、記録を元に戻して理由を伝える（実際に動かして確認）", async () => {
-  const app = bootApp2(true);
-  await recordOnce(app.ctx, 1234);
-  assert.equal(vm.runInContext("state.tx.length", app.ctx), 0,
+  const app = bootApp({ storageFull: true });
+  await app.record(1234);
+  assert.equal(app.run("state.tx.length"), 0,
     "保存できていないのに記録が残っている（save() の失敗を握りつぶしている）");
   assert.match(app.toastText(), /保存できません|保存が使えません/,
     "保存に失敗した理由を伝えていない");
 });
 
 test("保存できるときは、記録がちゃんと残る（比較用）", async () => {
-  const app = bootApp2(false);
-  await recordOnce(app.ctx, 1234);
-  assert.equal(vm.runInContext("state.tx.length", app.ctx), 1, "正常時に記録できていない");
-  assert.equal(vm.runInContext("state.tx[0].amount", app.ctx), 1234);
+  const app = bootApp({});
+  await app.record(1234);
+  assert.equal(app.run("state.tx.length"), 1, "正常時に記録できていない");
+  assert.equal(app.run("state.tx[0].amount"), 1234);
   assert.ok(String(app.saved() || "").includes("1234"), "端末に保存されていない");
   assert.equal(String(app.saved() || "").includes("photoHi"), false, "保存データに高解像度画像が入っている");
 });

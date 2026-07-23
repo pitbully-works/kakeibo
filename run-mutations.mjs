@@ -1,5 +1,10 @@
 /* =========================================================================
-   かけいぼ ― mutation test（テストが本当に効いているかを確かめる）
+   かけいぼ ― 自作の簡易 mutation test（テストが本当に効いているかを確かめる）
+   -------------------------------------------------------------------------
+   ※ mutation testing 全体を網羅するものではありません。
+      あらゆる変異を機械的に生成するのではなく、壊れると困る重要な
+      パターンを手作業で列挙したものです。選んだ範囲の外に穴が残る
+      可能性はあります。
    -------------------------------------------------------------------------
    仕組み：
      1. ソースの一部をわざと壊す（変異させる）
@@ -60,6 +65,12 @@ const MUTATIONS = [
     file: "index.html", from: "catch(e){ lastSaveError=e; return false; }", to: "catch(e){ lastSaveError=e; return true; }" },
   { name: "スクリプト読み込み関数を消す", guards: "呼んでいる関数が実在するか",
     file: "index.html", from: "function loadScript(src){", to: "function loadScript_REMOVED(src){" },
+  { name: "保存の成否が出る前に高解像度を解放する", guards: "記録確定時にだけ解放",
+    file: "index.html", from: "  let photo = st.photo || null;", to: "  releaseOcrImage(st);\n  let photo = st.photo || null;" },
+  { name: "保存に失敗しても高解像度を解放する", guards: "失敗時は維持する",
+    file: "index.html", from: "  state.tx = JSON.parse(before);", to: "  releaseOcrImage(st);\n  state.tx = JSON.parse(before);" },
+  { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
+    file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
 ];
 
 function run() {
@@ -98,6 +109,10 @@ const md = [
   "# mutation test 結果",
   "",
   "テストが本当に効いているかを、ソースをわざと壊して確かめた記録です。",
+  "",
+  "> **注記**：これは mutation testing 全体を網羅するものではありません。",
+  "> あらゆる変異を機械的に生成するのではなく、壊れると困る重要なパターンを",
+  "> 手作業で列挙した自作の簡易チェックです。選んだ範囲の外に穴が残る可能性はあります。",
   "実行方法： `node run-mutations.mjs`（このファイルが結果を書き出します）",
   "",
   `- 実行日時： ${new Date().toISOString()}`,
