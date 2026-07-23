@@ -34,10 +34,11 @@
   @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
   /* top greeting */
-  .greet{display:flex;justify-content:space-between;align-items:center;padding:8px 4px 4px}
-  .greet .g{font-size:15px;font-weight:800}
-  .greet .d{font-size:12px;color:var(--sub)}
-  .greet .set{width:38px;height:38px;border-radius:11px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:17px}
+  .greet{padding:10px 4px 2px}
+  .greet .g{font-size:12.5px;color:var(--sub);font-weight:700}
+  .greet .date{font-size:27px;font-weight:800;line-height:1.25;letter-spacing:-.01em;margin-top:1px}
+  .greet .date .wd{font-size:17px;margin-left:4px;color:var(--sub)}
+  .greet .d{font-size:12px;color:var(--sub);margin-top:1px}
 
   /* hero */
   .hero{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:22px 18px 18px;text-align:center;box-shadow:var(--shadow);margin-top:8px}
@@ -57,7 +58,10 @@
   /* dream strip */
   .dreamlbl{text-align:center;font-size:10px;color:#9aa6a3;margin:16px 0 6px;letter-spacing:.05em}
   .dreamstrip{display:flex;gap:8px}
-  .ds{flex:1;min-width:0;border-radius:14px;padding:10px 8px 11px;text-align:center;background:var(--card);border:1px solid var(--line)}
+  .ds{flex:1;min-width:0;border-radius:14px;padding:10px 8px 11px;text-align:center;background:var(--card);border:1px solid var(--line);
+    transition:transform .12s cubic-bezier(.2,.7,.3,1)}
+  .ds:active{transform:scale(.97)}
+  .ds .tapin{font-size:9px;color:#a7b2af;margin-top:5px}
   .ds .di{font-size:16px}
   .ds .dk{font-size:9.5px;color:var(--sub);margin-top:2px}
   .ds .dv{font-size:12.5px;font-weight:800;white-space:nowrap;margin-top:1px}
@@ -270,36 +274,42 @@ function render(){
 
 function renderHome(){
   const c=compute(), s=state.settings;
-  const d=new Date(); const monthLabel=`${d.getMonth()+1}月・のこり${daysLeftInMonth()}日`;
-  let heroL, heroN, heroCls="", ok="", note="&nbsp;";
+  const d=new Date();
+  const WD=["日","月","火","水","木","金","土"];
+  const dateBig=`${d.getMonth()+1}月${d.getDate()}日<span class="wd">（${WD[d.getDay()]}）</span>`;
+  const monthLabel=`今月ののこり ${daysLeftInMonth()}日`;
+
+  let heroN, heroCls="", ok="", note;
   if(c.hasIncome){
-    heroL="今月 あと つかえるお金"; heroN=yen(c.available);
+    heroN=yen(c.available);
     note="先取り貯金・NISA積立の予定額を除いています";
     if(c.available<0){ heroCls="over"; ok=`<span class="ok over">今月は少し使いすぎ。来月そっと調整🍀</span>`; }
     else if(c.available < c.incomeTotal*0.08){ heroCls="amber"; ok=`<span class="ok warn">のこりわずか。少しペース注意</span>`; }
     else ok=`<span class="ok good">👍 このペースなら大丈夫</span>`;
   } else {
-    heroL="今月 つかった金額"; heroN=yen(c.variableSpend);
-    note="給料日に「収入 → 通常給与」を記録すると、使えるお金が出ます";
-    ok=`<span class="ok good">まずは給与の記録から</span>`;
+    heroN="—";
+    note="給料を記録すると、ここに出ます";
   }
   const mini = c.hasIncome ? `<div class="heromini">
       <span class="m">収入<b>${yen(c.incomeTotal)}</b></span>
       <span class="m">使った<b>${yen(c.spendTotal)}</b></span>
       <span class="m">先取り<b>${yen(c.setAside)}</b></span></div>` : "";
 
-  // 夢の帯
+  // 夢の帯（タップで、それぞれの入力欄へジャンプ）
   const goalTile = c.goalPct!==null
-    ? `<div class="ds gold"><div class="di">🎯</div><div class="dk">${s.goalName||"目標"}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div></div>`
-    : `<div class="ds gold" data-go="settings"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">設定する</div></div>`;
-  const nisaTile = `<div class="ds blue"><div class="di">📈</div><div class="dk">NISA（予定）</div><div class="dv mono">${yen(c.nisaPlanned)}</div></div>`;
-  const saveTile = `<div class="ds green"><div class="di">🐷</div><div class="dk">貯金（予定）</div><div class="dv mono">${yen(c.savingsPlanned)}</div></div>`;
+    ? `<button class="ds gold" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||"目標")}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div></button>`
+    : `<button class="ds gold" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">設定する</div><div class="tapin">タップで入力</div></button>`;
+  const nisaTile = `<button class="ds blue" data-go="settings" data-focus="f-nisa"><div class="di">📈</div><div class="dk">NISA（予定）</div><div class="dv mono">${yen(c.nisaPlanned)}</div><div class="tapin">タップで入力</div></button>`;
+  const saveTile = `<button class="ds green" data-go="settings" data-focus="f-save"><div class="di">🐷</div><div class="dk">貯金（予定）</div><div class="dv mono">${yen(c.savingsPlanned)}</div><div class="tapin">タップで入力</div></button>`;
 
   return `<div class="screen">
-    <div class="greet"><div><div class="g">こんにちは 👋</div><div class="d">${monthLabel}</div></div>
-      <button class="set" data-go="settings" aria-label="設定">⚙️</button></div>
+    <div class="greet">
+      <div class="g">こんにちは 👋</div>
+      <div class="date">${dateBig}</div>
+      <div class="d">${monthLabel}</div>
+    </div>
     <div class="hero">
-      <div class="l">${heroL}</div>
+      <div class="l">今月 あと つかえるお金</div>
       <div class="n mono ${heroCls}">${heroN}</div>
       <div class="u">${note}</div>
       ${ok}
@@ -308,10 +318,7 @@ function renderHome(){
     <div class="dreamlbl">― あなたの夢の進み ―</div>
     <div class="dreamstrip">${goalTile}${nisaTile}${saveTile}</div>
     <button class="recordbtn" data-act="open-record">📸 記録する</button>
-    <div class="subrow">
-      <button data-act="open-record">✍️ 手で入力</button>
-      <button data-go="summary">📋 きろく</button>
-    </div>
+    <div style="height:10px"></div>
   </div>`;
 }
 
@@ -548,6 +555,13 @@ function downloadText(name,text){
   setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },500);
 }
 
+function focusField(id){
+  if(!id) return;
+  setTimeout(()=>{ const el=$(id); if(!el) return;
+    el.scrollIntoView({block:"center",behavior:"smooth"});
+    try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); } }, 60);
+}
+
 /* ---------- ちいさなUI ---------- */
 let toastT=null;
 function toast(msg){ const el=$("toast"); el.innerHTML=`<span class="ck">✓</span>${escapeHtml(msg).replace("✓","")}`;
@@ -558,7 +572,7 @@ function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
 /* ---------- イベント（委譲） ---------- */
 document.addEventListener("click",e=>{
   const nav=e.target.closest("#nav button"); if(nav){ showSheet(false); view=nav.dataset.nav; render(); return; }
-  const go=e.target.closest("[data-go]"); if(go){ view=go.dataset.go; render(); return; }
+  const go=e.target.closest("[data-go]"); if(go){ showSheet(false); view=go.dataset.go; render(); focusField(go.dataset.focus); return; }
   const act=e.target.closest("[data-act]"); if(act){ handleAct(act.dataset.act,e); return; }
   const edit=e.target.closest("[data-edit]"); if(edit){ openRecord(edit.dataset.edit); return; }
   const type=e.target.closest("[data-type]"); if(type&&sheetState){ readSheetInputs(); sheetState.type=type.dataset.type; renderSheet(); return; }
