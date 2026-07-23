@@ -114,10 +114,11 @@ test("シートが消えていても写真を受け取れる", () => {
 });
 
 test("読み取りは複数の画像・読み取り方を試し、結果を突き合わせる", () => {
-  assert.match(appSrc, /cropToDataUrl\(source, crop, style\)/, "切り抜きに複数の整形を使っていない");
-  assert.match(appSrc, /Core\.pickBestAmount\(candidates\)/, "結果の突き合わせをしていない");
-  assert.match(appSrc, /for\(const step of stage\)/, "段階ごとの実行になっていない");
+  assert.match(appSrc, /cropToDataUrl\(source, Core\.cropVariant\(crop, cropKey\), style\)/, "枠3種の切り抜きになっていない");
+  assert.match(appSrc, /Core\.rankCandidates\(candidates\)/, "候補の採点をしていない");
+  assert.match(appSrc, /for\(const step of Core\.OCR_PLAN\[i\]\)/, "段階ごとの実行になっていない");
   assert.match(appSrc, /style==="soft"/, "ゆるいグレースケール版を使っていない");
+  assert.match(appSrc, /style==="adaptive"/, "適応的二値化を使っていない");
 });
 
 test("記録ボタンがシートの下に固定され、常に押せる", () => {

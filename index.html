@@ -171,6 +171,13 @@
   .photobtn.big{padding:16px 12px;font-size:15px;margin-bottom:14px}
   .photobtn .sm{display:block;font-size:10.5px;font-weight:700;color:var(--sub);margin-top:2px}
   .shothint{font-size:11px;color:var(--sub);text-align:center;margin:0 0 12px;line-height:1.6}
+  /* 読み取り候補 */
+  .choices{margin:2px 0 12px}
+  .choices .cl{font-size:11px;color:var(--sub);text-align:center;margin-bottom:7px}
+  .choice{display:block;width:100%;background:#fff;border:1.5px solid #bfe0d3;border-radius:14px;
+    padding:14px;font-size:19px;font-weight:800;color:var(--green-d);margin-bottom:8px}
+  .choice:active{transform:scale(.985)}
+  .choice.manual{font-size:13.5px;font-weight:700;color:var(--sub);border-style:dashed;border-color:var(--line);padding:12px}
   /* 切り取り枠 */
   .cropwrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);
     background:#11201c;margin-bottom:8px;touch-action:none;user-select:none;-webkit-user-select:none}
@@ -487,6 +494,13 @@ function renderSheet(){
         ? `<div class="ocrnote">給料の入力口はここだけです。今月の通常収入になります。</div>`
         : `<div class="ocrnote">臨時の収入として、今月の収入に上のせされます。</div>`)
     : `<div class="ocrnote">&nbsp;</div>`;
+  const choicesHtml = (st.ocrChoices&&st.ocrChoices.length)
+    ? `<div class="choices">
+         <div class="cl">タップして金額を入れます（記録はまだされません）</div>
+         ${st.ocrChoices.map(a=>`<button class="choice mono" data-pick="${a}">${yen(a)}</button>`).join("")}
+         <button class="choice manual" data-act="manual-amount">✍️ 手入力する</button>
+       </div>`
+    : "";
   const photoHtml = st.photo
     ? `<div class="cropwrap" id="cropwrap">
          <img id="cropimg" src="${st.photo}" alt="レシート">
@@ -495,10 +509,12 @@ function renderSheet(){
        <div class="shothint">白い枠を動かして、<b>合計の金額だけ</b>を囲んでください。<br>枠の中しか読み取らないので、他の金額と混ざりません。</div>
        <button class="photobtn main big" data-act="read-crop">🔍 この枠の金額を読み取る</button>
        <button class="photobtn" data-act="shot-total">📸 撮り直す</button>
-       <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>`
+       <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
+       ${choicesHtml}`
     : `<button class="photobtn main" data-act="shot-total">📸 レシートを撮る
          <span class="sm">合計の行にアップで寄せて撮ってください</span></button>
-       <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>`;
+       <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
+       ${choicesHtml}`;
   $("sheet").innerHTML=`<div class="grip"></div>
     <div class="sheethd"><h3>${st.mode==="edit"?"記録をなおす":"記録する"}</h3>
       <button class="close" data-act="close-sheet" aria-label="閉じる">✕</button></div>
@@ -579,6 +595,7 @@ function onPhotoPicked(file){
       sheetState.photoHi=hires||shrunk;   // メモリ内だけ。localStorageには入れない
       sheetState.crop=Object.assign({},Core.CROP_DEFAULT);
       sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";
+      sheetState.ocrChoices=null;
       clearPending();
       renderSheet(); showSheet(true);
       loadTesseract().catch(()=>{});   // 枠を合わせている間に先読み
@@ -614,41 +631,57 @@ function releaseOcrImage(st){
 
 async function readCrop(){
   const st=sheetState; if(!st||!st.photo) return;
-  setStatus("読み取り中… ✨（少し時間がかかります）");
+  st.ocrChoices=null;
+  setStatus("画像を調整しています…");
+  renderSheet();
   try{
     const crop = st.crop||Core.CROP_DEFAULT;
-    /* 切り抜きは高解像度側から。枠は0〜1の比率なので、どちらの画像でも同じ範囲になる。 */
     const source = st.photoHi || st.photo;
-    const images = {};
-    const imageFor = async style=>{
-      if(!images[style]) images[style] = await cropToDataUrl(source, crop, style);
-      return images[style];
+
+    /* 枠3種 × 画像処理 の切り抜きは、必要になったときだけ1回作って使い回す */
+    const cache={};
+    const imageFor = async (cropKey, style)=>{
+      const key=cropKey+"|"+style;
+      if(!cache[key]) cache[key] = await cropToDataUrl(source, Core.cropVariant(crop, cropKey), style);
+      return cache[key];
     };
 
-    const candidates = [];
-    for(let i=0;i<Core.OCR_STAGES.length;i++){
-      const stage = Core.OCR_STAGES[i];
-      const jobs = [];
-      for(const step of stage) jobs.push({ img: await imageFor(step.image), psm: step.psm });
+    const candidates=[];
+    let runs=0;
+    for(let i=0;i<Core.OCR_PLAN.length;i++){
+      setStatus(i===0 ? "金額を確認しています…" : "もう少し詳しく確認しています…");
+      const jobs=[];
+      for(const step of Core.OCR_PLAN[i]){
+        jobs.push({ img: await imageFor(step.crop, step.image), psm: step.psm });
+      }
       const got = await ocrCandidates(jobs);
+      runs += jobs.length;
       got.forEach(c=>candidates.push(c));
       if(Core.ocrEnough(candidates)) break;
-      if(i+1<Core.OCR_STAGES.length) setStatus("もう少し詳しく読み取っています…");
     }
 
-    const amt = Core.pickBestAmount(candidates);
-    if(amt){
-      st.amount=String(amt);
-      const ai=$("s-amt"); if(ai) ai.value=String(amt);
-      setStatus(`金額を「${yen(amt)}」と読みました。ちがう時は直してね`);
-    } else {
+    const ranked = Core.rankCandidates(candidates);
+    if(!ranked.length){
+      st.ocrChoices=null;
       setStatus("枠の中に数字が見つかりませんでした。枠を合計に合わせ直すか、金額を入れてね");
+      renderSheet(); return;
     }
+    if(Core.needsConfirmation(ranked)){
+      st.ocrChoices = ranked.slice(0,3).map(r=>r.amount);
+      setStatus("どれが合計か選んでください");
+      renderSheet(); return;
+    }
+    st.ocrChoices=null;
+    st.amount=String(ranked[0].amount);
+    setStatus(`金額を「${yen(ranked[0].amount)}」と読みました。ちがう時は直してね`);
+    renderSheet();
   }catch(e){
     const why=(e&&e.message)?e.message:String(e||"原因不明");
+    st.ocrChoices=null;
     setStatus(`読み取れませんでした：${why}。金額は手で入れられます`);
+    renderSheet();
   }finally{
-    releaseOcrImage(st);   // 高解像度画像はここで手放す
+    releaseOcrImage(st);   // 高解像度画像・加工画像はここで手放す
   }
 }
 
@@ -667,9 +700,13 @@ function cropToDataUrl(src, crop, style){
         cx.drawImage(im, r.x, r.y, r.w, r.h, 0, 0, out.w, out.h);
         try{
           const d=cx.getImageData(0,0,out.w,out.h);
-          if(style==="bw") Core.binarizeForOcr(d.data);
-          else if(style==="soft") Core.softenForOcr(d.data);
-          else Core.enhanceForOcr(d.data);
+          if(Core.shouldInvert(d.data)) Core.invertForOcr(d.data);   // 白抜き文字のときだけ反転
+          if(style==="bw")            Core.binarizeForOcr(d.data);
+          else if(style==="soft")     Core.softenForOcr(d.data);
+          else if(style==="sharp")    Core.sharpenForOcr(d.data, out.w, out.h);
+          else if(style==="adaptive") Core.adaptiveBinarize(d.data, out.w, out.h);
+          else if(style==="invert"){ Core.invertForOcr(d.data); Core.binarizeForOcr(d.data); }
+          else                        Core.enhanceForOcr(d.data);
           cx.putImageData(d,0,0);
         }catch(e){}
         resolve(cv.toDataURL("image/png"));
@@ -758,7 +795,10 @@ async function ocrCandidates(jobs){
           tessedit_char_whitelist:"0123456789,.¥￥"
         });
         const { data } = await worker.recognize(job.img);
-        out.push({ amount:Core.parseAmount(data.text,"total"), confidence:data.confidence||0 });
+        const conf = data.confidence||0;
+        Core.amountDetails(data.text).forEach(d=>{
+          out.push({ amount:d.amount, raw:d.raw, confidence:conf, center:Core.centerness(d) });
+        });
       }catch(e){}
     }
   } finally { if(worker){ try{ await worker.terminate(); }catch(e){} } }
@@ -909,6 +949,12 @@ function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
 document.addEventListener("click",e=>{
   const nav=e.target.closest("#nav button"); if(nav){ showSheet(false); view=nav.dataset.nav; render(); return; }
   const go=e.target.closest("[data-go]"); if(go){ showSheet(false); view=go.dataset.go; render(); focusField(go.dataset.focus); return; }
+  const pick=e.target.closest("[data-pick]");
+  if(pick&&sheetState){ readSheetInputs();
+    sheetState.amount=String(pick.dataset.pick);
+    sheetState.ocrChoices=null;
+    sheetState.ocrNote="金額を入れました。内容を確かめて「記録する」を押してください";
+    renderSheet(); return; }
   const act=e.target.closest("[data-act]"); if(act){ handleAct(act.dataset.act,e); return; }
   const edit=e.target.closest("[data-edit]"); if(edit){ openRecord(edit.dataset.edit); return; }
   const type=e.target.closest("[data-type]"); if(type&&sheetState){ readSheetInputs(); sheetState.type=type.dataset.type; renderSheet(); return; }
@@ -920,9 +966,11 @@ function handleAct(a,e){
   if(a==="close-sheet") return showSheet(false);
   if(a==="save-tx") return saveTx();
   if(a==="del-tx") return delTx();
-  if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); releaseOcrImage(sheetState); sheetState.photo=null; sheetState.crop=null; sheetState.ocrNote=""; renderSheet(); } return; }
+  if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); releaseOcrImage(sheetState); sheetState.photo=null; sheetState.crop=null; sheetState.ocrNote=""; sheetState.ocrChoices=null; renderSheet(); } return; }
   if(a==="shot-total"){ readSheetInputs(); savePending(); $("camInput").value=""; $("camInput").click(); return; }
   if(a==="read-crop"){ readSheetInputs(); return readCrop(); }
+  if(a==="manual-amount"){ if(sheetState){ readSheetInputs(); sheetState.ocrChoices=null;
+      sheetState.ocrNote="金額を入れてください"; renderSheet(); focusField("s-amt"); } return; }
   if(a==="save-settings") return saveSettings();
   if(a==="export-snapshot") return exportSnapshot();
   if(a==="export-backup") return exportBackup();

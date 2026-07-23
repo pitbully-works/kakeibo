@@ -23,7 +23,7 @@ const KNOWN_GLOBALS = new Set([
   "isNaN", "setTimeout", "clearTimeout", "queueMicrotask", "requestAnimationFrame",
   "encodeURIComponent", "decodeURIComponent", "alert", "confirm", "console",
   "localStorage", "sessionStorage", "document", "window", "navigator", "location",
-  "Uint8ClampedArray", "Uint8Array", "Intl", "Symbol", "WeakMap",
+  "Uint8ClampedArray", "Uint8Array", "Float64Array", "Float32Array", "Int32Array", "Intl", "Symbol", "WeakMap",
   "var", "let", "const", "async", "else", "do", "try", "finally", "of", "in",
   "delete", "void", "yield", "throw", "case",
 ]);

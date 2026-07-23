@@ -75,7 +75,7 @@ test("レシートは枠で指定した範囲だけを読む", () => {
   assert.match(src, /data-act="shot-total"/, "アップ撮影のボタンが無い");
   assert.match(src, /data-act="read-crop"/, "枠で読み取るボタンが無い");
   assert.match(src, /Core\.cropRect\(crop, nat\)/, "枠の切り出しに core を使っていない");
-  assert.match(src, /Core\.parseAmount\(data\.text,"total"\)/, "core の parseAmount を使っていない");
+  assert.match(src, /Core\.amountDetails\(data\.text\)/, "core の解釈関数を使っていない");
   assert.match(src, /tessedit_char_whitelist/, "数字だけを読む設定が無い");
 });
 

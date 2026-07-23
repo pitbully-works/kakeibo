@@ -218,7 +218,7 @@
     let m;
     while ((m = re.exec(str)) !== null) {
       const v = parseInt(m[1].replace(/,/g, ""), 10);
-      if (v >= 10 && v <= 3000000) out.push({ value: v, index: m.index, yen: /[¥￥]/.test(m[0]) });
+      if (v >= 10 && v <= 3000000) out.push({ value: v, index: m.index, raw: m[1], yen: /[¥￥]/.test(m[0]) });
     }
     return out;
   }
@@ -511,6 +511,220 @@
     return list[0].amount;
   }
 
+
+  /* =======================================================================
+     枠のふくらませ／縮め（0〜1の比率のまま、画像からはみ出さない）
+     ======================================================================= */
+  /* pad は枠の大きさに対する割合。上下左右それぞれに加える。
+     pad=0.05 → 各辺5%広げる（幅は1.10倍）／ pad=-0.10 → 各辺10%狭める */
+  function padCrop(crop, pad) {
+    const c = crop || CROP_DEFAULT;
+    const dx = c.w * pad, dy = c.h * pad;
+    let x = c.x - dx, y = c.y - dy, w = c.w + dx * 2, h = c.h + dy * 2;
+    if (w < CROP_MIN) { x = c.x + c.w / 2 - CROP_MIN / 2; w = CROP_MIN; }
+    if (h < CROP_MIN) { y = c.y + c.h / 2 - CROP_MIN / 2; h = CROP_MIN; }
+    if (x < 0) { x = 0; }
+    if (y < 0) { y = 0; }
+    if (x + w > 1) { w = 1 - x; }
+    if (y + h > 1) { h = 1 - y; }
+    if (w > 1) { x = 0; w = 1; }
+    if (h > 1) { y = 0; h = 1; }
+    return { x: x, y: y, w: w, h: h };
+  }
+
+  /* 使う枠は3種類：そのまま／5%広げ／10%狭め */
+  const CROP_VARIANTS = [
+    { key: "base",  pad: 0 },
+    { key: "wide",  pad: 0.05 },
+    { key: "tight", pad: -0.10 },
+  ];
+  function cropVariant(crop, key) {
+    const v = CROP_VARIANTS.filter(function (x) { return x.key === key; })[0] || CROP_VARIANTS[0];
+    return padCrop(crop, v.pad);
+  }
+
+  /* =======================================================================
+     画像処理の候補
+     ======================================================================= */
+
+  /* グレースケール＋シャープ化（にじんだ感熱印字の輪郭を立てる） */
+  function sharpenForOcr(data, w, h) {
+    const g = new Uint8ClampedArray(w * h);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      g[p] = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = y * w + x;
+        let v;
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) v = g[p];
+        else v = 5 * g[p] - g[p - 1] - g[p + 1] - g[p - w] - g[p + w];
+        v = v < 0 ? 0 : v > 255 ? 255 : v;
+        const i = p * 4;
+        data[i] = data[i + 1] = data[i + 2] = v;
+      }
+    }
+    return data;
+  }
+
+  /* 適応的二値化（照明ムラ・影に強い。周辺の平均より暗ければ黒） */
+  function adaptiveBinarize(data, w, h, block, cVal) {
+    const B = Math.max(3, block || Math.max(15, Math.round(Math.min(w, h) / 8) | 1));
+    const C = typeof cVal === "number" ? cVal : 10;
+    const g = new Uint8ClampedArray(w * h);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      g[p] = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
+    }
+    /* 積分画像で高速に周辺平均を求める */
+    const sum = new Float64Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) {
+      let row = 0;
+      for (let x = 0; x < w; x++) {
+        row += g[y * w + x];
+        sum[(y + 1) * (w + 1) + (x + 1)] = sum[y * (w + 1) + (x + 1)] + row;
+      }
+    }
+    const r = B >> 1;
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.max(0, x - r), x1 = Math.min(w - 1, x + r);
+        const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+        const tot = sum[(y1 + 1) * (w + 1) + (x1 + 1)] - sum[y0 * (w + 1) + (x1 + 1)]
+                  - sum[(y1 + 1) * (w + 1) + x0] + sum[y0 * (w + 1) + x0];
+        const mean = tot / area;
+        const i = (y * w + x) * 4;
+        const v = g[y * w + x] < mean - C ? 0 : 255;
+        data[i] = data[i + 1] = data[i + 2] = v;
+      }
+    }
+    return data;
+  }
+
+  /* 白黒反転が必要か（背景が暗い＝白抜き文字のとき） */
+  function shouldInvert(data) {
+    let total = 0, n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      total += data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      n++;
+    }
+    return n > 0 && total / n < 110;
+  }
+  function invertForOcr(data) {
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 255 - data[i]; data[i + 1] = 255 - data[i + 1]; data[i + 2] = 255 - data[i + 2];
+    }
+    return data;
+  }
+
+  /* =======================================================================
+     読み取り結果の採点
+     ======================================================================= */
+
+  /* テキストから、金額候補を位置つきで全部拾う */
+  function amountDetails(text) {
+    const cleaned = stripNonAmounts(text);
+    const lines = cleaned.split(/\r?\n/);
+    const out = [];
+    lines.forEach(function (line, i) {
+      amountsIn(line).forEach(function (a) {
+        out.push({
+          amount: a.value, raw: a.raw, yen: a.yen,
+          line: i, lineCount: lines.length,
+          col: a.index, lineLen: line.length,
+        });
+      });
+    });
+    return out;
+  }
+
+  /* 画像の真ん中に近いほど1.0（利用者は合計を枠の中央に置くため） */
+  function centerness(d) {
+    if (!d) return 0.5;
+    const vy = d.lineCount > 1 ? d.line / (d.lineCount - 1) : 0.5;
+    const rawLen = String(d.raw || "").length;
+    const vx = d.lineLen > 0 ? (d.col + rawLen / 2) / d.lineLen : 0.5;
+    const dist = Math.min(1, Math.max(Math.abs(vy - 0.5), Math.abs(vx - 0.5)) * 2);
+    return 1 - dist;
+  }
+
+  /* カンマの打ち方が自然か。1,285 は自然、12,85 や 1,2,85 は不自然。 */
+  function commaScore(raw) {
+    const s = String(raw || "");
+    if (!s) return 0;
+    if (s.indexOf(",") < 0) return s.length <= 3 ? 1 : 0.5;   // 4桁以上でカンマ無しは弱い
+    const parts = s.split(",");
+    if (parts[0].length < 1 || parts[0].length > 3) return 0;
+    for (let i = 1; i < parts.length; i++) if (parts[i].length !== 3) return 0;
+    return 1;
+  }
+
+  const SCORE_CONFIRM = 60;   // これ未満なら利用者に選んでもらう
+  const SCORE_GAP = 12;       // 1位と2位の差がこれ未満なら選んでもらう
+
+  /* 候補1件の点数（0〜100） */
+  function scoreCandidate(c) {
+    if (!c || !Number.isFinite(c.amount)) return 0;
+    if (c.amount < 1 || c.amount > 999999) return 0;              // 範囲外は0点
+    if (commaScore(c.raw) === 0) return 0;                        // 桁区切りが壊れている
+    let s = 5;                                                     // 範囲内であること
+    s += Math.min(40, (Number(c.confidence) || 0) * 0.4);          // 読み取り信頼度：最大40
+    s += Math.min(30, Math.max(0, (Number(c.agree) || 1) - 1) * 15); // 一致数：最大30
+    s += commaScore(c.raw) * 15;                                   // 桁区切り：最大15
+    s += (Number.isFinite(c.center) ? c.center : 0.5) * 10;        // 中央寄り：最大10
+    return Math.round(Math.min(100, s));
+  }
+
+  /* 同じ金額をまとめ、点数順に並べる */
+  function rankCandidates(list) {
+    const byAmount = {};
+    (list || []).forEach(function (c) {
+      if (!c || !Number.isFinite(c.amount) || c.amount <= 0) return;
+      const k = String(c.amount);
+      if (!byAmount[k]) {
+        byAmount[k] = { amount: c.amount, agree: 0, confidence: 0, raw: c.raw, center: 0 };
+      }
+      const b = byAmount[k];
+      b.agree += 1;
+      b.confidence = Math.max(b.confidence, Number(c.confidence) || 0);
+      b.center = Math.max(b.center, Number.isFinite(c.center) ? c.center : 0.5);
+      if (commaScore(c.raw) > commaScore(b.raw)) b.raw = c.raw;
+    });
+    const ranked = Object.keys(byAmount).map(function (k) {
+      const b = byAmount[k];
+      b.score = scoreCandidate(b);
+      return b;
+    }).filter(function (b) { return b.score > 0; });
+    ranked.sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.agree !== a.agree) return b.agree - a.agree;
+      return b.amount - a.amount;
+    });
+    return ranked;
+  }
+
+  /* 自動で入れてよいか、利用者に選んでもらうか */
+  function needsConfirmation(ranked) {
+    if (!ranked || !ranked.length) return false;          // 候補ゼロ＝手入力へ
+    if (ranked[0].score < SCORE_CONFIRM) return true;
+    if (ranked.length > 1 && ranked[0].score - ranked[1].score < SCORE_GAP) return true;
+    return false;
+  }
+
+  /* 読み取りの手順（枠 × 画像処理 × 読み取り方）。速い順に3段階、最大9回。 */
+  const OCR_PLAN = [
+    [ { crop: "base",  image: "soft",     psm: "7" },
+      { crop: "base",  image: "bw",       psm: "7" } ],
+    [ { crop: "wide",  image: "bw",       psm: "7" },
+      { crop: "tight", image: "bw",       psm: "8" },
+      { crop: "base",  image: "adaptive", psm: "7" } ],
+    [ { crop: "base",  image: "sharp",    psm: "13" },
+      { crop: "wide",  image: "adaptive", psm: "6" },
+      { crop: "tight", image: "soft",     psm: "8" },
+      { crop: "base",  image: "invert",   psm: "7" } ],
+  ];
+  const OCR_MAX_RUNS = OCR_PLAN.reduce(function (a, st) { return a + st.length; }, 0);
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -582,6 +796,23 @@
     pickBestAmount: pickBestAmount,
     ocrEnough: ocrEnough,
     OCR_STAGES: OCR_STAGES,
+    padCrop: padCrop,
+    cropVariant: cropVariant,
+    CROP_VARIANTS: CROP_VARIANTS,
+    sharpenForOcr: sharpenForOcr,
+    adaptiveBinarize: adaptiveBinarize,
+    shouldInvert: shouldInvert,
+    invertForOcr: invertForOcr,
+    amountDetails: amountDetails,
+    centerness: centerness,
+    commaScore: commaScore,
+    scoreCandidate: scoreCandidate,
+    rankCandidates: rankCandidates,
+    needsConfirmation: needsConfirmation,
+    OCR_PLAN: OCR_PLAN,
+    OCR_MAX_RUNS: OCR_MAX_RUNS,
+    SCORE_CONFIRM: SCORE_CONFIRM,
+    SCORE_GAP: SCORE_GAP,
     moveCrop: moveCrop,
     fitSize: fitSize,
     approxBytes: approxBytes,

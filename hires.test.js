@@ -33,7 +33,7 @@ test("撮影時に、表示用と読み取り用の2枚を別々に作る", () =
 
 test("読み取りは高解像度側から切り抜く（無ければ表示用に落とす）", () => {
   assert.match(appSrc, /const source = st\.photoHi \|\| st\.photo;/, "高解像度を優先していない");
-  assert.match(appSrc, /cropToDataUrl\(source, crop, style\)/, "切り抜き元が高解像度になっていない");
+  assert.match(appSrc, /cropToDataUrl\(source, Core\.cropVariant\(crop, cropKey\), style\)/, "切り抜き元が高解像度になっていない");
 });
 
 /* ---------- 2. 保存データに含まれない ---------- */
