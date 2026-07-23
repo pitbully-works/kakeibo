@@ -70,6 +70,16 @@ const MUTATIONS = [
     file: "index.html", from: "  state.tx = JSON.parse(before);", to: "  releaseOcrImage(st);\n  state.tx = JSON.parse(before);" },
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
+  { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
+    file: "sw.js", from: 'const CACHE = "kakeibo-v4";', to: 'const CACHE = "kakeibo-v3";' },
+  { name: "古いキャッシュを消さない", guards: "古いアプリが残らない",
+    file: "sw.js", from: "keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))",
+    to: "keys.filter((k) => false).map((k) => caches.delete(k))" },
+  { name: "画面をキャッシュ優先に戻す", guards: "画面はネットワーク優先",
+    file: "sw.js", from: "  if (isNavigation(e.request, url)) {", to: "  if (false) {" },
+  { name: "オフライン時の受け皿を外す", guards: "オフラインでも起動する",
+    file: "sw.js", from: "        .catch(() =>\n          caches.match(INDEX).then((hit) => hit || caches.match(e.request))\n        )",
+    to: "        .catch(() => undefined)" },
 ];
 
 /* テストを1回走らせる。
