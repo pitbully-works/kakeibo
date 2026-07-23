@@ -113,11 +113,11 @@ test("シートが消えていても写真を受け取れる", () => {
   assert.match(appSrc, /onPhotoPicked\(file\)\{[\s\S]{0,200}ensureSheetForPhoto\(\)/, "受け取り前に受け皿を用意していない");
 });
 
-test("読み取りは2通りの画像で試し、結果を突き合わせる", () => {
-  assert.match(appSrc, /cropToDataUrl\(st\.photo, crop, "bw"\)/, "白黒版を作っていない");
-  assert.match(appSrc, /cropToDataUrl\(st\.photo, crop, "plain"\)/, "通常版を作っていない");
-  assert.match(appSrc, /Core\.pickBestAmount\(results\)/, "結果の突き合わせをしていない");
-  assert.match(appSrc, /for\(const psm of \["7","6"\]\)/, "読み取り方を1通りしか試していない");
+test("読み取りは複数の画像・読み取り方を試し、結果を突き合わせる", () => {
+  assert.match(appSrc, /cropToDataUrl\(source, crop, style\)/, "切り抜きに複数の整形を使っていない");
+  assert.match(appSrc, /Core\.pickBestAmount\(candidates\)/, "結果の突き合わせをしていない");
+  assert.match(appSrc, /for\(const step of stage\)/, "段階ごとの実行になっていない");
+  assert.match(appSrc, /style==="soft"/, "ゆるいグレースケール版を使っていない");
 });
 
 test("記録ボタンがシートの下に固定され、常に押せる", () => {

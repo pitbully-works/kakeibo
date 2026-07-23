@@ -291,7 +291,7 @@
 
   /* 小さすぎる切り抜きは拡大してから読ませると精度が上がる */
   function cropOutputSize(w, h, minW, maxW) {
-    const MIN = minW || 1200, MAX = maxW || 2000;
+    const MIN = minW || 1200, MAX = maxW || 2400;
     let scale = 1;
     if (w < MIN) scale = MIN / w;
     if (w * scale > MAX) scale = MAX / w;
@@ -350,7 +350,8 @@
      ・保存用は 900px まで
      に縮めてから扱う。
      ======================================================================= */
-  const PHOTO_VIEW_MAX = 1600;   // 読み取り・表示に使う長辺
+  const PHOTO_OCR_MAX = 3500;    // 読み取り専用（メモリ内だけ・保存しない）
+  const PHOTO_VIEW_MAX = 1600;   // 画面表示に使う長辺
   const PHOTO_STORE_MAX = 900;   // 保存する長辺
   const STORE_SOFT_LIMIT = 3.6 * 1024 * 1024; // これを超えたら警告
 
@@ -432,6 +433,57 @@
       data[i] = data[i + 1] = data[i + 2] = v;
     }
     return data;
+  }
+
+  /* 軽いグレースケール＋ゆるいコントラスト。
+     二値化すると細い線が消えてしまう薄い印字のための保険。
+     端5%を外れ値として無視し、残りを 20〜235 に伸ばすだけに留める。 */
+  function softenForOcr(data) {
+    const hist = new Array(256).fill(0);
+    for (let i = 0; i < data.length; i += 4) {
+      const g = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
+      data[i] = data[i + 1] = data[i + 2] = g;
+      hist[g]++;
+    }
+    const total = data.length / 4;
+    const cut = Math.max(1, Math.floor(total * 0.05));
+    let lo = 0, hi = 255, acc = 0;
+    for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= cut) { lo = i; break; } }
+    acc = 0;
+    for (let i = 255; i >= 0; i--) { acc += hist[i]; if (acc >= cut) { hi = i; break; } }
+    const range = Math.max(1, hi - lo);
+    for (let i = 0; i < data.length; i += 4) {
+      let v = ((data[i] - lo) * 215) / range + 20;
+      v = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+      data[i] = data[i + 1] = data[i + 2] = v;
+    }
+    return data;
+  }
+
+  /* 読み取りの手順。速い組合せから順に試し、取れたらそこで止める。
+     image: bw=二値化 / plain=コントラスト最大 / soft=ゆるいグレースケール
+     psm  : 7=1行 / 8=単語ひとつ / 13=生の1行 / 6=かたまり */
+  const OCR_STAGES = [
+    [ { image: "bw", psm: "7" }, { image: "plain", psm: "7" } ],
+    [ { image: "bw", psm: "8" }, { image: "soft", psm: "7" } ],
+    [ { image: "bw", psm: "13" }, { image: "plain", psm: "6" } ],
+  ];
+
+  /* もう次の段階に進まなくてよいか。
+     ・同じ金額が2回以上出た（偶然は重ならない）
+     ・または、信頼度70以上で読めた */
+  function ocrEnough(candidates) {
+    const ok = (candidates || []).filter(function (c) {
+      return c && Number.isFinite(c.amount) && c.amount > 0;
+    });
+    if (!ok.length) return false;
+    const votes = {};
+    for (const c of ok) {
+      const k = String(c.amount);
+      votes[k] = (votes[k] || 0) + 1;
+      if (votes[k] >= 2) return true;
+    }
+    return ok.some(function (c) { return (Number(c.confidence) || 0) >= 70; });
   }
 
   /* 何回か読んだ結果から、いちばん確からしい金額を選ぶ。
@@ -524,13 +576,17 @@
     cropRect: cropRect,
     cropOutputSize: cropOutputSize,
     enhanceForOcr: enhanceForOcr,
+    softenForOcr: softenForOcr,
     otsuThreshold: otsuThreshold,
     binarizeForOcr: binarizeForOcr,
     pickBestAmount: pickBestAmount,
+    ocrEnough: ocrEnough,
+    OCR_STAGES: OCR_STAGES,
     moveCrop: moveCrop,
     fitSize: fitSize,
     approxBytes: approxBytes,
     storageUsage: storageUsage,
+    PHOTO_OCR_MAX: PHOTO_OCR_MAX,
     PHOTO_VIEW_MAX: PHOTO_VIEW_MAX,
     PHOTO_STORE_MAX: PHOTO_STORE_MAX,
     STORE_SOFT_LIMIT: STORE_SOFT_LIMIT,

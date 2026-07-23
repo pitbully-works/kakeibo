@@ -527,7 +527,7 @@ function readSheetInputs(){
   if(a) st.amount=a.value; if(d) st.date=d.value||todayISO(); if(m) st.memo=m.value;
 }
 function showSheet(on){ $("scrim").classList.toggle("show",on); $("sheet").classList.toggle("show",on);
-  if(!on){ sheetState=null; clearPending(); } }
+  if(!on){ releaseOcrImage(sheetState); sheetState=null; clearPending(); } }
 
 /* いま何が起きているかを必ず画面に出す（黙って失敗しない） */
 function setStatus(msg){
@@ -570,10 +570,13 @@ function onPhotoPicked(file){
   reader.onload=async()=>{
     try{
       setStatus("写真を準備中…");
+      /* 表示・保存用は縮小版。読み取り用は高解像度版を別に持つ（保存しない）。 */
       const shrunk=await resizeDataUrl(reader.result, Core.PHOTO_VIEW_MAX, 0.85);
+      const hires =await resizeDataUrl(reader.result, Core.PHOTO_OCR_MAX, 0.95);
       ensureSheetForPhoto();
       if(!shrunk || shrunk.length<100){ setStatus("この形式の写真は表示できませんでした。もう一度撮ってください"); return; }
       sheetState.photo=shrunk;
+      sheetState.photoHi=hires||shrunk;   // メモリ内だけ。localStorageには入れない
       sheetState.crop=Object.assign({},Core.CROP_DEFAULT);
       sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";
       clearPending();
@@ -603,16 +606,37 @@ function resizeDataUrl(src, maxEdge, quality){
 }
 
 /* 枠の中だけを切り出して読む。他の金額は物理的に視界に入らない。 */
+/* 読み取り用の高解像度画像をメモリから手放す */
+function releaseOcrImage(st){
+  const t = st || sheetState;
+  if(t && t.photoHi){ t.photoHi = null; }
+}
+
 async function readCrop(){
   const st=sheetState; if(!st||!st.photo) return;
   setStatus("読み取り中… ✨（少し時間がかかります）");
   try{
     const crop = st.crop||Core.CROP_DEFAULT;
-    // 同じ範囲を2通りに整えて読ませ、結果を突き合わせる
-    const plain = await cropToDataUrl(st.photo, crop, "plain");
-    const bw    = await cropToDataUrl(st.photo, crop, "bw");
-    const results = await ocrCandidates([bw, plain]);
-    const amt = Core.pickBestAmount(results);
+    /* 切り抜きは高解像度側から。枠は0〜1の比率なので、どちらの画像でも同じ範囲になる。 */
+    const source = st.photoHi || st.photo;
+    const images = {};
+    const imageFor = async style=>{
+      if(!images[style]) images[style] = await cropToDataUrl(source, crop, style);
+      return images[style];
+    };
+
+    const candidates = [];
+    for(let i=0;i<Core.OCR_STAGES.length;i++){
+      const stage = Core.OCR_STAGES[i];
+      const jobs = [];
+      for(const step of stage) jobs.push({ img: await imageFor(step.image), psm: step.psm });
+      const got = await ocrCandidates(jobs);
+      got.forEach(c=>candidates.push(c));
+      if(Core.ocrEnough(candidates)) break;
+      if(i+1<Core.OCR_STAGES.length) setStatus("もう少し詳しく読み取っています…");
+    }
+
+    const amt = Core.pickBestAmount(candidates);
     if(amt){
       st.amount=String(amt);
       const ai=$("s-amt"); if(ai) ai.value=String(amt);
@@ -623,6 +647,8 @@ async function readCrop(){
   }catch(e){
     const why=(e&&e.message)?e.message:String(e||"原因不明");
     setStatus(`読み取れませんでした：${why}。金額は手で入れられます`);
+  }finally{
+    releaseOcrImage(st);   // 高解像度画像はここで手放す
   }
 }
 
@@ -641,7 +667,9 @@ function cropToDataUrl(src, crop, style){
         cx.drawImage(im, r.x, r.y, r.w, r.h, 0, 0, out.w, out.h);
         try{
           const d=cx.getImageData(0,0,out.w,out.h);
-          if(style==="bw") Core.binarizeForOcr(d.data); else Core.enhanceForOcr(d.data);
+          if(style==="bw") Core.binarizeForOcr(d.data);
+          else if(style==="soft") Core.softenForOcr(d.data);
+          else Core.enhanceForOcr(d.data);
           cx.putImageData(d,0,0);
         }catch(e){}
         resolve(cv.toDataURL("image/png"));
@@ -707,9 +735,9 @@ function tessWorkerOptions(){
   return {};
 }
 
-/* 数字だけを読む設定で、画像2枚 × 読み取り方2通りを試す。
+/* 数字だけを読む設定で、渡された「画像 × 読み取り方」の組を順に試す。
    偶然の誤読は重ならないので、同じ数字が複数回出たものを採用する。 */
-async function ocrCandidates(images){
+async function ocrCandidates(jobs){
   const T = await loadTesseract();
   const out=[];
   let worker=null;
@@ -723,17 +751,15 @@ async function ocrCandidates(images){
         }
       }
     }));
-    for(const psm of ["7","6"]){                 // 7=1行として読む / 6=かたまりとして読む
-      await worker.setParameters({
-        tessedit_pageseg_mode:psm,
-        tessedit_char_whitelist:"0123456789,.¥￥"
-      });
-      for(const img of images){
-        try{
-          const { data } = await worker.recognize(img);
-          out.push({ amount:Core.parseAmount(data.text,"total"), confidence:data.confidence||0 });
-        }catch(e){}
-      }
+    for(const job of jobs){
+      try{
+        await worker.setParameters({
+          tessedit_pageseg_mode: job.psm,
+          tessedit_char_whitelist:"0123456789,.¥￥"
+        });
+        const { data } = await worker.recognize(job.img);
+        out.push({ amount:Core.parseAmount(data.text,"total"), confidence:data.confidence||0 });
+      }catch(e){}
     }
   } finally { if(worker){ try{ await worker.terminate(); }catch(e){} } }
   return out;
@@ -789,7 +815,9 @@ async function saveTx(){
   const amount=parseInt(String(st.amount).replace(/[^\d]/g,""),10);
   if(!amount||amount<=0){ toast("金額を入れてね"); const ai=$("s-amt"); if(ai) ai.focus(); return; }
 
-  /* 保存用に写真を小さくする（そのままだと保存領域を超えて何も残らない） */
+  /* 保存用に写真を小さくする（そのままだと保存領域を超えて何も残らない）。
+     読み取り用の高解像度画像は保存対象にしない。 */
+  releaseOcrImage(st);
   let photo = st.photo || null;
   if(photo) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);
 
@@ -892,7 +920,7 @@ function handleAct(a,e){
   if(a==="close-sheet") return showSheet(false);
   if(a==="save-tx") return saveTx();
   if(a==="del-tx") return delTx();
-  if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); sheetState.photo=null; sheetState.crop=null; sheetState.ocrNote=""; renderSheet(); } return; }
+  if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); releaseOcrImage(sheetState); sheetState.photo=null; sheetState.crop=null; sheetState.ocrNote=""; renderSheet(); } return; }
   if(a==="shot-total"){ readSheetInputs(); savePending(); $("camInput").value=""; $("camInput").click(); return; }
   if(a==="read-crop"){ readSheetInputs(); return readCrop(); }
   if(a==="save-settings") return saveSettings();

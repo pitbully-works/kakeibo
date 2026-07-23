@@ -118,7 +118,7 @@ test("不正な枠でも落ちず、画像内に収まる", () => {
 
 test("小さい切り抜きは拡大され、大きすぎる切り抜きは縮小される", () => {
   assert.equal(Core.cropOutputSize(300, 80).w, 1200, "小さい枠が拡大されない");
-  assert.equal(Core.cropOutputSize(4000, 1000).w, 2000, "大きい枠が縮小されない");
+  assert.equal(Core.cropOutputSize(4000, 1000).w, 2400, "大きい枠が縮小されない");
   const keep = Core.cropOutputSize(1500, 500);
   assert.equal(keep.w, 1500, "ちょうどよい大きさは変えない");
   assert.equal(keep.h, 500, "縦横比が崩れている");
