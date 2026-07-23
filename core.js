@@ -182,6 +182,90 @@
     }), function (t) { return t.amount; });
   }
 
+
+  /* =======================================================================
+     レシートの金額読み取り（OCRテキストの解釈）
+     -----------------------------------------------------------------------
+     mode:
+       "total" … 合計の行だけをアップで撮った写真。候補がほぼ1つなので、
+                 いちばん大きい金額を素直に採用する（読み違いが起きにくい）。
+       "full"  … レシート全体。「合計」の語の“右側”の数字だけを拾い、
+                 小計・お預り・お釣りなど紛らわしい行は最初から捨てる。
+     ======================================================================= */
+
+  /* 金額と紛らわしいものを先に消す（日付・時刻・電話・郵便番号・登録番号） */
+  function stripNonAmounts(text) {
+    return String(text || "")
+      .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xfee0); })
+      .replace(/[，]/g, ",")
+      .replace(/\d{4}\s*[/年.\-]\s*\d{1,2}\s*[/月.\-]\s*\d{1,2}\s*日?/g, " ")
+      .replace(/\d{1,2}\s*[/月]\s*\d{1,2}\s*日?/g, " ")
+      .replace(/\d{1,2}\s*:\s*\d{2}(\s*:\s*\d{2})?/g, " ")
+      .replace(/(TEL|Tel|電話)[^\n]*/g, " ")
+      .replace(/〒\s*\d{3}\s*-?\s*\d{4}/g, " ")
+      .replace(/(登録番号|No\.?|NO\.?|伝票)\s*[:：]?\s*T?\d+/g, " ");
+  }
+
+  /* 「合計」など、その行の金額を採用してよい語 */
+  const TOTAL_KW = /(合\s*計|お会計|お買[上げい]+\s*計|ご請求(金)?額|税込\s*計|総\s*額|total)/i;
+  /* 合計と紛らわしく、拾ってはいけない語 */
+  const SKIP_KW = /(小\s*計|中\s*計|お預[りかり]*|預\s*り|お釣り|釣\s*銭|お返し|現\s*金|クレジット|カード|電子マネー|ポイント|point|値引|割引|外税|内税|消費税|税\s*額|対象額)/i;
+
+  /* 文字列から金額候補を位置つきで拾う */
+  function amountsIn(str) {
+    const out = [];
+    const re = /(?:[¥￥]\s*)?(\d{1,3}(?:,\d{3})+|\d{2,7})(?![\d%％])/g;
+    let m;
+    while ((m = re.exec(str)) !== null) {
+      const v = parseInt(m[1].replace(/,/g, ""), 10);
+      if (v >= 10 && v <= 3000000) out.push({ value: v, index: m.index, yen: /[¥￥]/.test(m[0]) });
+    }
+    return out;
+  }
+
+  function parseAmount(text, mode) {
+    const cleaned = stripNonAmounts(text);
+    if (!cleaned.trim()) return null;
+    const lines = cleaned.split(/\r?\n/);
+
+    /* --- アップ撮影：素直にいちばん大きい金額 --- */
+    if (mode === "total") {
+      const all = [];
+      lines.forEach(function (l) { amountsIn(l).forEach(function (a) { all.push(a); }); });
+      if (!all.length) return null;
+      const yenOnly = all.filter(function (a) { return a.yen; });
+      const pool = yenOnly.length ? yenOnly : all;
+      return pool.reduce(function (a, b) { return b.value > a.value ? b : a; }).value;
+    }
+
+    /* --- 全体撮影：「合計」の右側の数字だけを拾う --- */
+    const hits = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (SKIP_KW.test(line)) continue;
+      const kw = TOTAL_KW.exec(line);
+      if (!kw) continue;
+      const after = amountsIn(line).filter(function (a) { return a.index >= kw.index; });
+      if (after.length) { hits.push(after[after.length - 1].value); continue; }
+      /* 合計の金額が次の行にあるレシートもある */
+      for (let j = i + 1; j <= i + 2 && j < lines.length; j++) {
+        if (SKIP_KW.test(lines[j])) continue;
+        const nx = amountsIn(lines[j]);
+        if (nx.length) { hits.push(nx[nx.length - 1].value); break; }
+      }
+    }
+    if (hits.length) return Math.max.apply(null, hits);
+
+    /* --- 合計が読めなかったときだけ、紛らわしい行を除いた最大値 --- */
+    const rest = [];
+    lines.forEach(function (l) {
+      if (SKIP_KW.test(l)) return;
+      amountsIn(l).forEach(function (a) { rest.push(a.value); });
+    });
+    if (!rest.length) return null;
+    return Math.max.apply(null, rest);
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -243,5 +327,6 @@
     computeMonth: computeMonth,
     weekSpent: weekSpent,
     buildSnapshot: buildSnapshot,
+    parseAmount: parseAmount,
   };
 });

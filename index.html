@@ -166,7 +166,10 @@
   .catbtn.on{background:var(--green-l);border-color:#bfe0d3;color:var(--green-d)}
   .row2{display:flex;gap:10px;margin-bottom:12px}
   .row2 .field{flex:1;margin-bottom:0}
-  .photobtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:1.5px dashed #c3d3ce;border-radius:14px;padding:12px;color:var(--green-d);font-weight:800;font-size:13.5px;background:#fff;margin-bottom:12px}
+  .photobtn{display:block;width:100%;border:1.5px dashed #c3d3ce;border-radius:14px;padding:12px;color:var(--green-d);font-weight:800;font-size:13.5px;background:#fff;margin-bottom:8px;text-align:center}
+  .photobtn.main{border-style:solid;border-color:var(--green);background:var(--green-l)}
+  .photobtn .sm{display:block;font-size:10.5px;font-weight:700;color:var(--sub);margin-top:2px}
+  .shothint{font-size:11px;color:var(--sub);text-align:center;margin:0 0 12px;line-height:1.6}
   .photoprev{position:relative;margin-bottom:12px;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
   .photoprev img{width:100%;display:block;max-height:180px;object-fit:cover}
   .photoprev .rm{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;width:28px;height:28px;font-size:15px}
@@ -434,9 +437,9 @@ function renderSettings(){
 let sheetState=null; // {mode:'add'|'edit', id?, type, amount, cat, date, memo, photo}
 function openRecord(editId){
   if(editId){ const t=state.tx.find(x=>x.id===editId); if(!t) return;
-    sheetState={mode:"edit", id:t.id, type:t.type, amount:String(t.amount), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null};
+    sheetState={mode:"edit", id:t.id, type:t.type, amount:String(t.amount), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null, shot:"total"};
   } else {
-    sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null};
+    sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total"};
   }
   renderSheet(); showSheet(true);
 }
@@ -457,7 +460,10 @@ function renderSheet(){
   const photoHtml = st.photo
     ? `<div class="photoprev"><img src="${st.photo}" alt="レシート"><button class="rm" data-act="rm-photo">✕</button></div>
        <div class="ocrnote" id="ocrnote"></div>`
-    : `<button class="photobtn" data-act="take-photo">📸 レシートを撮る／選ぶ</button>`;
+    : `<button class="photobtn main" data-act="shot-total">🔍 合計だけをアップで撮る
+         <span class="sm">いちばん正確に読めます</span></button>
+       <button class="photobtn" data-act="shot-full">🧾 レシート全体を撮る</button>
+       <div class="shothint">「合計 ¥1,240」の行が画面いっぱいになるくらい近づけて撮ると、<br>小計やお釣りと読み違えません。</div>`;
   $("sheet").innerHTML=`<div class="grip"></div>
     <div class="sheethd"><h3>${st.mode==="edit"?"記録をなおす":"記録する"}</h3>
       <button class="close" data-act="close-sheet" aria-label="閉じる">✕</button></div>
@@ -491,27 +497,44 @@ function onPhotoPicked(file){
   reader.onload=()=>{ sheetState.photo=reader.result; renderSheet(); runOCR(reader.result); };
   reader.readAsDataURL(file);
 }
-async function runOCR(dataUrl){
+async function runOCR(dataUrl, mode){
   const note=$("ocrnote"); if(note) note.textContent="読み取り中… ✨";
   try{
-    if(!window.Tesseract){ await loadScript("https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"); }
-    const { data } = await window.Tesseract.recognize(dataUrl, "jpn+eng");
-    const amt = guessAmount(data.text);
-    if(amt){ if(sheetState){ sheetState.amount=String(amt); const ai=$("s-amt"); if(ai) ai.value=String(amt); }
-      if($("ocrnote")) $("ocrnote").textContent=`金額を「${yen(amt)}」と読みました。ちがう時は直してね`; }
-    else if($("ocrnote")) $("ocrnote").textContent="うまく読めませんでした。金額を入れてね（写真は保存されます）";
+    const text = await ocrRecognize(dataUrl, mode);
+    const amt = Core.parseAmount(text, mode);
+    if(amt){
+      if(sheetState){ sheetState.amount=String(amt); const ai=$("s-amt"); if(ai) ai.value=String(amt); }
+      if($("ocrnote")) $("ocrnote").textContent=`金額を「${yen(amt)}」と読みました。ちがう時は直してね`;
+    } else if($("ocrnote")){
+      $("ocrnote").textContent = mode==="total"
+        ? "うまく読めませんでした。合計にもっと近づけて撮るか、金額を入れてね"
+        : "うまく読めませんでした。合計だけをアップで撮ると読みやすいです";
+    }
   }catch(e){ if($("ocrnote")) $("ocrnote").textContent="読み取りは今回スキップ。金額を入れてね"; }
 }
-function guessAmount(text){
-  if(!text) return null;
-  const lines=text.split(/\n/); let best=null;
-  const kw=/(合[　 ]*計|お会計|税込|総額|total|合計金額)/i;
-  const grab=str=>{ const nums=[...str.matchAll(/(\d[\d,]{1,8})/g)].map(m=>parseInt(m[1].replace(/,/g,""),10)).filter(n=>n>=10&&n<=2000000); return nums.length?Math.max(...nums):null; };
-  for(const l of lines){ if(kw.test(l)){ const n=grab(l); if(n) best=Math.max(best||0,n); } }
-  if(best) return best;
-  // フォールバック：全体の最大金額
-  return grab(text);
+
+/* 合計のアップは「数字だけを読む」設定にすると、桁の読み違いが減る */
+async function ocrRecognize(dataUrl, mode){
+  if(!window.Tesseract){ await loadScript("https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"); }
+  const T=window.Tesseract;
+  if(mode==="total" && typeof T.createWorker==="function"){
+    let worker=null;
+    try{
+      worker=await T.createWorker("eng");
+      await worker.setParameters({
+        tessedit_pageseg_mode:"6",                 // ひとかたまりの文字として読む
+        tessedit_char_whitelist:"0123456789,.¥￥"  // 数字と通貨記号だけ
+      });
+      const { data } = await worker.recognize(dataUrl);
+      return data.text;
+    }catch(e){
+      /* 失敗したら通常の読み取りに落とす */
+    }finally{ if(worker){ try{ await worker.terminate(); }catch(e){} } }
+  }
+  const { data } = await T.recognize(dataUrl, "jpn+eng");
+  return data.text;
 }
+
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
 
 /* ---------- 保存アクション ---------- */
@@ -585,7 +608,10 @@ function handleAct(a,e){
   if(a==="save-tx") return saveTx();
   if(a==="del-tx") return delTx();
   if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); sheetState.photo=null; renderSheet(); } return; }
-  if(a==="take-photo"){ readSheetInputs(); $("camInput").value=""; $("camInput").click(); return; }
+  if(a==="shot-total"||a==="shot-full"){
+    readSheetInputs();
+    if(sheetState) sheetState.shot = (a==="shot-total") ? "total" : "full";
+    $("camInput").value=""; $("camInput").click(); return; }
   if(a==="save-settings") return saveSettings();
   if(a==="export-snapshot") return exportSnapshot();
   if(a==="export-backup") return exportBackup();
