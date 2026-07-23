@@ -340,6 +340,59 @@
     return c;
   }
 
+
+  /* =======================================================================
+     写真の保存サイズ（純粋計算）
+     -----------------------------------------------------------------------
+     スマホの写真は1枚数MBあり、ブラウザの保存領域（およそ5MB）をすぐ超える。
+     超えた瞬間に保存が失敗し、「記録したのに残らない」状態になるため、
+     ・読み取り用は 1600px まで
+     ・保存用は 900px まで
+     に縮めてから扱う。
+     ======================================================================= */
+  const PHOTO_VIEW_MAX = 1600;   // 読み取り・表示に使う長辺
+  const PHOTO_STORE_MAX = 900;   // 保存する長辺
+  const STORE_SOFT_LIMIT = 3.6 * 1024 * 1024; // これを超えたら警告
+
+  /* 長辺を maxEdge に収めた寸法（拡大はしない） */
+  function fitSize(w, h, maxEdge) {
+    const W = Math.max(1, Math.round(w)), H = Math.max(1, Math.round(h));
+    const long = Math.max(W, H);
+    if (long <= maxEdge) return { w: W, h: H };
+    const s = maxEdge / long;
+    return { w: Math.max(1, Math.round(W * s)), h: Math.max(1, Math.round(H * s)) };
+  }
+
+  /* 文字列がだいたい何バイトか（保存量の見積もり） */
+  function approxBytes(str) {
+    const t = String(str || "");
+    // dataURL は base64。4文字で3バイト。
+    const m = /^data:[^,]*;base64,/.exec(t);
+    if (m) return Math.round(((t.length - m[0].length) * 3) / 4);
+    let n = 0;
+    for (let i = 0; i < t.length; i++) {
+      const c = t.charCodeAt(i);
+      n += c < 0x80 ? 1 : c < 0x800 ? 2 : 3;
+    }
+    return n;
+  }
+
+  /* 保存データ全体の見積もりと、危険水域かどうか */
+  function storageUsage(state) {
+    const tx = (state && Array.isArray(state.tx)) ? state.tx : [];
+    let photos = 0, photoCount = 0;
+    tx.forEach(function (t) {
+      if (t && t.photo) { photos += approxBytes(t.photo); photoCount++; }
+    });
+    let total;
+    try { total = approxBytes(JSON.stringify(state)); } catch (e) { total = photos; }
+    return {
+      total: total, photos: photos, photoCount: photoCount,
+      limit: STORE_SOFT_LIMIT,
+      nearLimit: total > STORE_SOFT_LIMIT,
+    };
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -406,6 +459,12 @@
     cropOutputSize: cropOutputSize,
     enhanceForOcr: enhanceForOcr,
     moveCrop: moveCrop,
+    fitSize: fitSize,
+    approxBytes: approxBytes,
+    storageUsage: storageUsage,
+    PHOTO_VIEW_MAX: PHOTO_VIEW_MAX,
+    PHOTO_STORE_MAX: PHOTO_STORE_MAX,
+    STORE_SOFT_LIMIT: STORE_SOFT_LIMIT,
     CROP_DEFAULT: CROP_DEFAULT,
     CROP_MIN: CROP_MIN,
   };

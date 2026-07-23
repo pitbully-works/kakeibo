@@ -186,6 +186,9 @@
   .photoprev .rm{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;width:28px;height:28px;font-size:15px}
   .ocrnote{font-size:11.5px;color:var(--sub);text-align:center;margin:-4px 0 10px}
   .delbtn{width:100%;color:var(--terra);font-size:13px;font-weight:700;padding:12px;margin-top:2px}
+  /* 記録ボタンはシートの下に貼り付けて、どこまでスクロールしても押せるように */
+  .sheetsave{position:sticky;bottom:0;padding:10px 0 6px;margin-top:4px;
+    background:linear-gradient(180deg,rgba(244,247,245,0) 0%,var(--bg) 26%)}
 
   .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 20px);transform:translateX(-50%) translateY(20px);
     background:var(--green-dd);color:#fff;font-size:13.5px;font-weight:700;padding:11px 20px;border-radius:999px;
@@ -219,7 +222,7 @@
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet"></div>
 <div class="toast" id="toast"></div>
-<input type="file" id="camInput" accept="image/*" capture="environment" class="hidden">
+<input type="file" id="camInput" accept="image/*" class="hidden">
 
 <script src="./core.js"></script>
 <script>
@@ -254,7 +257,15 @@ function load(){
   catch(e){ /* ignore */ }
   return defaultState();
 }
-function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
+let lastSaveError=null;
+function save(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); lastSaveError=null; return true; }
+  catch(e){ lastSaveError=e; return false; }
+}
+function isQuotaError(e){
+  if(!e) return false;
+  return e.name==="QuotaExceededError" || e.name==="NS_ERROR_DOM_QUOTA_REACHED" || e.code===22 || e.code===1014;
+}
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 /* ---------- 日付・お金ヘルパ ---------- */
@@ -408,6 +419,8 @@ function renderSummary(){
 
 function renderSettings(){
   const s=state.settings;
+  const u=Core.storageUsage(state);
+  const mb=b=>{ const m=b/1024/1024; return m>=0.1 ? m.toFixed(1)+"MB" : Math.max(1,Math.round(b/1024))+"KB"; };
   return `<div class="screen">
     <div class="stitle" style="margin-top:6px">先取り（月・予定額）</div>
     <div class="calcnote" style="margin:0 0 10px">
@@ -433,8 +446,13 @@ function renderSettings(){
     </div>
 
     <div class="stitle">データ</div>
+    <div class="calcnote" style="margin:0 0 10px">
+      使用中のデータ：<b>${mb(u.total)}</b>（うち写真 ${mb(u.photos)}／${u.photoCount}枚）<br>
+      この端末に保存できるのは<b>およそ5MB</b>までです。${u.nearLimit?"<b style=\"color:var(--terra)\">空きが少なくなっています。</b>":""}
+    </div>
     <button class="btn-ghost" data-act="export-snapshot">📤 ライフプラン用データを書き出す</button>
     <button class="btn-quiet" data-act="export-backup">すべてのデータをバックアップ（JSON）</button>
+    <button class="btn-quiet" data-act="purge-photos">🗑 写真をすべて消す（記録は残ります）</button>
 
     <div class="savebar">
       <button class="btn-primary" data-act="save-settings">保存する</button>
@@ -475,10 +493,10 @@ function renderSheet(){
        </div>
        <div class="shothint">白い枠を動かして、<b>合計の金額だけ</b>を囲んでください。<br>枠の中しか読み取らないので、他の金額と混ざりません。</div>
        <button class="photobtn main" data-act="read-crop">🔍 この枠の金額を読み取る</button>
-       <button class="photobtn" data-act="shot-total">📸 撮り直す</button>
+       <button class="photobtn" data-act="shot-total">📸 撮り直す／選び直す</button>
        <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>`
-    : `<button class="photobtn main" data-act="shot-total">📸 合計をアップで撮る
-         <span class="sm">撮ったあと、枠で金額を指定できます</span></button>`;
+    : `<button class="photobtn main" data-act="shot-total">📸 レシートを撮る／選ぶ
+         <span class="sm">合計にアップで寄せる／保存ずみの写真もOK</span></button>`;
   $("sheet").innerHTML=`<div class="grip"></div>
     <div class="sheethd"><h3>${st.mode==="edit"?"記録をなおす":"記録する"}</h3>
       <button class="close" data-act="close-sheet" aria-label="閉じる">✕</button></div>
@@ -495,9 +513,10 @@ function renderSheet(){
       <div class="field"><label>日付</label><input type="date" id="s-date" value="${st.date}"></div>
       <div class="field"><label>メモ（任意）</label><input id="s-memo" value="${escapeAttr(st.memo)}" placeholder="お店・内容"></div>
     </div>
-    <button class="btn-primary" data-act="save-tx">${st.mode==="edit"?"更新する":"この内容で記録する"}</button>
     ${st.mode==="edit"?`<button class="delbtn" data-act="del-tx">この記録を削除</button>`:""}
-    <div style="height:6px"></div>`;
+    <div class="sheetsave">
+      <button class="btn-primary" data-act="save-tx">${st.mode==="edit"?"更新する":"✓ この内容で記録する"}</button>
+    </div>`;
   if(st.photo) initCrop();
 }
 function readSheetInputs(){
@@ -510,13 +529,34 @@ function showSheet(on){ $("scrim").classList.toggle("show",on); $("sheet").class
 /* ---------- 写真＋OCR（任意・失敗しても写真は残る） ---------- */
 function onPhotoPicked(file){
   const reader=new FileReader();
-  reader.onload=()=>{ if(!sheetState) return;
-    sheetState.photo=reader.result;
+  reader.onload=async()=>{ if(!sheetState) return;
+    const shrunk=await resizeDataUrl(reader.result, Core.PHOTO_VIEW_MAX, 0.85);
+    if(!sheetState) return;
+    sheetState.photo=shrunk;
     sheetState.crop=Object.assign({},Core.CROP_DEFAULT);
     sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";
     renderSheet(); };
   reader.readAsDataURL(file);
 }
+/* 写真を指定の長辺まで縮める。保存領域を超えないための要。 */
+function resizeDataUrl(src, maxEdge, quality){
+  return new Promise((resolve)=>{
+    const im=new Image();
+    im.onload=()=>{
+      try{
+        const out=Core.fitSize(im.naturalWidth, im.naturalHeight, maxEdge);
+        const cv=document.createElement("canvas"); cv.width=out.w; cv.height=out.h;
+        const cx=cv.getContext("2d");
+        cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality="high";
+        cx.drawImage(im,0,0,out.w,out.h);
+        resolve(cv.toDataURL("image/jpeg", quality));
+      }catch(e){ resolve(src); }
+    };
+    im.onerror=()=>resolve(src);
+    im.src=src;
+  });
+}
+
 /* 枠の中だけを切り出して読む。他の金額は物理的に視界に入らない。 */
 async function readCrop(){
   const st=sheetState; if(!st||!st.photo) return;
@@ -615,15 +655,47 @@ function initCrop(){
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
 
 /* ---------- 保存アクション ---------- */
-function saveTx(){
+async function saveTx(){
   readSheetInputs(); const st=sheetState;
   const amount=parseInt(String(st.amount).replace(/[^\d]/g,""),10);
   if(!amount||amount<=0){ toast("金額を入れてね"); const ai=$("s-amt"); if(ai) ai.focus(); return; }
-  if(st.mode==="edit"){ const t=state.tx.find(x=>x.id===st.id);
-    if(t){ t.type=st.type; t.amount=amount; t.cat=st.cat; t.date=st.date; t.memo=st.memo; t.photo=st.photo||null; } }
-  else { state.tx.push({id:uid(),type:st.type,amount,cat:st.cat,date:st.date,memo:st.memo,photo:st.photo||null}); }
-  save(); showSheet(false); render(); toast(st.mode==="edit"?"更新しました":"記録できました ✓");
+
+  /* 保存用に写真を小さくする（そのままだと保存領域を超えて何も残らない） */
+  let photo = st.photo || null;
+  if(photo) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);
+
+  const before = JSON.stringify(state.tx);
+  if(st.mode==="edit"){
+    const t=state.tx.find(x=>x.id===st.id);
+    if(t){ t.type=st.type; t.amount=amount; t.cat=st.cat; t.date=st.date; t.memo=st.memo; t.photo=photo; }
+  } else {
+    state.tx.push({id:uid(),type:st.type,amount,cat:st.cat,date:st.date,memo:st.memo,photo:photo});
+  }
+
+  if(save()){
+    showSheet(false); render(); toast(st.mode==="edit"?"更新しました":"記録できました ✓");
+    return;
+  }
+
+  /* 入りきらなかった。写真だけ落として、記録そのものは必ず残す。 */
+  if(photo){
+    const t2 = st.mode==="edit" ? state.tx.find(x=>x.id===st.id) : state.tx[state.tx.length-1];
+    if(t2) t2.photo=null;
+    if(save()){
+      showSheet(false); render();
+      toast("記録しました（写真は容量オーバーで保存できません）");
+      return;
+    }
+  }
+
+  /* それでも駄目なら元に戻して、理由をはっきり伝える */
+  state.tx = JSON.parse(before);
+  const msg = isQuotaError(lastSaveError)
+    ? "保存できません。せっていの「写真をすべて消す」で空きを作ってください"
+    : "この端末では保存が使えません（プライベートブラウズ等）";
+  toast(msg);
 }
+
 function delTx(){ if(!sheetState||sheetState.mode!=="edit") return;
   state.tx=state.tx.filter(t=>t.id!==sheetState.id); save(); showSheet(false); render(); toast("削除しました"); }
 
@@ -647,6 +719,13 @@ function exportSnapshot(){
   const snap=buildSnapshot(); const text=JSON.stringify(snap,null,2);
   downloadText(`lifeplan-snapshot-${snap.year_month}.json`, text);
   toast("連携データを書き出しました 📤");
+}
+function purgePhotos(){
+  const n=state.tx.filter(t=>t.photo).length;
+  if(!n){ toast("消せる写真はありません"); return; }
+  state.tx.forEach(t=>{ t.photo=null; });
+  if(save()){ render(); toast(`写真${n}枚を消しました（記録は残っています）`); }
+  else { toast("消せませんでした"); }
 }
 function exportBackup(){ downloadText(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(state,null,2)); toast("バックアップを書き出しました"); }
 function downloadText(name,text){
@@ -690,6 +769,7 @@ function handleAct(a,e){
   if(a==="save-settings") return saveSettings();
   if(a==="export-snapshot") return exportSnapshot();
   if(a==="export-backup") return exportBackup();
+  if(a==="purge-photos") return purgePhotos();
 }
 $("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
 
