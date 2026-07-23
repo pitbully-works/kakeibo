@@ -64,22 +64,29 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # --- 2. 自作 mutation test -----------------------------------------
+      # リポジトリに入っている過去のレポートを先に消す。
+      # 残しておくと、mutation が動かなかった回に古い結果を
+      # 「今回の結果」として表示・保存してしまう。
+      - name: 古い mutation レポートを削除
+        run: rm -f MUTATION-REPORT.md
+
       # ソースをわざと壊し、テストが落ちるかを確認する。
       # 1件でも「見逃し」があれば非ゼロ終了で赤になる。
       - name: 自作 mutation test を実行
+        id: mutation
         run: node run-mutations.js
 
+      # このステップが実際に動いた回だけ、その回のレポートを表示する。
+      # 通常テストで落ちて mutation が skipped になった回は表示しない。
       - name: mutation test の結果をサマリーに追記
-        if: always()
+        if: always() && steps.mutation.outcome != 'skipped' && hashFiles('MUTATION-REPORT.md') != ''
         run: |
-          if [ -f MUTATION-REPORT.md ]; then
-            {
-              echo ""
-              echo "## 自作 mutation test"
-              echo ""
-              cat MUTATION-REPORT.md
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          {
+            echo ""
+            echo "## 自作 mutation test"
+            echo ""
+            cat MUTATION-REPORT.md
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # --- 3. 変更が残っていないか確認 ------------------------------------
       # mutation test はソースを一時的に書き換えて元に戻す。
@@ -90,9 +97,9 @@ jobs:
             || (echo "::error::mutation test がソースを戻せていません" && exit 1)
 
       - name: mutation test の結果を保存
-        if: always()
+        if: always() && steps.mutation.outcome != 'skipped' && hashFiles('MUTATION-REPORT.md') != ''
         uses: actions/upload-artifact@v4
         with:
           name: mutation-report
           path: MUTATION-REPORT.md
-          if-no-files-found: warn
+          if-no-files-found: error
