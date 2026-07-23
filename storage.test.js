@@ -125,3 +125,27 @@ test("記録ボタンがシートの下に固定され、常に押せる", () =>
   assert.match(html, /\.sheetsave\{position:sticky;bottom:0/, "記録ボタンが固定されていない");
   assert.match(appSrc, /この内容で記録する/, "記録ボタンが無い");
 });
+
+
+/* ---------- 枠のドラッグ後もボタンが押せること ---------- */
+test("枠のドラッグに setPointerCapture を使わない（タップが吸われる原因）", () => {
+  assert.equal(/\.setPointerCapture\s*\(/.test(appSrc), false,
+    "画像全体にポインタ捕捉をかけると、離したあとボタンが押せなくなる");
+});
+
+test("ドラッグ中だけ document で受け、終わったら必ず外す", () => {
+  assert.match(appSrc, /document\.addEventListener\("pointermove",onMove/, "移動をdocumentで受けていない");
+  assert.match(appSrc, /document\.removeEventListener\("pointermove",onMove\)/, "移動の購読を外していない");
+  assert.match(appSrc, /document\.removeEventListener\("pointerup",onEnd\)/, "終了の購読を外していない");
+  assert.match(appSrc, /document\.removeEventListener\("pointercancel",onEnd\)/, "中断の購読を外していない");
+});
+
+test("枠の外を触ってもドラッグを始めない（ボタンを邪魔しない）", () => {
+  assert.match(appSrc, /else return;\s*\/\/ 枠の外は無視/, "枠の外で早期に抜けていない");
+});
+
+test("読み取りボタンが記録バーに隠れない", () => {
+  assert.match(appSrc, /class="photobtn main big" data-act="read-crop"/, "読み取りボタンが大きくなっていない");
+  assert.match(html, /\.photobtn\.big\{[^}]*margin-bottom:14px/, "記録バーとの余白が無い");
+  assert.match(html, /\.sheetsave\{[^}]*z-index:3/, "記録バーの重なり順が決まっていない");
+});
