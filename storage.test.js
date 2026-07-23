@@ -149,3 +149,28 @@ test("読み取りボタンが記録バーに隠れない", () => {
   assert.match(html, /\.photobtn\.big\{[^}]*margin-bottom:14px/, "記録バーとの余白が無い");
   assert.match(html, /\.sheetsave\{[^}]*z-index:3/, "記録バーの重なり順が決まっていない");
 });
+
+/* ---------- 読み取りライブラリの取得 ---------- */
+test("OCRライブラリを公式のjsDelivrから読む（存在しないURLを使わない）", () => {
+  assert.match(appSrc, /https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js@5\/dist\/tesseract\.min\.js/,
+    "公式CDNのURLになっていない");
+  assert.equal(appSrc.includes("cdnjs.cloudflare.com"), false,
+    "tesseract.js を配布していないCDNを参照している");
+});
+
+test("配布先が1つ落ちても次を試す", () => {
+  assert.match(appSrc, /const TESSERACT_URLS=\[/, "配布先の一覧が無い");
+  assert.match(appSrc, /unpkg\.com\/tesseract\.js@5/, "予備の配布先が無い");
+  assert.match(appSrc, /for\(const url of TESSERACT_URLS\)/, "順に試していない");
+});
+
+test("読み取り失敗の理由を隠さない", () => {
+  assert.match(appSrc, /読み取れませんでした：\$\{why\}/, "例外の内容を表示していない");
+  assert.match(appSrc, /読み取りの準備ができません/, "ライブラリ取得失敗の説明が無い");
+});
+
+test("進み具合を表示し、写真が入った時点で先読みする", () => {
+  assert.match(appSrc, /読み取りの準備中… \$\{pct\}%/, "準備の進み具合が出ない");
+  assert.match(appSrc, /読み取り中… \$\{pct\}%/, "読み取りの進み具合が出ない");
+  assert.match(appSrc, /loadTesseract\(\)\.catch\(\(\)=>\{\}\);\s*\/\/ 枠を合わせている間に先読み/, "先読みしていない");
+});

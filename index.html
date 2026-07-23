@@ -578,6 +578,7 @@ function onPhotoPicked(file){
       sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";
       clearPending();
       renderSheet(); showSheet(true);
+      loadTesseract().catch(()=>{});   // 枠を合わせている間に先読み
     }catch(e){ setStatus("写真を扱えませんでした。金額は手で入れられます"); }
   };
   reader.readAsDataURL(file);
@@ -619,7 +620,10 @@ async function readCrop(){
     } else {
       setStatus("枠の中に数字が見つかりませんでした。枠を合計に合わせ直すか、金額を入れてね");
     }
-  }catch(e){ setStatus("読み取れませんでした。金額を入れてね（写真は残ります）"); }
+  }catch(e){
+    const why=(e&&e.message)?e.message:String(e||"原因不明");
+    setStatus(`読み取れませんでした：${why}。金額は手で入れられます`);
+  }
 }
 
 /* 枠の範囲を切り出し、拡大＋白黒コントラスト調整をしてから渡す */
@@ -648,39 +652,53 @@ function cropToDataUrl(src, crop, style){
   });
 }
 
+/* 読み取りライブラリの配布先。公式はjsDelivr。1つ落ちても次を試す。 */
+const TESSERACT_URLS=[
+  "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js",
+  "https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"
+];
+async function loadTesseract(){
+  if(window.Tesseract) return window.Tesseract;
+  const errs=[];
+  for(const url of TESSERACT_URLS){
+    try{
+      await loadScript(url);
+      if(window.Tesseract) return window.Tesseract;
+      errs.push(url+" は読めたが Tesseract が見つからない");
+    }catch(e){ errs.push(url+" に接続できない"); }
+  }
+  throw new Error("読み取りの準備ができません（通信を確認してください）");
+}
+
 /* 数字だけを読む設定で、画像2枚 × 読み取り方2通りを試す。
    偶然の誤読は重ならないので、同じ数字が複数回出たものを採用する。 */
 async function ocrCandidates(images){
-  if(!window.Tesseract){ await loadScript("https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"); }
-  const T=window.Tesseract;
+  const T = await loadTesseract();
   const out=[];
-  if(typeof T.createWorker==="function"){
-    let worker=null;
-    try{
-      worker=await T.createWorker("eng");
-      for(const psm of ["7","6"]){                 // 7=1行として読む / 6=かたまりとして読む
-        await worker.setParameters({
-          tessedit_pageseg_mode:psm,
-          tessedit_char_whitelist:"0123456789,.¥￥"
-        });
-        for(const img of images){
-          try{
-            const { data } = await worker.recognize(img);
-            out.push({ amount:Core.parseAmount(data.text,"total"), confidence:data.confidence||0 });
-          }catch(e){}
+  let worker=null;
+  try{
+    worker=await T.createWorker("eng", 1, {
+      logger: m=>{
+        if(m && m.status && typeof m.progress==="number"){
+          const pct=Math.round(m.progress*100);
+          if(m.status.indexOf("load")>=0||m.status.indexOf("initial")>=0) setStatus(`読み取りの準備中… ${pct}%（初回だけ少し時間がかかります）`);
+          else if(m.status.indexOf("recogniz")>=0) setStatus(`読み取り中… ${pct}%`);
         }
       }
-      return out;
-    }catch(e){
-      /* 落ちたら簡易版へ */
-    }finally{ if(worker){ try{ await worker.terminate(); }catch(e){} } }
-  }
-  for(const img of images){
-    try{
-      const { data } = await T.recognize(img, "eng");
-      out.push({ amount:Core.parseAmount(data.text,"total"), confidence:data.confidence||0 });
-    }catch(e){}
-  }
+    });
+    for(const psm of ["7","6"]){                 // 7=1行として読む / 6=かたまりとして読む
+      await worker.setParameters({
+        tessedit_pageseg_mode:psm,
+        tessedit_char_whitelist:"0123456789,.¥￥"
+      });
+      for(const img of images){
+        try{
+          const { data } = await worker.recognize(img);
+          out.push({ amount:Core.parseAmount(data.text,"total"), confidence:data.confidence||0 });
+        }catch(e){}
+      }
+    }
+  } finally { if(worker){ try{ await worker.terminate(); }catch(e){} } }
   return out;
 }
 
