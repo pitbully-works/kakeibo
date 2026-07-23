@@ -98,10 +98,26 @@ test("せっていで使用量が見え、写真をまとめて消せる", () =>
 });
 
 /* ---------- 写真の選び方・記録ボタン ---------- */
-test("カメラ限定になっておらず、保存ずみの写真も選べる", () => {
-  assert.equal(/id="camInput"[^>]*capture=/.test(html), false,
-    "capture属性が付いていると、iOSでフォトライブラリを選べない");
-  assert.match(html, /<input type="file" id="camInput" accept="image\/\*"/);
+test("写真の入り口はカメラだけ（ライブラリ・ファイル選択は出さない）", () => {
+  assert.match(html, /id="camInput"[^>]*capture="environment"/, "カメラ限定になっていない");
+});
+
+test("写真の受け取りが、各段階を必ず画面に出す", () => {
+  assert.match(appSrc, /function setStatus\(msg\)/, "状態表示の仕組みが無い");
+  assert.match(appSrc, /写真を受け取りました/, "受け取りの表示が無い");
+  assert.match(appSrc, /reader\.onerror=\(\)=>\{ setStatus/, "読み込み失敗を伝えていない");
+});
+
+test("シートが消えていても写真を受け取れる", () => {
+  assert.match(appSrc, /function ensureSheetForPhoto\(\)/, "受け皿の作り直しが無い");
+  assert.match(appSrc, /onPhotoPicked\(file\)\{[\s\S]{0,200}ensureSheetForPhoto\(\)/, "受け取り前に受け皿を用意していない");
+});
+
+test("読み取りは2通りの画像で試し、結果を突き合わせる", () => {
+  assert.match(appSrc, /cropToDataUrl\(st\.photo, crop, "bw"\)/, "白黒版を作っていない");
+  assert.match(appSrc, /cropToDataUrl\(st\.photo, crop, "plain"\)/, "通常版を作っていない");
+  assert.match(appSrc, /Core\.pickBestAmount\(results\)/, "結果の突き合わせをしていない");
+  assert.match(appSrc, /for\(const psm of \["7","6"\]\)/, "読み取り方を1通りしか試していない");
 });
 
 test("記録ボタンがシートの下に固定され、常に押せる", () => {

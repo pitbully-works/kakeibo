@@ -291,7 +291,7 @@
 
   /* 小さすぎる切り抜きは拡大してから読ませると精度が上がる */
   function cropOutputSize(w, h, minW, maxW) {
-    const MIN = minW || 900, MAX = maxW || 1800;
+    const MIN = minW || 1200, MAX = maxW || 2000;
     let scale = 1;
     if (w < MIN) scale = MIN / w;
     if (w * scale > MAX) scale = MAX / w;
@@ -393,6 +393,72 @@
     };
   }
 
+
+  /* =======================================================================
+     読み取り精度を上げるための画像処理と、複数回読んだ結果の選び方
+     ======================================================================= */
+
+  /* 大津の二値化：明るさの境目を自動で決めて、白黒はっきりさせる。
+     レシートの薄い感熱印字に効く。 */
+  function otsuThreshold(histogram, total) {
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * histogram[i];
+    let sumB = 0, wB = 0, best = 0, threshold = 128;
+    for (let t = 0; t < 256; t++) {
+      wB += histogram[t];
+      if (wB === 0) continue;
+      const wF = total - wB;
+      if (wF === 0) break;
+      sumB += t * histogram[t];
+      const mB = sumB / wB, mF = (sum - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) { best = between; threshold = t; }
+    }
+    return threshold;
+  }
+
+  /* RGBAの配列を、白黒くっきりに変える */
+  function binarizeForOcr(data) {
+    const hist = new Array(256).fill(0);
+    const n = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      const g = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
+      data[i] = data[i + 1] = data[i + 2] = g;
+      hist[g]++;
+    }
+    const t = otsuThreshold(hist, n);
+    for (let i = 0; i < data.length; i += 4) {
+      const v = data[i] > t ? 255 : 0;
+      data[i] = data[i + 1] = data[i + 2] = v;
+    }
+    return data;
+  }
+
+  /* 何回か読んだ結果から、いちばん確からしい金額を選ぶ。
+     ・同じ金額が複数回出たら、それを最優先（偶然は重ならない）
+     ・そうでなければ読み取り信頼度の高い方
+     ・並んだら大きい方（合計は小計より大きい） */
+  function pickBestAmount(candidates) {
+    const ok = (candidates || []).filter(function (c) {
+      return c && Number.isFinite(c.amount) && c.amount > 0;
+    });
+    if (!ok.length) return null;
+    const votes = {};
+    ok.forEach(function (c) {
+      const k = String(c.amount);
+      if (!votes[k]) votes[k] = { amount: c.amount, count: 0, conf: 0 };
+      votes[k].count++;
+      votes[k].conf = Math.max(votes[k].conf, Number(c.confidence) || 0);
+    });
+    const list = Object.keys(votes).map(function (k) { return votes[k]; });
+    list.sort(function (a, b) {
+      if (b.count !== a.count) return b.count - a.count;
+      if (b.conf !== a.conf) return b.conf - a.conf;
+      return b.amount - a.amount;
+    });
+    return list[0].amount;
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -458,6 +524,9 @@
     cropRect: cropRect,
     cropOutputSize: cropOutputSize,
     enhanceForOcr: enhanceForOcr,
+    otsuThreshold: otsuThreshold,
+    binarizeForOcr: binarizeForOcr,
+    pickBestAmount: pickBestAmount,
     moveCrop: moveCrop,
     fitSize: fitSize,
     approxBytes: approxBytes,

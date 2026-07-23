@@ -117,11 +117,11 @@ test("不正な枠でも落ちず、画像内に収まる", () => {
 });
 
 test("小さい切り抜きは拡大され、大きすぎる切り抜きは縮小される", () => {
-  assert.equal(Core.cropOutputSize(300, 80).w, 900, "小さい枠が拡大されない");
-  assert.equal(Core.cropOutputSize(4000, 1000).w, 1800, "大きい枠が縮小されない");
-  const keep = Core.cropOutputSize(1200, 400);
-  assert.equal(keep.w, 1200);
-  assert.equal(keep.h, 400, "縦横比が崩れている");
+  assert.equal(Core.cropOutputSize(300, 80).w, 1200, "小さい枠が拡大されない");
+  assert.equal(Core.cropOutputSize(4000, 1000).w, 2000, "大きい枠が縮小されない");
+  const keep = Core.cropOutputSize(1500, 500);
+  assert.equal(keep.w, 1500, "ちょうどよい大きさは変えない");
+  assert.equal(keep.h, 500, "縦横比が崩れている");
 });
 
 test("白黒化とコントラスト伸長で、薄い印字がはっきりする", () => {
@@ -155,4 +155,49 @@ test("左上をつかんで広げると、右下の位置は動かない", () =>
   const grown = Core.moveCrop(start, -0.2, -0.2, "tl");
   assert.ok(Math.abs((grown.x + grown.w) - (start.x + start.w)) < 1e-9, "右端がずれた");
   assert.ok(Math.abs((grown.y + grown.h) - (start.y + start.h)) < 1e-9, "下端がずれた");
+});
+
+/* ---------- 白黒二値化 ---------- */
+test("大津の二値化が、明るい山と暗い山の境目を選ぶ", () => {
+  const hist = new Array(256).fill(0);
+  hist[50] = 1000;   // 暗い（文字）
+  hist[200] = 1000;  // 明るい（紙）
+  const t = Core.otsuThreshold(hist, 2000);
+  assert.ok(t >= 50 && t < 200, "境目が山の間に来ていない: " + t);
+});
+
+test("二値化すると白か黒だけになる", () => {
+  const data = new Uint8ClampedArray([30, 30, 30, 255, 220, 220, 220, 255, 40, 40, 40, 255, 210, 210, 210, 255]);
+  Core.binarizeForOcr(data);
+  for (let i = 0; i < data.length; i += 4) {
+    assert.ok(data[i] === 0 || data[i] === 255, "中間色が残っている");
+    assert.equal(data[i], data[i + 1]);
+    assert.equal(data[i], data[i + 2]);
+  }
+  assert.equal(data[0], 0, "暗い画素が黒になっていない");
+  assert.equal(data[4], 255, "明るい画素が白になっていない");
+});
+
+/* ---------- 複数回読んだ結果の選び方 ---------- */
+test("同じ金額が複数回出たら、信頼度が低くてもそれを採る", () => {
+  const best = Core.pickBestAmount([
+    { amount: 5617, confidence: 40 },
+    { amount: 99, confidence: 95 },
+    { amount: 5617, confidence: 45 },
+  ]);
+  assert.equal(best, 5617, "1回きりの誤読に引っぱられている");
+});
+
+test("票が割れたら信頼度の高い方を採る", () => {
+  assert.equal(Core.pickBestAmount([{ amount: 1240, confidence: 88 }, { amount: 240, confidence: 51 }]), 1240);
+});
+
+test("票も信頼度も並んだら大きい方を採る（合計は小計より大きい）", () => {
+  assert.equal(Core.pickBestAmount([{ amount: 5201, confidence: 70 }, { amount: 5617, confidence: 70 }]), 5617);
+});
+
+test("読めた結果が無ければ null（手入力にまかせる）", () => {
+  assert.equal(Core.pickBestAmount([]), null);
+  assert.equal(Core.pickBestAmount([{ amount: null, confidence: 90 }]), null);
+  assert.equal(Core.pickBestAmount(null), null);
 });

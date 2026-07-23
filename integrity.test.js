@@ -75,14 +75,14 @@ test("レシートは枠で指定した範囲だけを読む", () => {
   assert.match(src, /data-act="shot-total"/, "アップ撮影のボタンが無い");
   assert.match(src, /data-act="read-crop"/, "枠で読み取るボタンが無い");
   assert.match(src, /Core\.cropRect\(crop, nat\)/, "枠の切り出しに core を使っていない");
-  assert.match(src, /Core\.parseAmount\(text, "total"\)/, "core の parseAmount を使っていない");
+  assert.match(src, /Core\.parseAmount\(data\.text,"total"\)/, "core の parseAmount を使っていない");
   assert.match(src, /tessedit_char_whitelist/, "数字だけを読む設定が無い");
 });
 
 test("撮影しただけでは読み取らず、枠を決めてから読む", () => {
   const src = appScript();
   assert.equal(/reader\.onload[\s\S]{0,200}runOCR/.test(src), false, "撮影直後に自動で読んでいる");
-  assert.match(src, /reader\.onload[\s\S]{0,300}CROP_DEFAULT/, "撮影後に枠が用意されない");
+  assert.match(src, /reader\.onload[\s\S]{0,900}CROP_DEFAULT/, "撮影後に枠が用意されない");
   assert.match(src, /function initCrop\(\)/, "枠を動かす処理が無い");
 });
 
