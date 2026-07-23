@@ -17,8 +17,10 @@ test("mutation スクリプトは run-mutations.js の1本だけ", () => {
 });
 
 test("どのファイルにも run-mutations.mjs への参照が残っていない", () => {
-  // このテスト自身は、検査対象の文字列を持っているので除く
-  const targets = files.filter((f) => /\.(js|cjs|mjs|md|yml|html)$/.test(f) && f !== "ci.test.js");
+  // このテスト自身は検査対象の文字列を持っているので除く。
+  // ファイル名の綴り（ci.test.js / ci_test.js）に依存しないよう __filename を使う。
+  const self = path.basename(__filename);
+  const targets = files.filter((f) => /\.(js|cjs|mjs|md|yml|html)$/.test(f) && f !== self);
   const hits = [];
   for (const f of targets) {
     const body = fs.readFileSync(path.join(__dirname, f), "utf8");
