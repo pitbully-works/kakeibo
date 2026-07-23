@@ -5,7 +5,7 @@
 # Node 標準のテストランナー（node --test）だけで完結します。
 #
 #   1. 通常テスト        : node --test
-#   2. 自作 mutation test: node run-mutations.mjs
+#   2. 自作 mutation test: node run-mutations.js
 #
 # どちらか一方でも失敗すれば、このワークフローは赤になります。
 # 外部APIやシークレットは一切使いません。
@@ -67,7 +67,7 @@ jobs:
       # ソースをわざと壊し、テストが落ちるかを確認する。
       # 1件でも「見逃し」があれば非ゼロ終了で赤になる。
       - name: 自作 mutation test を実行
-        run: node run-mutations.mjs
+        run: node run-mutations.js
 
       - name: mutation test の結果をサマリーに追記
         if: always()
