@@ -191,3 +191,25 @@ test("給与未記録の月は、ホームが給与の記録をうながす", ()
   assert.ok(h.includes("通常給与"), "給与を記録する案内が出ていない");
   assert.equal(h.includes("先取り貯金・NISA積立の予定額を除いています"), false);
 });
+
+test("記録シートを開いてもナビが隠れない（ナビが前面・シートはナビの上まで）", () => {
+  const fs2 = require("node:fs");
+  const css = fs2.readFileSync(require("node:path").join(__dirname, "index.html"), "utf8");
+  const navZ = /\.nav\{[^}]*z-index:(\d+)\}/.exec(css);
+  const sheetZ = /\.sheet\{[^}]*z-index:(\d+)/.exec(css);
+  assert.ok(navZ && sheetZ, "z-index が読み取れない");
+  assert.ok(Number(navZ[1]) > Number(sheetZ[1]), "ナビがシートより後ろにある");
+  assert.match(css, /\.sheet\{[^}]*bottom:calc\(var\(--nav-h\)/, "シートがナビの上で止まっていない");
+});
+
+test("記録シートに閉じるボタンがある", () => {
+  const { ctx } = bootApp({ settings: SETTINGS, tx: [] });
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "index.html"), "utf8");
+  assert.match(src, /data-act="close-sheet"/, "閉じるボタンが無い");
+  assert.match(src, /if\(a==="close-sheet"\) return showSheet\(false\);/, "閉じる処理が無い");
+});
+
+test("ナビを押すと記録シートが閉じてから画面が切り替わる", () => {
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "index.html"), "utf8");
+  assert.match(src, /closest\("#nav button"\); if\(nav\)\{ showSheet\(false\);/, "ナビ操作でシートを閉じていない");
+});

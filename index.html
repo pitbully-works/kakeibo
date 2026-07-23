@@ -126,7 +126,7 @@
   /* bottom nav */
   .nav{position:fixed;left:0;right:0;bottom:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));
     padding-bottom:env(safe-area-inset-bottom,0px);background:rgba(255,255,255,.94);backdrop-filter:blur(8px);
-    border-top:1px solid var(--line);display:flex;z-index:40}
+    border-top:1px solid var(--line);display:flex;z-index:55}
   .nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--sub);font-size:10.5px;font-weight:700}
   .nav button .ni{font-size:20px;line-height:1}
   .nav button.on{color:var(--green-d)}
@@ -134,10 +134,18 @@
   /* sheet (record / edit) */
   .scrim{position:fixed;inset:0;background:rgba(15,25,23,.4);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s}
   .scrim.show{opacity:1;pointer-events:auto}
-  .sheet{position:fixed;left:0;right:0;bottom:0;max-width:520px;margin:0 auto;background:var(--bg);
-    border-radius:24px 24px 0 0;z-index:51;transform:translateY(100%);transition:transform .3s cubic-bezier(.2,.8,.25,1);
-    max-height:94vh;overflow-y:auto;padding:8px 16px calc(20px + env(safe-area-inset-bottom,0px))}
+  .sheet{position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));
+    max-width:520px;margin:0 auto;background:var(--bg);
+    border-radius:24px 24px 0 0;z-index:51;transform:translateY(110%);transition:transform .3s cubic-bezier(.2,.8,.25,1);
+    max-height:calc(100vh - var(--nav-h) - env(safe-area-inset-bottom,0px) - 24px);
+    overflow-y:auto;padding:8px 16px 20px}
   .sheet.show{transform:translateY(0)}
+  /* シートの見出し。左に余白、右に閉じる */
+  .sheethd{position:relative;display:flex;align-items:center;justify-content:center;margin:2px 0 12px}
+  .sheethd h3{font-size:16px;font-weight:800;margin:0}
+  .sheethd .close{position:absolute;right:-4px;top:50%;transform:translateY(-50%);
+    width:34px;height:34px;border-radius:999px;background:#fff;border:1px solid var(--line);
+    color:var(--sub);font-size:16px;font-weight:800;display:grid;place-items:center}
   .grip{width:40px;height:4px;background:#d3dbd8;border-radius:2px;margin:8px auto 6px}
   .sheet h3{font-size:16px;font-weight:800;text-align:center;margin:2px 0 12px}
   .typetog{display:flex;background:#eaeeec;border-radius:12px;padding:3px;margin-bottom:14px}
@@ -444,7 +452,8 @@ function renderSheet(){
        <div class="ocrnote" id="ocrnote"></div>`
     : `<button class="photobtn" data-act="take-photo">📸 レシートを撮る／選ぶ</button>`;
   $("sheet").innerHTML=`<div class="grip"></div>
-    <h3>${st.mode==="edit"?"記録をなおす":"記録する"}</h3>
+    <div class="sheethd"><h3>${st.mode==="edit"?"記録をなおす":"記録する"}</h3>
+      <button class="close" data-act="close-sheet" aria-label="閉じる">✕</button></div>
     <div class="typetog">
       <button class="${st.type==="expense"?"on exp":""}" data-type="expense">支出</button>
       <button class="${st.type==="income"?"on inc":""}" data-type="income">収入</button>
@@ -548,7 +557,7 @@ function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
 
 /* ---------- イベント（委譲） ---------- */
 document.addEventListener("click",e=>{
-  const nav=e.target.closest("#nav button"); if(nav){ view=nav.dataset.nav; render(); return; }
+  const nav=e.target.closest("#nav button"); if(nav){ showSheet(false); view=nav.dataset.nav; render(); return; }
   const go=e.target.closest("[data-go]"); if(go){ view=go.dataset.go; render(); return; }
   const act=e.target.closest("[data-act]"); if(act){ handleAct(act.dataset.act,e); return; }
   const edit=e.target.closest("[data-edit]"); if(edit){ openRecord(edit.dataset.edit); return; }
@@ -558,6 +567,7 @@ document.addEventListener("click",e=>{
 });
 function handleAct(a,e){
   if(a==="open-record") return openRecord(null);
+  if(a==="close-sheet") return showSheet(false);
   if(a==="save-tx") return saveTx();
   if(a==="del-tx") return delTx();
   if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); sheetState.photo=null; renderSheet(); } return; }
