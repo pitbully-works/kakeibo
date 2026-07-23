@@ -144,6 +144,7 @@ core.js                     計算コア＋レシート解釈（唯一の正・U
 core.test.js                計算仕様の自動テスト
 ocr.test.js                 レシート読み取り・切り取り枠のテスト
 storage.test.js             保存と容量のテスト
+wiring.test.js              呼んでいる関数が実在するかの検査
 render.test.js              3画面のレンダリングテスト（白画面の検出）
 integrity.test.js           静的チェック（仕様の逆戻り防止）
 sw.js                       Service Worker（オフライン対応）

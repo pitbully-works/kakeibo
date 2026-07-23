@@ -663,6 +663,24 @@ const TESSERACT_SOURCES = [
 ];
 let tessSource=null;
 
+/* 外部スクリプトを読み込む。読み込み完了かエラーかを必ず返す。 */
+function loadScript(src){
+  return new Promise((resolve,reject)=>{
+    const existing=document.querySelector(`script[data-src="${src}"]`);
+    if(existing){
+      if(existing.dataset.loaded==="1") return resolve();
+      existing.addEventListener("load",()=>resolve());
+      existing.addEventListener("error",()=>reject(new Error("読み込み失敗")));
+      return;
+    }
+    const el=document.createElement("script");
+    el.src=src; el.async=true; el.dataset.src=src;
+    el.onload=()=>{ el.dataset.loaded="1"; resolve(); };
+    el.onerror=()=>reject(new Error("読み込み失敗"));
+    document.head.appendChild(el);
+  });
+}
+
 async function loadTesseract(){
   if(window.Tesseract) return window.Tesseract;
   const tried=[];
@@ -671,7 +689,7 @@ async function loadTesseract(){
       await loadScript(src.url);
       if(window.Tesseract){ tessSource=src; return window.Tesseract; }
       tried.push(src.name+"：取得できたが中身が違う");
-    }catch(e){ tried.push(src.name+"：つながらない"); }
+    }catch(e){ tried.push(src.name+"："+((e&&e.message)?e.message:"つながらない")); }
   }
   const online = (typeof navigator!=="undefined" && "onLine" in navigator) ? (navigator.onLine?"通信あり":"オフライン") : "通信状態不明";
   throw new Error(`読み取り部品を取得できません（${online}／${tried.join(" ／ ")}）`);
