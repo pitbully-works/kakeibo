@@ -50,14 +50,17 @@ jobs:
         run: node --test --test-reporter=spec
 
       # 件数を GitHub の実行サマリーに残す（落ちても残るよう always）
+      # 件数の表示形式は Node のバージョンで変わるため、tap を明示して固定する
       - name: 通常テストの件数を記録
         if: always()
         run: |
-          node --test > test-output.txt 2>&1 || true
+          node --test --test-reporter=tap > test-output.txt 2>&1 || true
           {
             echo "## 通常テスト"
             echo ""
+            echo '```'
             grep -E '^# (tests|pass|fail|skipped) ' test-output.txt || echo "件数を取得できませんでした"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       # --- 2. 自作 mutation test -----------------------------------------
