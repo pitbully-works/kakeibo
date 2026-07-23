@@ -1,0 +1,95 @@
+# =============================================================================
+# かけいぼ ― 自動テスト
+# -----------------------------------------------------------------------------
+# このプロジェクトには package.json がなく、外部ライブラリも使いません。
+# Node 標準のテストランナー（node --test）だけで完結します。
+#
+#   1. 通常テスト        : node --test
+#   2. 自作 mutation test: node run-mutations.mjs
+#
+# どちらか一方でも失敗すれば、このワークフローは赤になります。
+# 外部APIやシークレットは一切使いません。
+# =============================================================================
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同じブランチへ続けて push したときは、古い実行を止めて最新だけ走らせる
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 通常テスト＋mutation test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Node.js を用意（安定版）
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Node のバージョンを記録
+        run: node --version
+
+      # --- 1. 通常テスト -------------------------------------------------
+      # ルートの *.test.js をすべて実行する。1件でも落ちれば非ゼロ終了。
+      - name: 通常テストを実行
+        run: node --test --test-reporter=spec
+
+      # 件数を GitHub の実行サマリーに残す（落ちても残るよう always）
+      - name: 通常テストの件数を記録
+        if: always()
+        run: |
+          node --test > test-output.txt 2>&1 || true
+          {
+            echo "## 通常テスト"
+            echo ""
+            grep -E '^# (tests|pass|fail|skipped) ' test-output.txt || echo "件数を取得できませんでした"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # --- 2. 自作 mutation test -----------------------------------------
+      # ソースをわざと壊し、テストが落ちるかを確認する。
+      # 1件でも「見逃し」があれば非ゼロ終了で赤になる。
+      - name: 自作 mutation test を実行
+        run: node run-mutations.mjs
+
+      - name: mutation test の結果をサマリーに追記
+        if: always()
+        run: |
+          if [ -f MUTATION-REPORT.md ]; then
+            {
+              echo ""
+              echo "## 自作 mutation test"
+              echo ""
+              cat MUTATION-REPORT.md
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # --- 3. 変更が残っていないか確認 ------------------------------------
+      # mutation test はソースを一時的に書き換えて元に戻す。
+      # 戻し漏れがあれば差分として現れるので、その場で気づけるようにする。
+      - name: ソースが元に戻っているか確認
+        run: |
+          git diff --exit-code -- . ':(exclude)MUTATION-REPORT.md' \
+            || (echo "::error::mutation test がソースを戻せていません" && exit 1)
+
+      - name: mutation test の結果を保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: MUTATION-REPORT.md
+          if-no-files-found: warn
