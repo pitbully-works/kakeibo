@@ -66,13 +66,20 @@ function bootApp(stored) {
 
 const YM = new Date().toISOString().slice(0, 7);
 const D = (n) => `${YM}-${String(n).padStart(2, "0")}`;
-const SETTINGS = {
-  fixed: { rent: 60000, power: 12000, gas: 6000, water: 4000, comm: 8000, subs: 3000, insure: 5000, fixother: 0 },
-  savingsTarget: 40000, nisaMonthly: 33000, currency: "JPY",
-};
+const SETTINGS = { savingsTarget: 40000, nisaMonthly: 33000, currency: "JPY" };
 const yen = (n) => "¥" + Math.round(n).toLocaleString("en-US");
 /* 給与の入力口は「記録」だけ */
 const SALARY = { id: "s", type: "income", amount: 290000, cat: "salary", date: D(25) };
+/* 固定費98,000ぶんの記録 */
+const FIXED98 = [
+  { id: "f1", type: "expense", amount: 60000, cat: "rent", date: D(1) },
+  { id: "f2", type: "expense", amount: 12000, cat: "power", date: D(2) },
+  { id: "f3", type: "expense", amount: 6000, cat: "gas", date: D(2) },
+  { id: "f4", type: "expense", amount: 4000, cat: "water", date: D(2) },
+  { id: "f5", type: "expense", amount: 8000, cat: "comm", date: D(3) },
+  { id: "f6", type: "expense", amount: 3000, cat: "subs", date: D(3) },
+  { id: "f7", type: "expense", amount: 5000, cat: "insure", date: D(3) },
+];
 
 test("初回起動（データなし）でも3画面が白画面にならない", () => {
   const { app, html: out } = bootApp(null);
@@ -86,10 +93,9 @@ test("データありでも3画面が描画される", () => {
   const state = {
     settings: SETTINGS,
     tx: [
-      SALARY,
+      SALARY, ...FIXED98,
       { id: "a", type: "expense", amount: 20000, cat: "food", date: D(5) },
       { id: "b", type: "income", amount: 50000, cat: "bonus", date: D(25) },
-      { id: "c", type: "expense", amount: 15000, cat: "power", date: D(10) },
     ],
   };
   const { app, html: out } = bootApp(state);
@@ -100,7 +106,7 @@ test("データありでも3画面が描画される", () => {
 });
 
 test("ホームに表示される金額が、コアの計算と一致する", () => {
-  const state = { settings: SETTINGS, tx: [SALARY, { id: "a", type: "expense", amount: 20000, cat: "food", date: D(5) }] };
+  const state = { settings: SETTINGS, tx: [SALARY, ...FIXED98, { id: "a", type: "expense", amount: 20000, cat: "food", date: D(5) }] };
   const { app, html: out } = bootApp(state);
   const c = Core.computeMonth(SETTINGS, state.tx, YM);
   app.setView("home");
@@ -113,7 +119,7 @@ test("ホームとまとめに、同じ「のこり」が表示される", () =>
   const state = {
     settings: SETTINGS,
     tx: [
-      SALARY,
+      SALARY, ...FIXED98,
       { id: "a", type: "expense", amount: 20000, cat: "food", date: D(5) },
       { id: "b", type: "income", amount: 50000, cat: "bonus", date: D(25) },
     ],
@@ -135,14 +141,14 @@ test("固定費を記録しても、まとめの支出が二重にならない",
   const tx = [SALARY, { id: "c", type: "expense", amount: 12000, cat: "power", date: D(10) }];
   const { app, html: out } = bootApp({ settings: SETTINGS, tx });
   const c = Core.computeMonth(SETTINGS, tx, YM);
-  assert.equal(c.spendTotal, 98000, "電気12,000の実績が予定に上乗せされている");
+  assert.equal(c.spendTotal, 12000, "記録した1件ぶんだけが支出になる");
   app.setView("summary");
-  assert.ok(out().includes(yen(98000)));
+  assert.ok(out().includes(yen(12000)));
 });
 
 test("書き出したJSONが、画面と同じ金額になっている", () => {
   const tx = [
-    SALARY,
+    SALARY, ...FIXED98,
     { id: "a", type: "expense", amount: 20000, cat: "food", date: D(5) },
     { id: "b", type: "income", amount: 50000, cat: "bonus", date: D(25) },
   ];
@@ -152,28 +158,30 @@ test("書き出したJSONが、画面と同じ金額になっている", () => {
   assert.equal(j.available_to_spend, c.available);
   assert.equal(j.income_actual_total, c.incomeTotal);
   assert.equal(j.variable_spend, c.variableSpend);
-  assert.equal(j.fixed_cost, c.fixedTotal);
+  assert.equal(j.fixed_cost, c.fixedSpend);
   assert.equal(j.accounts.find((a) => a.type === "TAX_FREE_INVEST").planned_contribution, 33000);
 });
 
 test("旧保存データ（固定費が合計欄）を読んでも落ちない", () => {
   const old = {
-    settings: { incomeNet: 290000, fixedCost: 98000, savingsTarget: 40000, nisaMonthly: 33000 },
-    tx: [SALARY],
+    settings: { incomeNet: 290000, fixedCost: 98000, fixed: { rent: 60000 }, savingsTarget: 40000, nisaMonthly: 33000 },
+    tx: [SALARY, ...FIXED98],
   };
   const { app, html: out } = bootApp(old);
   app.setView("home");
-  assert.ok(out().includes(yen(119000)), "移行後の使える額が合わない");
+  assert.ok(out().includes(yen(119000)), "旧設定値が計算に混ざっている");
   app.setView("settings");
   assert.ok(out().length > 200);
 });
 
-test("せってい画面に給料の入力欄が無い（入力口はひとつだけ）", () => {
+test("せってい画面に給料・固定費の入力欄が無い（入力口はひとつだけ）", () => {
   const { app, html: out } = bootApp({ settings: SETTINGS, tx: [] });
   app.setView("settings");
   const h = out();
   assert.equal(h.includes('id="f-income"'), false, "設定に手取り収入欄が残っている");
-  assert.ok(h.includes("記録") && h.includes("通常給与"), "給料の入れ方の案内が無い");
+  assert.equal(h.includes('id="f-fx-'), false, "設定に固定費の予定額欄が残っている");
+  assert.equal(h.includes("家賃・住居"), false, "設定に固定費の項目が残っている");
+  assert.ok(h.includes('id="f-save"') && h.includes('id="f-nisa"'), "先取りの欄が無い");
 });
 
 test("給与未記録の月は、ホームが給与の記録をうながす", () => {

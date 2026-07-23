@@ -6,14 +6,16 @@
    computeMonth() の結果だけを読む（画面ごとに式を書かない）。
 
    正式な計算式：
-     使える額 = 通常収入 + 臨時収入 － 固定費 － 先取り貯金 － NISA積立 － 変動支出
+     使える額 = 通常収入 + 臨時収入 － 支出 － 先取り貯金 － NISA積立
 
-   二重計上を防ぐ2つの原則：
-     ① 固定費は「項目ごとの予定額」。その項目の実績を記録した月は、
-        予定額ではなく実績を採用する（足さない・置き換える）。
-     ② 給与の入力口は「記録」の収入ひとつだけ。設定に手取り収入は持たない。
-        通常収入＝その月に記録した「通常給与」の合計。
-        臨時収入（賞与・贈与など）だけが別枠で上乗せされる。
+   ただひとつの原則：**入力口はひとつだけ**
+     お金の出入りは、すべて「記録」から入れる。設定には持たない。
+       ・収入 … 通常給与／臨時・賞与／贈与／その他臨時
+       ・支出 … 固定費（家賃・電気・ガス…）も変動費（食費・外食…）も同じ記録
+     同じ金額を2か所に書ける作りにしない。だから二重計上が起きない。
+
+     設定に残すのは「まだ出ていないお金」だけ：
+       先取り貯金・NISA積立（予定額）と、夢・目標。
 
    ブラウザでは window.KakeiboCore、Nodeでは module.exports として使える。
    ========================================================================= */
@@ -76,18 +78,12 @@
     return list.reduce(function (a, t) { return a + num(f ? f(t) : t); }, 0);
   }
 
-  /* ---------- 設定の正規化（旧データの移行を含む） ---------- */
+  /* ---------- 設定の正規化 ---------- */
+  /* 設定に持つのは「先取り（予定額）」と「夢・目標」だけ。
+     旧版の手取り収入(incomeNet)・固定費(fixedCost / fixed)は読み捨てる。 */
   function normalizeSettings(raw) {
     const s = raw || {};
-    const fixed = {};
-    const hasNew = s.fixed && typeof s.fixed === "object";
-    FIXED_KEYS.forEach(function (k) { fixed[k] = hasNew ? num(s.fixed[k]) : 0; });
-    /* 旧仕様（固定費を1つの合計欄で持っていた）からの移行。
-       合計をそのまま消すと家計がずれるため「その他固定費」へ寄せる。 */
-    if (!hasNew && num(s.fixedCost) > 0) fixed.fixother = num(s.fixedCost);
     return {
-      /* 手取り収入は設定に持たない（給与の入力口は「記録」の収入だけ） */
-      fixed: fixed,
       savingsTarget: num(s.savingsTarget),
       nisaMonthly: num(s.nisaMonthly),
       goalName: String(s.goalName || "").slice(0, 24),
@@ -115,31 +111,23 @@
     const incomeExtra = sum(extraRecs, function (t) { return t.amount; });
     const incomeTotal = incomeRegular + incomeExtra;
 
-    /* --- 固定費：項目ごとに「実績があれば実績、なければ予定額」 --- */
+    /* --- 支出：すべて「記録」から。予定額は持たない --- */
+    const expRecs = month.filter(function (t) { return t.type === "expense"; });
+    const fixedRecs = expRecs.filter(function (t) { return isFixedCat(t.cat); });
+    const varRecs = expRecs.filter(function (t) { return !isFixedCat(t.cat); });
+    const fixedSpend = sum(fixedRecs, function (t) { return t.amount; });
+    const variableSpend = sum(varRecs, function (t) { return t.amount; });
+    const spendTotal = fixedSpend + variableSpend;
+
+    /* 固定費の内わけ（表示用。記録した分だけ） */
     const fixedDetail = FIXED_ITEMS.map(function (item) {
-      const recs = month.filter(function (t) {
-        return t.type === "expense" && t.cat === item.k;
-      });
-      const actual = sum(recs, function (t) { return t.amount; });
-      const planned = s.fixed[item.k];
+      const recs = fixedRecs.filter(function (t) { return t.cat === item.k; });
       return {
         key: item.k, name: item.n, emoji: item.e,
-        planned: planned,
-        actual: actual,
+        amount: sum(recs, function (t) { return t.amount; }),
         recorded: recs.length > 0,
-        amount: recs.length ? actual : planned,
-        basis: recs.length ? "actual" : "planned",
       };
-    });
-    const fixedPlanned = sum(fixedDetail, function (d) { return d.planned; });
-    const fixedActual = sum(fixedDetail, function (d) { return d.actual; });
-    const fixedTotal = sum(fixedDetail, function (d) { return d.amount; });
-
-    /* --- 変動支出：固定費カテゴリは必ず除外（二重計上の防止） --- */
-    const varRecs = month.filter(function (t) {
-      return t.type === "expense" && !isFixedCat(t.cat);
-    });
-    const variableSpend = sum(varRecs, function (t) { return t.amount; });
+    }).filter(function (d) { return d.recorded; });
 
     /* --- 先取り（予定額） --- */
     const savingsPlanned = s.savingsTarget;
@@ -147,15 +135,13 @@
     const setAside = savingsPlanned + nisaPlanned;
 
     /* --- 正式な計算式 --- */
-    const available =
-      incomeTotal - fixedTotal - setAside - variableSpend;
+    const available = incomeTotal - spendTotal - setAside;
 
     /* --- 表示用の内訳 --- */
     const byCat = {};
     varRecs.forEach(function (t) {
       byCat[t.cat] = (byCat[t.cat] || 0) + num(t.amount);
     });
-    const spendTotal = fixedTotal + variableSpend;
     const goalPct = s.goalTarget > 0
       ? Math.min(100, Math.round((s.goalCurrent / s.goalTarget) * 100))
       : null;
@@ -170,11 +156,9 @@
       incomeExtra: incomeExtra,
       incomeTotal: incomeTotal,
       hasIncome: incomeTotal > 0,
-      /* 支出 */
+      /* 支出（すべて記録した実績） */
       fixedDetail: fixedDetail,
-      fixedPlanned: fixedPlanned,
-      fixedActual: fixedActual,
-      fixedTotal: fixedTotal,
+      fixedSpend: fixedSpend,
       variableSpend: variableSpend,
       spendTotal: spendTotal,
       /* 先取り（予定額） */
@@ -229,15 +213,10 @@
       /* 後方互換。旧 income_net は「当月の実収入合計」を指す */
       income_net: c.incomeTotal,
 
-      /* 支出：予定・実績・採用値を分けて出力 */
-      fixed_cost_planned: c.fixedPlanned,
-      fixed_cost_actual: c.fixedActual,
-      fixed_cost: c.fixedTotal,
+      /* 支出：すべて記録した実績（予定額は持たない） */
+      fixed_cost: c.fixedSpend,
       fixed_cost_items: c.fixedDetail.map(function (d) {
-        return {
-          key: d.key, name: d.name,
-          planned: d.planned, actual: d.actual, applied: d.amount, basis: d.basis,
-        };
+        return { key: d.key, name: d.name, amount: d.amount };
       }),
       variable_spend: c.variableSpend,
       spend_total: c.spendTotal,
