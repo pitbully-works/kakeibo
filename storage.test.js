@@ -158,15 +158,28 @@ test("OCRライブラリを公式のjsDelivrから読む（存在しないURLを
     "tesseract.js を配布していないCDNを参照している");
 });
 
-test("配布先が1つ落ちても次を試す", () => {
-  assert.match(appSrc, /const TESSERACT_URLS=\[/, "配布先の一覧が無い");
+test("取得先を順に試し、自前サーバーを最優先にする", () => {
+  assert.match(appSrc, /const TESSERACT_SOURCES = \[/, "取得先の一覧が無い");
+  assert.match(appSrc, /TESS_LOCAL_DIR \+ "\/tesseract\.min\.js", local:true/, "自前サーバーの選択肢が無い");
   assert.match(appSrc, /unpkg\.com\/tesseract\.js@5/, "予備の配布先が無い");
-  assert.match(appSrc, /for\(const url of TESSERACT_URLS\)/, "順に試していない");
+  assert.match(appSrc, /for\(const src of TESSERACT_SOURCES\)/, "順に試していない");
+  const order = appSrc.indexOf("TESS_LOCAL_DIR + \"/tesseract.min.js\"");
+  const jsd = appSrc.indexOf("cdn.jsdelivr.net");
+  assert.ok(order < jsd && order > 0, "自前サーバーを先に試していない");
 });
 
-test("読み取り失敗の理由を隠さない", () => {
+test("自前で置いた場合は、部品の場所も自前に向ける", () => {
+  assert.match(appSrc, /function tessWorkerOptions\(\)/, "部品の場所を切り替える処理が無い");
+  assert.match(appSrc, /workerPath: TESS_LOCAL_DIR/, "workerの場所を向けていない");
+  assert.match(appSrc, /corePath:\s+TESS_LOCAL_DIR/, "coreの場所を向けていない");
+  assert.match(appSrc, /langPath:\s+TESS_LOCAL_DIR/, "言語データの場所を向けていない");
+});
+
+test("読み取り失敗の理由を隠さず、どこで失敗したか分かる", () => {
   assert.match(appSrc, /読み取れませんでした：\$\{why\}/, "例外の内容を表示していない");
-  assert.match(appSrc, /読み取りの準備ができません/, "ライブラリ取得失敗の説明が無い");
+  assert.match(appSrc, /読み取り部品を取得できません/, "取得失敗の説明が無い");
+  assert.match(appSrc, /navigator\.onLine\?"通信あり":"オフライン"/, "通信状態を出していない");
+  assert.match(appSrc, /tried\.join\(" ／ "\)/, "どの取得先で失敗したか出していない");
 });
 
 test("進み具合を表示し、写真が入った時点で先読みする", () => {

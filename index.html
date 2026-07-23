@@ -652,22 +652,41 @@ function cropToDataUrl(src, crop, style){
   });
 }
 
-/* 読み取りライブラリの配布先。公式はjsDelivr。1つ落ちても次を試す。 */
-const TESSERACT_URLS=[
-  "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js",
-  "https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"
+/* 読み取りライブラリの取得先。
+   ①自分のサーバー（tess/ に置いた場合）→ ②jsDelivr → ③unpkg の順に試す。
+   ①があれば外部CDNに一切依存せず、オフラインでも動く。 */
+const TESS_LOCAL_DIR = "./tess";
+const TESSERACT_SOURCES = [
+  { name:"この端末のサーバー", url: TESS_LOCAL_DIR + "/tesseract.min.js", local:true },
+  { name:"jsDelivr",          url:"https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" },
+  { name:"unpkg",             url:"https://unpkg.com/tesseract.js@5/dist/tesseract.min.js" }
 ];
+let tessSource=null;
+
 async function loadTesseract(){
   if(window.Tesseract) return window.Tesseract;
-  const errs=[];
-  for(const url of TESSERACT_URLS){
+  const tried=[];
+  for(const src of TESSERACT_SOURCES){
     try{
-      await loadScript(url);
-      if(window.Tesseract) return window.Tesseract;
-      errs.push(url+" は読めたが Tesseract が見つからない");
-    }catch(e){ errs.push(url+" に接続できない"); }
+      await loadScript(src.url);
+      if(window.Tesseract){ tessSource=src; return window.Tesseract; }
+      tried.push(src.name+"：取得できたが中身が違う");
+    }catch(e){ tried.push(src.name+"：つながらない"); }
   }
-  throw new Error("読み取りの準備ができません（通信を確認してください）");
+  const online = (typeof navigator!=="undefined" && "onLine" in navigator) ? (navigator.onLine?"通信あり":"オフライン") : "通信状態不明";
+  throw new Error(`読み取り部品を取得できません（${online}／${tried.join(" ／ ")}）`);
+}
+
+/* 自前で置いた場合は、部品の場所も自分のサーバーに向ける */
+function tessWorkerOptions(){
+  if(tessSource && tessSource.local){
+    return {
+      workerPath: TESS_LOCAL_DIR + "/worker.min.js",
+      corePath:   TESS_LOCAL_DIR + "/core",
+      langPath:   TESS_LOCAL_DIR + "/lang"
+    };
+  }
+  return {};
 }
 
 /* 数字だけを読む設定で、画像2枚 × 読み取り方2通りを試す。
@@ -677,7 +696,7 @@ async function ocrCandidates(images){
   const out=[];
   let worker=null;
   try{
-    worker=await T.createWorker("eng", 1, {
+    worker=await T.createWorker("eng", 1, Object.assign({}, tessWorkerOptions(), {
       logger: m=>{
         if(m && m.status && typeof m.progress==="number"){
           const pct=Math.round(m.progress*100);
@@ -685,7 +704,7 @@ async function ocrCandidates(images){
           else if(m.status.indexOf("recogniz")>=0) setStatus(`読み取り中… ${pct}%`);
         }
       }
-    });
+    }));
     for(const psm of ["7","6"]){                 // 7=1行として読む / 6=かたまりとして読む
       await worker.setParameters({
         tessedit_pageseg_mode:psm,

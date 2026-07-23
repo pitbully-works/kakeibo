@@ -1,7 +1,7 @@
 /* かけいぼ ― service worker（オフライン対応・最小構成）
    アプリ本体をキャッシュし、2回目以降はオフラインでも開けるようにする。
    OCR用のTesseract.jsはCDNから都度取得（オンライン時のみ・任意機能）。 */
-const CACHE = "kakeibo-v2";
+const CACHE = "kakeibo-v3";
 const ASSETS = ["./", "./index.html", "./core.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {

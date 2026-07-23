@@ -88,5 +88,5 @@ test("撮影しただけでは読み取らず、枠を決めてから読む", ()
 
 test("service worker が core.js をキャッシュし、版が上がっている", () => {
   assert.match(sw, /"\.\/core\.js"/);
-  assert.match(sw, /kakeibo-v2/);
+  assert.match(sw, /kakeibo-v\d+/, "キャッシュ名に版が付いていない");
 });
