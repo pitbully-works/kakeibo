@@ -12,15 +12,14 @@
      3. テストが落ちれば「その壊れ方を検出できる」＝合格
         テストが通ってしまえば「見逃す」＝不合格（テストの穴）
      4. 元に戻す
-   実行： node run-mutations.mjs
+   実行： node run-mutations.js
    結果： MUTATION-REPORT.md に書き出す
    ========================================================================= */
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+const fs = require("node:fs");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
-const dir = path.dirname(fileURLToPath(import.meta.url));
+const dir = __dirname;
 
 /* 変異の一覧。それぞれ「守りたい振る舞い」に1対1で対応させる。 */
 const MUTATIONS = [
@@ -129,7 +128,7 @@ const md = [
   "> **注記**：これは mutation testing 全体を網羅するものではありません。",
   "> あらゆる変異を機械的に生成するのではなく、壊れると困る重要なパターンを",
   "> 手作業で列挙した自作の簡易チェックです。選んだ範囲の外に穴が残る可能性はあります。",
-  "実行方法： `node run-mutations.mjs`（このファイルが結果を書き出します）",
+  "実行方法： `node run-mutations.js`（このファイルが結果を書き出します）",
   "",
   `- 実行日時： ${new Date().toISOString()}`,
   `- 使用した Node： ${process.version}`,
