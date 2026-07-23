@@ -97,3 +97,62 @@ test("極端な数字は金額として採用しない", () => {
   assert.equal(full("合計 9"), null, "10円未満は無視");
   assert.equal(full("合計 99999999"), null, "300万円超は無視");
 });
+
+/* ---------- 切り取り枠の計算 ---------- */
+test("枠（割合）が元画像のピクセル座標に正しく変換される", () => {
+  assert.deepEqual(Core.cropRect({ x: 0.1, y: 0.2, w: 0.5, h: 0.3 }, { w: 1000, h: 2000 }),
+    { x: 100, y: 400, w: 500, h: 600 });
+});
+
+test("枠が画像からはみ出しても、画像の中に収まる", () => {
+  const r = Core.cropRect({ x: 0.9, y: 0.9, w: 0.5, h: 0.5 }, { w: 100, h: 100 });
+  assert.ok(r.x + r.w <= 100 && r.y + r.h <= 100, "はみ出している");
+  assert.ok(r.w >= 1 && r.h >= 1);
+});
+
+test("不正な枠でも落ちず、画像内に収まる", () => {
+  const r = Core.cropRect({ x: -5, y: NaN, w: 99, h: undefined }, { w: 200, h: 300 });
+  assert.ok(r.x >= 0 && r.y >= 0 && r.w >= 1 && r.h >= 1);
+  assert.ok(r.x + r.w <= 200 && r.y + r.h <= 300);
+});
+
+test("小さい切り抜きは拡大され、大きすぎる切り抜きは縮小される", () => {
+  assert.equal(Core.cropOutputSize(300, 80).w, 900, "小さい枠が拡大されない");
+  assert.equal(Core.cropOutputSize(4000, 1000).w, 1800, "大きい枠が縮小されない");
+  const keep = Core.cropOutputSize(1200, 400);
+  assert.equal(keep.w, 1200);
+  assert.equal(keep.h, 400, "縦横比が崩れている");
+});
+
+test("白黒化とコントラスト伸長で、薄い印字がはっきりする", () => {
+  // 100〜160 の狭い濃淡が 0〜255 に広がること
+  const data = new Uint8ClampedArray([100, 100, 100, 255, 160, 160, 160, 255, 130, 130, 130, 255]);
+  Core.enhanceForOcr(data);
+  assert.equal(data[0], 0);
+  assert.equal(data[4], 255);
+  assert.ok(data[8] > 100 && data[8] < 155);
+});
+
+/* ---------- 枠のドラッグ ---------- */
+test("枠を動かしても画像の外に出ない", () => {
+  const start = { x: 0.5, y: 0.5, w: 0.4, h: 0.3 };
+  const right = Core.moveCrop(start, 1, 0, "move");
+  assert.equal(right.x, 0.6, "右端で止まらない");
+  const left = Core.moveCrop(start, -1, -1, "move");
+  assert.equal(left.x, 0);
+  assert.equal(left.y, 0);
+});
+
+test("枠を小さくしすぎない（最小サイズで止まる）", () => {
+  const start = { x: 0.1, y: 0.1, w: 0.5, h: 0.5 };
+  const shrunk = Core.moveCrop(start, -1, -1, "br");
+  assert.equal(shrunk.w, Core.CROP_MIN);
+  assert.equal(shrunk.h, Core.CROP_MIN);
+});
+
+test("左上をつかんで広げると、右下の位置は動かない", () => {
+  const start = { x: 0.4, y: 0.4, w: 0.3, h: 0.3 };
+  const grown = Core.moveCrop(start, -0.2, -0.2, "tl");
+  assert.ok(Math.abs((grown.x + grown.w) - (start.x + start.w)) < 1e-9, "右端がずれた");
+  assert.ok(Math.abs((grown.y + grown.h) - (start.y + start.h)) < 1e-9, "下端がずれた");
+});

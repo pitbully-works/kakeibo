@@ -170,6 +170,17 @@
   .photobtn.main{border-style:solid;border-color:var(--green);background:var(--green-l)}
   .photobtn .sm{display:block;font-size:10.5px;font-weight:700;color:var(--sub);margin-top:2px}
   .shothint{font-size:11px;color:var(--sub);text-align:center;margin:0 0 12px;line-height:1.6}
+  /* 切り取り枠 */
+  .cropwrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);
+    background:#11201c;margin-bottom:8px;touch-action:none;user-select:none;-webkit-user-select:none}
+  .cropwrap img{width:100%;display:block;max-height:44vh;object-fit:contain;pointer-events:none}
+  .cropbox{position:absolute;border:2.5px solid #fff;border-radius:5px;
+    box-shadow:0 0 0 9999px rgba(10,20,18,.55);cursor:move}
+  .cropbox .h{position:absolute;width:34px;height:34px;background:#fff;border-radius:10px;
+    border:1px solid rgba(0,0,0,.12);box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .cropbox .h.tl{left:-17px;top:-17px}
+  .cropbox .h.br{right:-17px;bottom:-17px}
+  .cropbox .h::after{content:"";position:absolute;inset:11px;border-radius:3px;background:#9fb0ab}
   .photoprev{position:relative;margin-bottom:12px;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
   .photoprev img{width:100%;display:block;max-height:180px;object-fit:cover}
   .photoprev .rm{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;width:28px;height:28px;font-size:15px}
@@ -458,12 +469,16 @@ function renderSheet(){
         : `<div class="ocrnote">臨時の収入として、今月の収入に上のせされます。</div>`)
     : `<div class="ocrnote">&nbsp;</div>`;
   const photoHtml = st.photo
-    ? `<div class="photoprev"><img src="${st.photo}" alt="レシート"><button class="rm" data-act="rm-photo">✕</button></div>
-       <div class="ocrnote" id="ocrnote"></div>`
-    : `<button class="photobtn main" data-act="shot-total">🔍 合計だけをアップで撮る
-         <span class="sm">いちばん正確に読めます</span></button>
-       <button class="photobtn" data-act="shot-full">🧾 レシート全体を撮る</button>
-       <div class="shothint">「合計 ¥1,240」の行が画面いっぱいになるくらい近づけて撮ると、<br>小計やお釣りと読み違えません。</div>`;
+    ? `<div class="cropwrap" id="cropwrap">
+         <img id="cropimg" src="${st.photo}" alt="レシート">
+         <div class="cropbox" id="cropbox"><span class="h tl"></span><span class="h br"></span></div>
+       </div>
+       <div class="shothint">白い枠を動かして、<b>合計の金額だけ</b>を囲んでください。<br>枠の中しか読み取らないので、他の金額と混ざりません。</div>
+       <button class="photobtn main" data-act="read-crop">🔍 この枠の金額を読み取る</button>
+       <button class="photobtn" data-act="shot-total">📸 撮り直す</button>
+       <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>`
+    : `<button class="photobtn main" data-act="shot-total">📸 合計をアップで撮る
+         <span class="sm">撮ったあと、枠で金額を指定できます</span></button>`;
   $("sheet").innerHTML=`<div class="grip"></div>
     <div class="sheethd"><h3>${st.mode==="edit"?"記録をなおす":"記録する"}</h3>
       <button class="close" data-act="close-sheet" aria-label="閉じる">✕</button></div>
@@ -483,6 +498,7 @@ function renderSheet(){
     <button class="btn-primary" data-act="save-tx">${st.mode==="edit"?"更新する":"この内容で記録する"}</button>
     ${st.mode==="edit"?`<button class="delbtn" data-act="del-tx">この記録を削除</button>`:""}
     <div style="height:6px"></div>`;
+  if(st.photo) initCrop();
 }
 function readSheetInputs(){
   const st=sheetState; if(!st) return;
@@ -494,30 +510,59 @@ function showSheet(on){ $("scrim").classList.toggle("show",on); $("sheet").class
 /* ---------- 写真＋OCR（任意・失敗しても写真は残る） ---------- */
 function onPhotoPicked(file){
   const reader=new FileReader();
-  reader.onload=()=>{ sheetState.photo=reader.result; renderSheet(); runOCR(reader.result); };
+  reader.onload=()=>{ if(!sheetState) return;
+    sheetState.photo=reader.result;
+    sheetState.crop=Object.assign({},Core.CROP_DEFAULT);
+    sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";
+    renderSheet(); };
   reader.readAsDataURL(file);
 }
-async function runOCR(dataUrl, mode){
-  const note=$("ocrnote"); if(note) note.textContent="読み取り中… ✨";
+/* 枠の中だけを切り出して読む。他の金額は物理的に視界に入らない。 */
+async function readCrop(){
+  const st=sheetState; if(!st||!st.photo) return;
+  const setNote=t=>{ st.ocrNote=t; const n=$("ocrnote"); if(n) n.textContent=t; };
+  setNote("読み取り中… ✨");
   try{
-    const text = await ocrRecognize(dataUrl, mode);
-    const amt = Core.parseAmount(text, mode);
+    const cropped = await cropToDataUrl(st.photo, st.crop||Core.CROP_DEFAULT);
+    const text = await ocrRecognize(cropped, "total");
+    const amt = Core.parseAmount(text, "total");
     if(amt){
-      if(sheetState){ sheetState.amount=String(amt); const ai=$("s-amt"); if(ai) ai.value=String(amt); }
-      if($("ocrnote")) $("ocrnote").textContent=`金額を「${yen(amt)}」と読みました。ちがう時は直してね`;
-    } else if($("ocrnote")){
-      $("ocrnote").textContent = mode==="total"
-        ? "うまく読めませんでした。合計にもっと近づけて撮るか、金額を入れてね"
-        : "うまく読めませんでした。合計だけをアップで撮ると読みやすいです";
+      st.amount=String(amt);
+      const ai=$("s-amt"); if(ai) ai.value=String(amt);
+      setNote(`金額を「${yen(amt)}」と読みました。ちがう時は直してね`);
+    } else {
+      setNote("枠の中に数字が見つかりませんでした。枠を合計に合わせ直すか、金額を入れてね");
     }
-  }catch(e){ if($("ocrnote")) $("ocrnote").textContent="読み取りは今回スキップ。金額を入れてね"; }
+  }catch(e){ setNote("読み取れませんでした。金額を入れてね（写真は残ります）"); }
 }
 
-/* 合計のアップは「数字だけを読む」設定にすると、桁の読み違いが減る */
+/* 枠の範囲を切り出し、拡大＋白黒コントラスト調整をしてから渡す */
+function cropToDataUrl(src, crop){
+  return new Promise((resolve,reject)=>{
+    const im=new Image();
+    im.onload=()=>{
+      try{
+        const nat={w:im.naturalWidth, h:im.naturalHeight};
+        const r=Core.cropRect(crop, nat);
+        const out=Core.cropOutputSize(r.w, r.h);
+        const cv=document.createElement("canvas"); cv.width=out.w; cv.height=out.h;
+        const cx=cv.getContext("2d");
+        cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality="high";
+        cx.drawImage(im, r.x, r.y, r.w, r.h, 0, 0, out.w, out.h);
+        try{ const d=cx.getImageData(0,0,out.w,out.h); Core.enhanceForOcr(d.data); cx.putImageData(d,0,0); }catch(e){}
+        resolve(cv.toDataURL("image/png"));
+      }catch(e){ reject(e); }
+    };
+    im.onerror=reject;
+    im.src=src;
+  });
+}
+
+/* 数字だけを読む設定にすると、桁の読み違いが減る */
 async function ocrRecognize(dataUrl, mode){
   if(!window.Tesseract){ await loadScript("https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"); }
   const T=window.Tesseract;
-  if(mode==="total" && typeof T.createWorker==="function"){
+  if(typeof T.createWorker==="function"){
     let worker=null;
     try{
       worker=await T.createWorker("eng");
@@ -531,8 +576,40 @@ async function ocrRecognize(dataUrl, mode){
       /* 失敗したら通常の読み取りに落とす */
     }finally{ if(worker){ try{ await worker.terminate(); }catch(e){} } }
   }
-  const { data } = await T.recognize(dataUrl, "jpn+eng");
+  const { data } = await T.recognize(dataUrl, "eng");
   return data.text;
+}
+
+/* 枠のドラッグ（移動／左上・右下でサイズ変更） */
+function initCrop(){
+  const wrap=$("cropwrap"), box=$("cropbox");
+  if(!wrap||!box||!sheetState) return;
+  const st=sheetState;
+  if(!st.crop) st.crop=Object.assign({},Core.CROP_DEFAULT);
+  const apply=()=>{ box.style.left=(st.crop.x*100)+"%"; box.style.top=(st.crop.y*100)+"%";
+    box.style.width=(st.crop.w*100)+"%"; box.style.height=(st.crop.h*100)+"%"; };
+  apply();
+  let mode=null, start=null;
+  wrap.addEventListener("pointerdown",e=>{
+    const t=e.target;
+    if(t.classList&&t.classList.contains("br")) mode="br";
+    else if(t.classList&&t.classList.contains("tl")) mode="tl";
+    else if(t===box) mode="move";
+    else return;
+    const r=wrap.getBoundingClientRect();
+    start={px:e.clientX, py:e.clientY, c:Object.assign({},st.crop), w:r.width||1, h:r.height||1};
+    try{ wrap.setPointerCapture(e.pointerId); }catch(err){}
+    e.preventDefault();
+  });
+  wrap.addEventListener("pointermove",e=>{
+    if(!mode||!start) return;
+    const dx=(e.clientX-start.px)/start.w, dy=(e.clientY-start.py)/start.h;
+    st.crop=Core.moveCrop(start.c, dx, dy, mode);
+    apply(); e.preventDefault();
+  });
+  const end=()=>{ mode=null; start=null; };
+  wrap.addEventListener("pointerup",end);
+  wrap.addEventListener("pointercancel",end);
 }
 
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
@@ -607,11 +684,9 @@ function handleAct(a,e){
   if(a==="close-sheet") return showSheet(false);
   if(a==="save-tx") return saveTx();
   if(a==="del-tx") return delTx();
-  if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); sheetState.photo=null; renderSheet(); } return; }
-  if(a==="shot-total"||a==="shot-full"){
-    readSheetInputs();
-    if(sheetState) sheetState.shot = (a==="shot-total") ? "total" : "full";
-    $("camInput").value=""; $("camInput").click(); return; }
+  if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); sheetState.photo=null; sheetState.crop=null; sheetState.ocrNote=""; renderSheet(); } return; }
+  if(a==="shot-total"){ readSheetInputs(); $("camInput").value=""; $("camInput").click(); return; }
+  if(a==="read-crop"){ readSheetInputs(); return readCrop(); }
   if(a==="save-settings") return saveSettings();
   if(a==="export-snapshot") return exportSnapshot();
   if(a==="export-backup") return exportBackup();

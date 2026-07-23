@@ -68,13 +68,22 @@ test("スナップショットは core.js に一本化されている", () => {
   assert.equal(src.includes("contribution:Number("), false, "予定額と実績を混同するキーが残っている");
 });
 
-test("レシートの金額解釈は core.js に一本化されている", () => {
+test("レシートは枠で指定した範囲だけを読む", () => {
   const src = appScript();
   assert.equal(src.includes("function guessAmount"), false, "画面側の旧パーサが残っている");
-  assert.match(src, /Core\.parseAmount\(text, mode\)/, "core の parseAmount を使っていない");
-  assert.match(src, /data-act="shot-total"/, "合計アップ撮影のボタンが無い");
-  assert.match(src, /data-act="shot-full"/, "全体撮影のボタンが無い");
-  assert.match(src, /tessedit_char_whitelist/, "アップ撮影で数字だけを読む設定が無い");
+  assert.equal(src.includes('data-act="shot-full"'), false, "レシート全体の撮影が残っている");
+  assert.match(src, /data-act="shot-total"/, "アップ撮影のボタンが無い");
+  assert.match(src, /data-act="read-crop"/, "枠で読み取るボタンが無い");
+  assert.match(src, /Core\.cropRect\(crop, nat\)/, "枠の切り出しに core を使っていない");
+  assert.match(src, /Core\.parseAmount\(text, "total"\)/, "core の parseAmount を使っていない");
+  assert.match(src, /tessedit_char_whitelist/, "数字だけを読む設定が無い");
+});
+
+test("撮影しただけでは読み取らず、枠を決めてから読む", () => {
+  const src = appScript();
+  assert.equal(/reader\.onload[\s\S]{0,200}runOCR/.test(src), false, "撮影直後に自動で読んでいる");
+  assert.match(src, /reader\.onload[\s\S]{0,300}CROP_DEFAULT/, "撮影後に枠が用意されない");
+  assert.match(src, /function initCrop\(\)/, "枠を動かす処理が無い");
 });
 
 test("service worker が core.js をキャッシュし、版が上がっている", () => {

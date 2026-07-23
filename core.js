@@ -266,6 +266,80 @@
     return Math.max.apply(null, rest);
   }
 
+
+  /* =======================================================================
+     切り取り範囲の計算と、読み取り前の画像の下ごしらえ（純粋関数）
+     ======================================================================= */
+  function clamp01(v) { const n = Number(v); return !Number.isFinite(n) ? 0 : n < 0 ? 0 : n > 1 ? 1 : n; }
+
+  /* 枠（画像に対する 0〜1 の割合）→ 元画像のピクセル座標 */
+  function cropRect(crop, nat) {
+    const NW = Math.max(1, Math.round(nat.w)), NH = Math.max(1, Math.round(nat.h));
+    const c = crop || {};
+    let x = Math.round(clamp01(c.x) * NW);
+    let y = Math.round(clamp01(c.y) * NH);
+    let w = Math.round(clamp01(c.w === undefined ? 1 : c.w) * NW);
+    let h = Math.round(clamp01(c.h === undefined ? 1 : c.h) * NH);
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    if (x > NW - 1) x = NW - 1;
+    if (y > NH - 1) y = NH - 1;
+    if (x + w > NW) w = NW - x;
+    if (y + h > NH) h = NH - y;
+    return { x: x, y: y, w: w, h: h };
+  }
+
+  /* 小さすぎる切り抜きは拡大してから読ませると精度が上がる */
+  function cropOutputSize(w, h, minW, maxW) {
+    const MIN = minW || 900, MAX = maxW || 1800;
+    let scale = 1;
+    if (w < MIN) scale = MIN / w;
+    if (w * scale > MAX) scale = MAX / w;
+    return { w: Math.max(1, Math.round(w * scale)), h: Math.max(1, Math.round(h * scale)) };
+  }
+
+  /* 白黒にしてコントラストを目いっぱい伸ばす（レシートの薄い印字対策） */
+  function enhanceForOcr(data) {
+    let min = 255, max = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const g = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
+      data[i] = data[i + 1] = data[i + 2] = g;
+      if (g < min) min = g;
+      if (g > max) max = g;
+    }
+    const range = Math.max(1, max - min);
+    for (let i = 0; i < data.length; i += 4) {
+      const v = Math.round(((data[i] - min) * 255) / range);
+      data[i] = data[i + 1] = data[i + 2] = v;
+    }
+    return data;
+  }
+
+  /* 枠の既定位置（真ん中の横帯）と、動かすときの最小サイズ */
+  const CROP_DEFAULT = { x: 0.06, y: 0.34, w: 0.88, h: 0.30 };
+  const CROP_MIN = 0.08;
+
+  /* 枠を動かす／広げるの計算。UIから切り離してテストできるようにする */
+  function moveCrop(start, dx, dy, mode) {
+    const MIN = CROP_MIN;
+    const c = { x: start.x, y: start.y, w: start.w, h: start.h };
+    const cl = function (v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; };
+    if (mode === "move") {
+      c.x = cl(start.x + dx, 0, 1 - start.w);
+      c.y = cl(start.y + dy, 0, 1 - start.h);
+    } else if (mode === "br") {
+      c.w = cl(start.w + dx, MIN, 1 - start.x);
+      c.h = cl(start.h + dy, MIN, 1 - start.y);
+    } else if (mode === "tl") {
+      const nx = cl(start.x + dx, 0, start.x + start.w - MIN);
+      const ny = cl(start.y + dy, 0, start.y + start.h - MIN);
+      c.w = start.w + (start.x - nx);
+      c.h = start.h + (start.y - ny);
+      c.x = nx; c.y = ny;
+    }
+    return c;
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -328,5 +402,11 @@
     weekSpent: weekSpent,
     buildSnapshot: buildSnapshot,
     parseAmount: parseAmount,
+    cropRect: cropRect,
+    cropOutputSize: cropOutputSize,
+    enhanceForOcr: enhanceForOcr,
+    moveCrop: moveCrop,
+    CROP_DEFAULT: CROP_DEFAULT,
+    CROP_MIN: CROP_MIN,
   };
 });
