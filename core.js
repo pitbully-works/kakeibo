@@ -625,6 +625,116 @@
     return data;
   }
 
+
+  /* =======================================================================
+     先頭の桁が欠けた読み取りの補正
+     -----------------------------------------------------------------------
+     「¥3,555」を「555」としか読めないことがある。
+     カンマが見えているなら、その金額は4桁以上のはず——という手がかりを使う。
+     やみくもに1〜9を付けて候補を増やすことはしない。
+     ======================================================================= */
+
+  /* 合計らしさの手がかり（カンマ・¥・円・合計・TOTAL など） */
+  const TOTAL_HINT = /([¥￥]|円|合\s*計|お会計|ご請求|総\s*額|total)/i;
+  function totalHint(d) {
+    if (!d) return false;
+    if (d.yen) return true;
+    if (String(d.raw || "").indexOf(",") >= 0) return true;
+    return TOTAL_HINT.test(String(d.lineText || "") + String(d.prefix || ""));
+  }
+
+  /* 先頭が欠けている疑いがあるか。
+     戻り値 null＝疑いなし ／ {digits} ＝文字として先頭が残っている
+             {digits:null} ＝欠けは分かるが数字は不明（画像から読み直す） */
+  function truncatedLeading(d) {
+    if (!d || !Number.isFinite(d.amount)) return null;
+    if (d.amount < 100 || d.amount > 999) return null;        // 3桁のときだけ
+    if (String(d.raw || "").indexOf(",") >= 0) return null;    // すでにカンマ付きなら欠けていない
+    const pre = String(d.prefix || "");
+    const withDigit = /(\d{1,3})\s*[,.]\s*$/.exec(pre);       // 例: "3," が残っている
+    if (withDigit) return { digits: withDigit[1], evidence: "text" };
+    if (/[,.]\s*$/.test(pre)) return { digits: null, evidence: "comma" };  // 例: ",555"
+    return null;
+  }
+
+  /* 欠けた先頭の数字がありそうな場所を、枠の中の細い帯として求める。
+     文字の位置（col）と行の長さ（lineLen）から1文字ぶんの幅を見積もり、
+     数字の左側「数字＋カンマ」ぶんだけを切り出す。 */
+  function leadingStripCrop(crop, d) {
+    const c = crop || CROP_DEFAULT;
+    const len = Math.max(1, Number(d && d.lineLen) || 1);
+    const charW = 1 / len;
+    let start = Math.min(1, Math.max(0, (Number(d && d.col) || 0) / len));
+    let x0, w;
+    if (start < 0.15) {
+      /* 行の先頭に見えている＝欠けた文字は認識されていない。枠の左側を広めに見る。 */
+      x0 = 0; w = 0.4;
+    } else {
+      const pad = Math.min(0.5, charW * 2.5);
+      x0 = Math.max(0, start - pad);
+      w = Math.min(1 - x0, (start - x0) + charW * 0.5);
+      if (w < 0.08) w = Math.min(1 - x0, 0.08);
+    }
+    return {
+      x: Math.min(1, Math.max(0, c.x + c.w * x0)),
+      y: c.y,
+      w: Math.max(0.02, Math.min(c.w * w, 1 - (c.x + c.w * x0))),
+      h: c.h,
+    };
+  }
+
+  /* 補正の作戦を立てる。候補が無ければ null。 */
+  function reconstructionPlan(details, crop) {
+    const list = (details || []).filter(function (d) { return truncatedLeading(d); });
+    if (!list.length) return null;
+    /* 合計らしい手がかりがある行を優先する */
+    list.sort(function (a, b) { return (totalHint(b) ? 1 : 0) - (totalHint(a) ? 1 : 0); });
+    const d = list[0];
+    const t = truncatedLeading(d);
+    if (t.digits) {
+      return { kind: "text", digits: t.digits, base: d.amount, detail: d };
+    }
+    return { kind: "strip", strip: leadingStripCrop(crop, d), base: d.amount, detail: d };
+  }
+
+  /* 帯を読んだ結果から、先頭の1文字だけを取り出す。
+     複数出たら、いちばん信頼度の高いものの先頭の数字。 */
+  function firstDigit(results) {
+    const list = (results || [])
+      .map(function (r) {
+        const m = /[1-9]/.exec(String((r && r.text) || "").replace(/\s/g, ""));
+        return m ? { digit: m[0], confidence: Number(r.confidence) || 0 } : null;
+      })
+      .filter(Boolean);
+    if (!list.length) return null;
+    list.sort(function (a, b) { return b.confidence - a.confidence; });
+    return list[0].digit;
+  }
+
+  const RECON_MAX_CONF = 60;   // 推測で作った候補の信頼度の上限（直接読めたものと区別する）
+
+  /* 先頭の数字が分かったら、候補を1つだけ作る。1〜9を総当たりしない。 */
+  function buildReconstructed(base, digit, opts) {
+    const b = Number(base);
+    const dg = String(digit == null ? "" : digit).replace(/\D/g, "");
+    if (!Number.isFinite(b) || b < 100 || b > 999) return null;
+    if (!dg) return null;
+    const head = dg.slice(-3).replace(/^0+/, "");     // 先頭の0は意味がない
+    if (!head) return null;
+    const amount = Number(head) * 1000 + b;
+    if (amount < 1 || amount > 999999) return null;
+    const o = opts || {};
+    return {
+      amount: amount,
+      raw: head + "," + String(b).padStart(3, "0"),
+      confidence: Math.min(RECON_MAX_CONF, Number(o.confidence) || 0),
+      agree: Number(o.agree) || 1,
+      posScore: Number.isFinite(o.posScore) ? o.posScore : 0.5,
+      context: true,
+      source: "reconstructed",
+    };
+  }
+
   /* =======================================================================
      読み取り結果の採点
      ======================================================================= */
@@ -640,6 +750,8 @@
           amount: a.value, raw: a.raw, yen: a.yen,
           line: i, lineCount: lines.length,
           col: a.index, lineLen: line.length,
+          prefix: line.slice(Math.max(0, a.index - 8), a.index),
+          lineText: line,
         });
       });
     });
@@ -682,7 +794,10 @@
     s += Math.min(30, Math.max(0, (Number(c.agree) || 1) - 1) * 15); // 一致数：最大30
     s += commaScore(c.raw) * 15;                                   // 桁区切り：最大15
     s += (Number.isFinite(c.posScore) ? c.posScore : 0.5) * 10;    // 文字列内で中央寄り：最大10
-    return Math.round(Math.min(100, s));
+    if (c.context) s += 10;                                        // 合計らしい手がかり：最大10
+    if (c.truncated) s -= 40;      // カンマが見えている＝4桁以上のはず。3桁の読みは怪しい
+    if (c.source === "reconstructed") s -= 8;   // 推測ぶんは控えめに
+    return Math.round(Math.max(0, Math.min(100, s)));
   }
 
   /* 同じ金額をまとめ、点数順に並べる */
@@ -692,12 +807,19 @@
       if (!c || !Number.isFinite(c.amount) || c.amount <= 0) return;
       const k = String(c.amount);
       if (!byAmount[k]) {
-        byAmount[k] = { amount: c.amount, agree: 0, confidence: 0, raw: c.raw, posScore: 0 };
+        byAmount[k] = {
+          amount: c.amount, agree: 0, confidence: 0, raw: c.raw, posScore: 0,
+          context: false, truncated: false, source: "ocr",
+        };
       }
       const b = byAmount[k];
       b.agree += 1;
       b.confidence = Math.max(b.confidence, Number(c.confidence) || 0);
       b.posScore = Math.max(b.posScore, Number.isFinite(c.posScore) ? c.posScore : 0.5);
+      if (c.context) b.context = true;
+      if (c.truncated) b.truncated = true;
+      if (c.source === "reconstructed" && b.source === "ocr" && b.agree === 1) b.source = "reconstructed";
+      if (c.source === "ocr") b.source = "ocr";      // 一度でも直接読めていれば推測ではない
       if (commaScore(c.raw) > commaScore(b.raw)) b.raw = c.raw;
     });
     const ranked = Object.keys(byAmount).map(function (k) {
@@ -716,6 +838,7 @@
   /* 自動で入れてよいか、利用者に選んでもらうか */
   function needsConfirmation(ranked) {
     if (!ranked || !ranked.length) return false;          // 候補ゼロ＝手入力へ
+    if (ranked[0].source === "reconstructed") return true; // 推測は必ず選んでもらう（自動入力しない）
     if (ranked[0].score < SCORE_CONFIRM) return true;
     if (ranked.length > 1 && ranked[0].score - ranked[1].score < SCORE_GAP) return true;
     return false;
@@ -819,6 +942,14 @@
     scoreCandidate: scoreCandidate,
     rankCandidates: rankCandidates,
     needsConfirmation: needsConfirmation,
+    totalHint: totalHint,
+    truncatedLeading: truncatedLeading,
+    leadingStripCrop: leadingStripCrop,
+    reconstructionPlan: reconstructionPlan,
+    buildReconstructed: buildReconstructed,
+    firstDigit: firstDigit,
+    RECON_MAX_CONF: RECON_MAX_CONF,
+    MAX_CHOICES: 5,
     OCR_PLAN: OCR_PLAN,
     OCR_MAX_RUNS: OCR_MAX_RUNS,
     SCORE_CONFIRM: SCORE_CONFIRM,

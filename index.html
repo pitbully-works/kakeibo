@@ -661,6 +661,27 @@ async function readCrop(){
       if(Core.ocrEnough(candidates)) break;
     }
 
+    /* 先頭の桁が欠けていそうなら、その1文字だけを画像から読み直す（最大1回） */
+    const details = candidates.map(c=>c.detail).filter(Boolean);
+    const plan = Core.reconstructionPlan(details, crop);
+    const already4 = candidates.some(c=>Number(c.amount)>=1000);
+    if(plan && !already4){
+      setStatus("先頭の桁を読み直しています…");
+      const base = candidates.filter(c=>c.amount===plan.base);
+      const agree = base.length || 1;
+      const conf  = base.reduce((a,c)=>Math.max(a,Number(c.confidence)||0),0);
+      let digits = plan.digits || null;
+      if(plan.kind==="strip"){
+        try{
+          const stripImg = await cropToDataUrl(source, plan.strip, "bw");
+          const got = await ocrCandidates([{ img:stripImg, psm:"10" }], { raw:true });
+          digits = Core.firstDigit(got);
+        }catch(e){ digits = null; }
+      }
+      const rebuilt = Core.buildReconstructed(plan.base, digits, { confidence:conf, agree:agree, posScore:0.6 });
+      if(rebuilt) candidates.push(rebuilt);
+    }
+
     const ranked = Core.rankCandidates(candidates);
     if(!ranked.length){
       st.ocrChoices=null;
@@ -668,7 +689,7 @@ async function readCrop(){
       renderSheet(); return;
     }
     if(Core.needsConfirmation(ranked)){
-      st.ocrChoices = ranked.slice(0,3).map(r=>r.amount);
+      st.ocrChoices = ranked.slice(0, Core.MAX_CHOICES).map(r=>r.amount);
       setStatus("どれが合計か選んでください");
       renderSheet(); return;
     }
@@ -772,7 +793,7 @@ function tessWorkerOptions(){
 
 /* 数字だけを読む設定で、渡された「画像 × 読み取り方」の組を順に試す。
    偶然の誤読は重ならないので、同じ数字が複数回出たものを採用する。 */
-async function ocrCandidates(jobs){
+async function ocrCandidates(jobs, opts){
   const T = await loadTesseract();
   const out=[];
   let worker=null;
@@ -790,12 +811,20 @@ async function ocrCandidates(jobs){
       try{
         await worker.setParameters({
           tessedit_pageseg_mode: job.psm,
-          tessedit_char_whitelist:"0123456789,.¥￥"
+          tessedit_char_whitelist: (opts&&opts.raw) ? "0123456789" : "0123456789,.¥￥"
         });
         const { data } = await worker.recognize(job.img);
         const conf = data.confidence||0;
+        if(opts&&opts.raw){ out.push({ text:data.text, confidence:conf }); continue; }
         Core.amountDetails(data.text).forEach(d=>{
-          out.push({ amount:d.amount, raw:d.raw, confidence:conf, posScore:Core.textPositionScore(d) });
+          out.push({
+            amount:d.amount, raw:d.raw, confidence:conf,
+            posScore:Core.textPositionScore(d),
+            context:Core.totalHint(d),                 // ¥ / カンマ / 合計 などの手がかり
+            truncated:!!Core.truncatedLeading(d),      // 先頭の桁が欠けている疑い
+            detail:d,
+            source:"ocr",
+          });
         });
       }catch(e){}
     }
