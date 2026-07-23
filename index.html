@@ -167,6 +167,19 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast .ck{display:inline-block;margin-right:6px}
 
+  /* summary: 内わけ行・タグ・計算式メモ */
+  .krow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;padding:5px 0;color:var(--ink)}
+  .krow span{color:var(--sub)}
+  .krow b{font-weight:800;white-space:nowrap}
+  .krow.sub{padding:0 0 4px;font-size:11px}
+  .tag{display:inline-block;margin-left:6px;font-size:9.5px;font-weight:800;border-radius:999px;padding:1px 7px;vertical-align:1px}
+  .tag.pl{background:#eef2f0;color:var(--sub)}
+  .tag.act{background:var(--green-l);color:var(--green-d)}
+  .calcnote{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 13px;margin-top:10px;
+    font-size:11.5px;color:var(--sub);line-height:1.75}
+  .calcnote b{color:var(--ink);font-weight:800}
+  .catlbl{grid-column:1/-1;font-size:10.5px;color:var(--sub);font-weight:800;margin:2px 2px -2px}
+
   .hidden{display:none !important}
 </style>
 </head>
@@ -182,6 +195,7 @@
 <div class="toast" id="toast"></div>
 <input type="file" id="camInput" accept="image/*" capture="environment" class="hidden">
 
+<script src="./core.js"></script>
 <script>
 /* =========================================================================
    かけいぼ ― 夢に近づく家計簿（MVP）
@@ -191,23 +205,17 @@
 "use strict";
 const STORE_KEY = "kakeibo:v1:state";
 
-/* ---------- カテゴリ定義（絵文字は意味を固定：デザインシステム準拠） ---------- */
-const EXP_CATS = [
-  {k:"food", e:"🥕", n:"食費"}, {k:"eatout", e:"🍜", n:"外食"},
-  {k:"daily", e:"🧴", n:"日用品"}, {k:"transit", e:"🚃", n:"交通"},
-  {k:"hobby", e:"🎨", n:"趣味"}, {k:"medical", e:"🏥", n:"医療"},
-  {k:"social", e:"🎁", n:"交際"}, {k:"other", e:"🐷", n:"その他"},
-];
-const INC_CATS = [
-  {k:"salary", e:"💴", n:"給与"}, {k:"bonus", e:"✨", n:"臨時"},
-  {k:"gift", e:"🎁", n:"贈与"}, {k:"other", e:"🐷", n:"その他"},
-];
-const catOf = (type,k)=> (type==="income"?INC_CATS:EXP_CATS).find(c=>c.k===k) || {e:"🐷",n:"その他"};
+/* ---------- 分類・計算はすべて core.js（唯一の正）から取る ---------- */
+const Core = window.KakeiboCore;
+const FIXED_ITEMS = Core.FIXED_ITEMS;   // 固定費の項目（予定額を設定に持つ）
+const VAR_CATS    = Core.VAR_CATS;      // 変動支出のカテゴリ
+const INC_CATS    = Core.INC_CATS;      // 収入のカテゴリ
+const catOf       = Core.catOf;
+const isFixedCat  = Core.isFixedCat;
 
 /* ---------- 状態 ---------- */
 const defaultState = ()=>({
-  settings:{ incomeNet:0, fixedCost:0, savingsTarget:0, nisaMonthly:0,
-             goalName:"", goalTarget:0, goalCurrent:0, currency:"JPY" },
+  settings: Core.normalizeSettings({}),
   tx:[]  // {id,type:'expense'|'income',amount,cat,date:'YYYY-MM-DD',memo,photo?}
 });
 let state = load();
@@ -215,7 +223,8 @@ let view = "home";
 
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
-    return { settings:Object.assign(defaultState().settings, s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[] }; } }
+    /* normalizeSettings が旧形式（固定費が1つの合計欄）を移行する */
+    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[] }; } }
   catch(e){ /* ignore */ }
   return defaultState();
 }
@@ -232,21 +241,12 @@ function daysLeftInMonth(){ const d=new Date(); const last=new Date(d.getFullYea
 function weekRange(){ const d=new Date(); const day=(d.getDay()+6)%7; /*Mon=0*/ const mon=new Date(d); mon.setDate(d.getDate()-day);
   const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {from:todayISO(mon),to:todayISO(sun)}; }
 
-/* ---------- 集計 ---------- */
+/* ---------- 集計（計算式は core.js が唯一の正。ここでは足し引きしない） ---------- */
 function compute(){
-  const s=state.settings, ym=curYM();
-  const monthTx = state.tx.filter(t=>ymOf(t.date)===ym);
-  const spent = monthTx.filter(t=>t.type==="expense").reduce((a,t)=>a+Number(t.amount||0),0);
-  const extraInc = monthTx.filter(t=>t.type==="income").reduce((a,t)=>a+Number(t.amount||0),0);
-  const income = Number(s.incomeNet||0)+extraInc;
-  const savings = Number(s.savingsTarget||0);
-  const free = income>0 ? (income - Number(s.fixedCost||0) - savings - spent) : null;
-  const {from,to}=weekRange();
-  const weekSpent = state.tx.filter(t=>t.type==="expense"&&t.date>=from&&t.date<=to).reduce((a,t)=>a+Number(t.amount||0),0);
-  // カテゴリ内訳（今月・支出）
-  const byCat={}; monthTx.filter(t=>t.type==="expense").forEach(t=>{ byCat[t.cat]=(byCat[t.cat]||0)+Number(t.amount||0); });
-  const goalPct = s.goalTarget>0 ? Math.min(100, Math.round(s.goalCurrent/s.goalTarget*100)) : null;
-  return {income, extraInc, spent, savings, free, weekSpent, byCat, goalPct, monthTx};
+  const c = Core.computeMonth(state.settings, state.tx, curYM());
+  const {from,to} = weekRange();
+  c.weekSpent = Core.weekSpent(state.tx, from, to);
+  return c;
 }
 
 /* ---------- ルート描画 ---------- */
@@ -263,28 +263,30 @@ function render(){
 function renderHome(){
   const c=compute(), s=state.settings;
   const d=new Date(); const monthLabel=`${d.getMonth()+1}月・のこり${daysLeftInMonth()}日`;
-  let heroL, heroN, heroCls="", ok="";
-  if(c.free!==null){
-    heroL="今月 あと つかえるお金"; heroN=yen(c.free);
-    if(c.free<0){ heroCls="over"; ok=`<span class="ok over">今月は少し使いすぎ。来月そっと調整🍀</span>`; }
-    else if(s.incomeNet>0 && c.free < s.incomeNet*0.08){ heroCls="amber"; ok=`<span class="ok warn">のこりわずか。少しペース注意</span>`; }
+  let heroL, heroN, heroCls="", ok="", note="&nbsp;";
+  if(c.hasIncome){
+    heroL="今月 あと つかえるお金"; heroN=yen(c.available);
+    note="先取り貯金・NISA積立の予定額を除いています";
+    if(c.available<0){ heroCls="over"; ok=`<span class="ok over">今月は少し使いすぎ。来月そっと調整🍀</span>`; }
+    else if(c.available < c.incomeTotal*0.08){ heroCls="amber"; ok=`<span class="ok warn">のこりわずか。少しペース注意</span>`; }
     else ok=`<span class="ok good">👍 このペースなら大丈夫</span>`;
   } else {
-    heroL="今月 つかった金額"; heroN=yen(c.spent);
-    ok=`<span class="ok good">まず記録から。手取りは設定でいつでも</span>`;
+    heroL="今月 つかった金額"; heroN=yen(c.variableSpend);
+    note="給料日に「収入 → 通常給与」を記録すると、使えるお金が出ます";
+    ok=`<span class="ok good">まずは給与の記録から</span>`;
   }
-  const mini = c.free!==null ? `<div class="heromini">
-      <span class="m">手取り<b>${yen(c.income)}</b></span>
-      <span class="m">固定費<b>${yen(s.fixedCost)}</b></span>
-      <span class="m">先取り貯金<b>${yen(s.savings||s.savingsTarget)}</b></span>
-      <span class="m">使った<b>${yen(c.spent)}</b></span></div>` : "";
+  const mini = c.hasIncome ? `<div class="heromini">
+      <span class="m">収入<b>${yen(c.incomeTotal)}</b></span>
+      <span class="m">固定費<b>${yen(c.fixedTotal)}</b></span>
+      <span class="m">先取り<b>${yen(c.setAside)}</b></span>
+      <span class="m">使った<b>${yen(c.variableSpend)}</b></span></div>` : "";
 
   // 夢の帯
   const goalTile = c.goalPct!==null
     ? `<div class="ds gold"><div class="di">🎯</div><div class="dk">${s.goalName||"目標"}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div></div>`
     : `<div class="ds gold" data-go="settings"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">設定する</div></div>`;
-  const nisaTile = `<div class="ds blue"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(s.nisaMonthly)}</div></div>`;
-  const saveTile = `<div class="ds green"><div class="di">🐷</div><div class="dk">貯金</div><div class="dv mono">${yen(s.savingsTarget)}</div></div>`;
+  const nisaTile = `<div class="ds blue"><div class="di">📈</div><div class="dk">NISA（予定）</div><div class="dv mono">${yen(c.nisaPlanned)}</div></div>`;
+  const saveTile = `<div class="ds green"><div class="di">🐷</div><div class="dk">貯金（予定）</div><div class="dv mono">${yen(c.savingsPlanned)}</div></div>`;
 
   return `<div class="screen">
     <div class="greet"><div><div class="g">こんにちは 👋</div><div class="d">${monthLabel}</div></div>
@@ -292,7 +294,7 @@ function renderHome(){
     <div class="hero">
       <div class="l">${heroL}</div>
       <div class="n mono ${heroCls}">${heroN}</div>
-      <div class="u">${s.incomeNet>0?"先取り貯金は、もう済んでます":"&nbsp;"}</div>
+      <div class="u">${note}</div>
       ${ok}
       ${mini}
     </div>
@@ -308,7 +310,8 @@ function renderHome(){
 
 function renderSummary(){
   const c=compute();
-  const net=c.income-Number(state.settings.fixedCost||0)-c.spent; // ざっくり収支（固定費込み）
+  /* ホームと同じ定義。のこり ＝ 収入 － 支出 － 先取り ＝ c.available */
+  const net=c.available;
   // 直近の記録（新しい順、日付グループ）
   const list=[...state.tx].sort((a,b)=> a.date<b.date?1:a.date>b.date?-1: (a.id<b.id?1:-1));
   let recHtml="";
@@ -334,22 +337,43 @@ function renderSummary(){
   const cats=Object.entries(c.byCat).sort((a,b)=>b[1]-a[1]);
   const maxCat=cats.length?cats[0][1]:1;
   const PIE={food:"#8fbf7f",eatout:"#d9a54f",daily:"#4fa8d8",transit:"#b08fd6",hobby:"#e6b0a6",medical:"#c2694f",social:"#6fa88a",other:"#9fb0ab"};
-  const bars = cats.length? cats.map(([k,v])=>{ const cat=EXP_CATS.find(c=>c.k===k)||{e:"🐷",n:"その他"};
+  const bars = cats.length? cats.map(([k,v])=>{ const cat=catOf("expense",k);
       return `<div class="brow"><span class="bt">${cat.e} ${cat.n}</span><span class="track"><span class="fill" style="width:${Math.max(4,Math.round(v/maxCat*100))}%;background:${PIE[k]||"#9fb0ab"}"></span></span><span class="bv mono">${yen(v)}</span></div>`;
-    }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の支出はまだありません</div>`;
+    }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の変動支出はまだありません</div>`;
+
+  // 固定費：項目ごとの予定／実績
+  const shown = c.fixedDetail.filter(d=>d.planned>0||d.actual>0);
+  const fixedRows = shown.length ? shown.map(d=>`<div class="krow">
+      <span>${d.emoji} ${d.name}${d.recorded?`<span class="tag act">実績</span>`:`<span class="tag pl">予定</span>`}</span>
+      <b class="mono">${yen(d.amount)}</b></div>
+      ${d.recorded&&d.planned>0&&d.planned!==d.actual?`<div class="krow sub"><span>　予定 ${yen(d.planned)} → 実績 ${yen(d.actual)}</span><span></span></div>`:""}`).join("")
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">固定費はまだ設定されていません</div>`;
 
   return `<div class="screen">
     <div class="stitle" style="margin-top:6px">今月のまとめ（${new Date().getMonth()+1}月）</div>
     <div class="sumcards">
-      <div class="sc"><div class="l">収入</div><div class="v inc mono">${yen(c.income)}</div></div>
-      <div class="sc"><div class="l">支出</div><div class="v exp mono">${yen(Number(state.settings.fixedCost||0)+c.spent)}</div></div>
+      <div class="sc"><div class="l">収入</div><div class="v inc mono">${yen(c.incomeTotal)}</div></div>
+      <div class="sc"><div class="l">支出</div><div class="v exp mono">${yen(c.spendTotal)}</div></div>
+      <div class="sc"><div class="l">先取り（予定）</div><div class="v mono">${yen(c.setAside)}</div></div>
       <div class="sc"><div class="l">のこり</div><div class="v net mono">${net>=0?"+":""}${yen(net)}</div></div>
+    </div>
+    <div class="calcnote">収入 ${yen(c.incomeTotal)} － 支出 ${yen(c.spendTotal)} － 先取り ${yen(c.setAside)} ＝ <b>${yen(net)}</b><br>
+      この「のこり」は、ホームの「今月あと つかえるお金」と同じ金額です。</div>
+    <div class="barlist">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:4px">
+        <span>収入の内わけ</span><span></span></div>
+      <div class="krow"><span>通常収入（記録した給与）${c.incomeRegularRecorded?"":`<span class="tag pl">未記録</span>`}</span><b class="mono">${yen(c.incomeRegular)}</b></div>
+      <div class="krow"><span>臨時収入</span><b class="mono">${yen(c.incomeExtra)}</b></div>
+      <div style="height:1px;background:var(--line2);margin:10px 0 6px"></div>
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">固定費（実績を記録した項目は実績を採用）</div>
+      ${fixedRows}
+      <div class="krow" style="font-weight:800"><span>固定費 合計</span><b class="mono">${yen(c.fixedTotal)}</b></div>
     </div>
     <div class="barlist">
       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:4px">
-        <span>今週つかった</span><span class="mono" style="font-weight:800;color:var(--ink)">${yen(c.weekSpent)}</span></div>
+        <span>今週つかった（記録した支出）</span><span class="mono" style="font-weight:800;color:var(--ink)">${yen(c.weekSpent)}</span></div>
       <div style="height:1px;background:var(--line2);margin:8px 0 4px"></div>
-      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">何に使ったか（今月）</div>
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">変動支出の内わけ（今月）　合計 ${yen(c.variableSpend)}</div>
       ${bars}
     </div>
     <div class="stitle">きろく</div>
@@ -361,17 +385,26 @@ function renderSettings(){
   const s=state.settings;
   return `<div class="screen">
     <div class="stitle" style="margin-top:6px">毎月のこと（入れておくと、より正確に）</div>
-    <div class="field"><label>手取り収入（月・目安）</label><div class="row"><span class="yen">¥</span>
-      <input class="mono" id="f-income" inputmode="numeric" value="${s.incomeNet||""}" placeholder="0"></div>
-      <div class="fhelp">入れると「今月あと使えるお金」が出ます（未入力でも使えます）</div></div>
-    <div class="field"><label>固定費（月・合計）</label><div class="row"><span class="yen">¥</span>
-      <input class="mono" id="f-fixed" inputmode="numeric" value="${s.fixedCost||""}" placeholder="0"></div>
-      <div class="fhelp">家賃・光熱費・通信・サブスクなどの合計</div></div>
-    <div class="field"><label>先取り貯金（月）</label><div class="row"><span class="yen">¥</span>
+    <div class="calcnote" style="margin:0 0 10px">
+      給料の入力口は<b>「記録」の収入だけ</b>です。毎月の給料日に、
+      記録から「収入 → 💴 通常給与」で入れてください。ここには入れません。
+    </div>
+    <div class="field"><label>先取り貯金（月・予定額）</label><div class="row"><span class="yen">¥</span>
       <input class="mono" id="f-save" inputmode="numeric" value="${s.savingsTarget||""}" placeholder="0"></div>
-      <div class="fhelp">先に貯める分。使えるお金から先に取り分けます</div></div>
-    <div class="field"><label>NISA 積立（月）</label><div class="row"><span class="yen">¥</span>
-      <input class="mono" id="f-nisa" inputmode="numeric" value="${s.nisaMonthly||""}" placeholder="0"></div></div>
+      <div class="fhelp">先に貯める予定の分。使えるお金から先に取り分けます</div></div>
+    <div class="field"><label>NISA 積立（月・予定額）</label><div class="row"><span class="yen">¥</span>
+      <input class="mono" id="f-nisa" inputmode="numeric" value="${s.nisaMonthly||""}" placeholder="0"></div>
+      <div class="fhelp">こちらも「使えるお金」から先に取り分けます</div></div>
+
+    <div class="stitle">固定費（月・項目ごとの予定額）</div>
+    <div class="calcnote" style="margin:0 0 10px">
+      ここは<b>予定額</b>です。電気・ガス・水道などは、実際の金額がわかったら
+      「記録する」からその項目で入力してください。<br>
+      実績を記録した月は<b>予定額のかわりに実績</b>を使うので、二重に数えません。
+    </div>
+    ${FIXED_ITEMS.map(it=>`<div class="field"><label>${it.e} ${it.n}</label><div class="row"><span class="yen">¥</span>
+      <input class="mono" id="f-fx-${it.k}" inputmode="numeric" value="${s.fixed[it.k]||""}" placeholder="0"></div></div>`).join("")}
+    <div class="krow" style="padding:2px 6px 6px"><span>固定費 予定合計</span><b class="mono">${yen(FIXED_ITEMS.reduce((a,it)=>a+Number(s.fixed[it.k]||0),0))}</b></div>
 
     <div class="stitle">夢・目標</div>
     <div class="field"><label>目標の名前</label>
@@ -406,9 +439,21 @@ function openRecord(editId){
   renderSheet(); showSheet(true);
 }
 function renderSheet(){
-  const st=sheetState; const cats = st.type==="income"?INC_CATS:EXP_CATS;
+  const st=sheetState;
+  const cats = st.type==="income" ? INC_CATS : VAR_CATS.concat(FIXED_ITEMS);
   if(st.cat && !cats.find(c=>c.k===st.cat)) st.cat = cats[0].k;
-  const catHtml = cats.map(c=>`<button class="catbtn ${st.cat===c.k?"on":""}" data-cat="${c.k}"><span class="ce">${c.e}</span>${c.n}</button>`).join("");
+  const btn=c=>`<button class="catbtn ${st.cat===c.k?"on":""}" data-cat="${c.k}"><span class="ce">${c.e}</span>${c.n}</button>`;
+  const catHtml = st.type==="income"
+    ? INC_CATS.map(btn).join("")
+    : `<div class="catlbl">変動費（記録するたびに積み上がります）</div>${VAR_CATS.map(btn).join("")}
+       <div class="catlbl">固定費（予定額を、この実績で置きかえます）</div>${FIXED_ITEMS.map(btn).join("")}`;
+  const catNote = st.type==="income"
+    ? (st.cat==="salary"
+        ? `<div class="ocrnote">給料の入力口はここだけです。今月の通常収入になります。</div>`
+        : `<div class="ocrnote">臨時の収入として、今月の収入に上のせされます。</div>`)
+    : (isFixedCat(st.cat)
+        ? `<div class="ocrnote">この項目の予定額のかわりに、この金額を使います（二重に数えません）。</div>`
+        : `<div class="ocrnote">&nbsp;</div>`);
   const photoHtml = st.photo
     ? `<div class="photoprev"><img src="${st.photo}" alt="レシート"><button class="rm" data-act="rm-photo">✕</button></div>
        <div class="ocrnote" id="ocrnote"></div>`
@@ -423,6 +468,7 @@ function renderSheet(){
     <div class="amtbox"><div class="lab">金額</div>
       <input class="amtinput mono" id="s-amt" inputmode="numeric" placeholder="0" value="${st.amount||""}"></div>
     <div class="catgrid">${catHtml}</div>
+    ${catNote}
     <div class="row2">
       <div class="field"><label>日付</label><input type="date" id="s-date" value="${st.date}"></div>
       <div class="field"><label>メモ（任意）</label><input id="s-memo" value="${escapeAttr(st.memo)}" placeholder="お店・内容"></div>
@@ -484,24 +530,18 @@ function saveSettings(){
   const g=id=>{ const el=$(id); return el?el.value:""; };
   const num=v=>{ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; };
   const s=state.settings;
-  s.incomeNet=num(g("f-income")); s.fixedCost=num(g("f-fixed")); s.savingsTarget=num(g("f-save"));
+  s.savingsTarget=num(g("f-save"));
   s.nisaMonthly=num(g("f-nisa")); s.goalName=(g("f-gname")||"").slice(0,24);
   s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));
+  s.fixed = {}; FIXED_ITEMS.forEach(it=>{ s.fixed[it.k]=num(g(`f-fx-${it.k}`)); });
+  /* normalizeSettings が新しい設定オブジェクトを返すので、旧フィールドはここで消える */
+  state.settings = Core.normalizeSettings(s);
   save(); toast("保存しました ✓"); view="home"; render();
 }
 
 /* ---------- 連携：ライフプラン形式の月次スナップショット ---------- */
 function buildSnapshot(){
-  const c=compute(), s=state.settings, ym=curYM();
-  const accounts=[];
-  if(s.savingsTarget>0) accounts.push({type:"CASH_SAVINGS",local:"貯金",contribution:Number(s.savingsTarget)});
-  if(s.nisaMonthly>0) accounts.push({type:"TAX_FREE_INVEST",local:"NISA",contribution:Number(s.nisaMonthly)});
-  return {
-    schema_version:"2.0", country_code:"JP", base_currency:s.currency||"JPY",
-    year_month:ym, income_net:Number(s.incomeNet||0),
-    fixed_cost:Number(s.fixedCost||0), variable_spend:c.spent,
-    accounts
-  };
+  return Core.buildSnapshot(state.settings, state.tx, curYM());
 }
 function exportSnapshot(){
   const snap=buildSnapshot(); const text=JSON.stringify(snap,null,2);
@@ -549,7 +589,7 @@ render();
 if("serviceWorker" in navigator){ window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{})); }
 
 /* テスト用フック（本番挙動には影響しない） */
-window.__kakeibo={ get state(){return state;}, compute, buildSnapshot, save, render, load:()=>{state=load();}, setView:v=>{view=v;render();} };
+window.__kakeibo={ get state(){return state;}, Core, compute, buildSnapshot, save, render, load:()=>{state=load();}, setView:v=>{view=v;render();} };
 </script>
 </body>
 </html>

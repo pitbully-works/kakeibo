@@ -1,76 +1,140 @@
-# かけいぼ ― 夢に近づく家計簿（MVP）
+# かけいぼ ― 夢に近づく家計簿
 
 「面倒で続かなかった人でも続く家計簿」を目指した、ビルド不要の自己完結アプリです。
 開いた瞬間に「今つかえるお金」がひと目でわかり、記録は 1〜2 タップ。将来は「資産形成総合ライフプラン」へ自然につながります。
 
-- **ひと目でわかるホーム**：主役は「今月あと使えるお金」。先取り貯金を引いた“本当に使える額”を大きく表示。
+- **ひと目でわかるホーム**：主役は「今月あと使えるお金」。
 - **1〜2タップで記録**：手入力、またはレシート撮影（任意のOCRで金額を自動読み取り、いつでも手直し可）。
-- **夢の帯**：ホームの下に、目標の達成率・NISA・貯金をそっと表示（邪魔しない）。
 - **端末内だけに保存**：データは `localStorage` に保存し、外部に送信しません。
-- **ライフプラン連携**：設定画面から「月次スナップショット（JSON）」を書き出し。既存アプリの `accounts[]`（`CASH_SAVINGS` / `TAX_FREE_INVEST` …）と同じ形式です。
 - **PWA**：ホーム画面に追加でき、2回目以降はオフラインでも起動します。
+
+---
+
+## 計算仕様（唯一の正）
+
+計算は **`core.js` だけ** に置いてあります。ホーム・まとめ・連携JSONは、
+すべて `core.js` の `computeMonth()` の結果を読むだけで、画面ごとに足し算をしません。
+
+### 正式な計算式
+
+```
+使える額 = 通常収入 + 臨時収入 － 固定費 － 先取り貯金 － NISA積立 － 変動支出
+```
+
+ホームの「今月 あと つかえるお金」、まとめの「のこり」、連携JSONの
+`available_to_spend` は、**必ず同じ値**になります。
+
+### 二重計上を防ぐ2つの原則
+
+**① 固定費は「項目ごとの予定額」。実績を記録した月は、予定額のかわりに実績を使う。**
+
+設定には家賃・電気・ガス・水道・通信・サブスク・保険・その他固定費の予定額を項目別に入れます。
+電気の実績を記録した月は、電気だけが「予定 → 実績」に置きかわります。足し算はしません。
+記録していない項目は予定額のままです。
+
+**② 給料の入力口は「記録」の収入ひとつだけ。設定に手取り収入は持たない。**
+
+同じ給料を2か所に入れられると必ず混乱と二重計上のもとになるため、
+設定の「手取り収入」欄は廃止しました。給料日に、記録から
+「収入 → 💴 通常給与」で入れてください。
+
+- 通常収入 ＝ その月に記録した「通常給与」の合計
+- 臨時収入 ＝ 「臨時・賞与」「贈与」「その他臨時」の合計（別枠で上のせ）
+- 給与を記録していない月は収入0。ホームは「使えるお金」ではなく
+  「今月つかった金額」を表示し、給与の記録をうながします。
+
+### 先取り貯金・NISAは「予定額」
+
+どちらも入金確認をしていないため、**予定額**として扱います。
+画面の表記も「先取り貯金・NISA積立の予定額を除いています」で統一しています。
+
+---
+
+## ライフプラン連携スナップショット（schema_version 2.1）
+
+```json
+{
+  "schema_version": "2.1",
+  "country_code": "JP",
+  "base_currency": "JPY",
+  "year_month": "2026-07",
+
+  "income_regular": 290000,
+  "income_regular_basis": "actual",
+  "income_regular_recorded": true,
+  "income_extra": 50000,
+  "income_actual_total": 340000,
+  "income_net": 340000,
+
+  "fixed_cost_planned": 98000,
+  "fixed_cost_actual": 15000,
+  "fixed_cost": 101000,
+  "fixed_cost_items": [
+    { "key": "power", "name": "電気", "planned": 12000, "actual": 15000, "applied": 15000, "basis": "actual" }
+  ],
+  "variable_spend": 20000,
+  "spend_total": 121000,
+
+  "planned_set_aside": 73000,
+  "accounts": [
+    { "type": "CASH_SAVINGS",    "local": "貯金", "basis": "planned", "planned_contribution": 40000 },
+    { "type": "TAX_FREE_INVEST", "local": "NISA", "basis": "planned", "planned_contribution": 33000 }
+  ],
+
+  "available_to_spend": 149000
+}
+```
+
+**2.0 からの変更点（ライフプラン側の読み取りを直す必要があります）**
+
+| 旧 (2.0) | 新 (2.1) | 理由 |
+| --- | --- | --- |
+| `income_net` は設定の手取りのみ | `income_regular` / `income_extra` / `income_actual_total` に分離。`income_net` は実収入合計。すべて記録した実績 | 臨時収入が抜けていた／設定と記録の二重入力をやめた |
+| `fixed_cost` は設定値のみ | `fixed_cost_planned` / `fixed_cost_actual` / `fixed_cost`（採用値） | 予定と実績の区別がなかった |
+| `accounts[].contribution` | `accounts[].planned_contribution` ＋ `basis: "planned"` | 実績と誤解される名前だった |
+
+`type`（汎用の資産クラス）は既存ライフプランアプリと共通です。
+
+---
 
 ## ファイル構成
 
 ```
-index.html                アプリ本体（HTML/CSS/JSがすべてこの1ファイル）
-manifest.webmanifest      PWA設定
-sw.js                     Service Worker（オフライン対応）
-icon-192.png / 512 / maskable / apple-touch-icon.png   アイコン
+index.html                  画面とUI
+core.js                     計算コア（唯一の正・UI非依存）
+core.test.js                計算仕様の自動テスト
+render.test.js              3画面のレンダリングテスト（白画面の検出）
+integrity.test.js           静的チェック（仕様の逆戻り防止）
+sw.js                       Service Worker（オフライン対応）
+manifest.webmanifest        PWA設定
+icon-*.png                  アイコン
+.github/workflows/test.yml  push のたびに自動テスト
 ```
+
+## テストの実行
+
+追加インストールは不要です（Node 18以降の標準機能だけを使います）。
+
+```bash
+node --test
+```
+
+GitHubへ push すると、`.github/workflows/test.yml` により自動で同じテストが走ります。
+リポジトリの **Actions** タブで結果（緑／赤）を確認できます。
 
 ## すぐ試す
 
-- **手っ取り早く**：`index.html` をブラウザで開くだけで、手入力の記録はすぐ使えます。
-  - ※ レシート撮影（カメラ）はブラウザの仕様上 **https か localhost** でのみ動きます。ローカルで試すときは下記の簡易サーバーを使ってください。
-
 ```bash
-# このフォルダで
 python3 -m http.server 8000
-# → ブラウザで http://localhost:8000 を開く
+# → ブラウザで http://localhost:8000
 ```
+
+※ レシート撮影（カメラ）はブラウザの仕様上 **https か localhost** でのみ動きます。
 
 ## 公開する（GitHub + Vercel）
 
-既存の「資産形成 総合ライフプラン」と同じ手順で公開できます（ビルド設定は不要＝静的サイト）。
-
-1. GitHub に新規リポジトリを作成し、このフォルダの中身を **すべて** アップロード。
-2. [Vercel](https://vercel.com) で「Add New → Project」→ そのリポジトリを Import。
-3. Framework Preset は **Other（Static）** のまま「Deploy」。ビルドコマンドは不要です。
-4. 発行された `https://～.vercel.app` を、スマホで開いて「ホーム画面に追加」。
-
-## 使い方
-
-1. まず右上の ⚙️ から、手取り収入・固定費・先取り貯金・NISA・目標を入れておくと、ホームに「今月あと使えるお金」が出ます（未入力でも使えます）。
-2. 買い物のたびにホームの「記録する」から金額を入れる（またはレシートを撮る）。
-3. 「まとめ」で今週・今月の支出と内訳を確認。
-4. 設定の「ライフプラン用データを書き出す」で、連携用スナップショットを保存。
-
-## ライフプラン連携スナップショットの形式
-
-```json
-{
-  "schema_version": "2.0",
-  "country_code": "JP",
-  "base_currency": "JPY",
-  "year_month": "2026-07",
-  "income_net": 290000,
-  "fixed_cost": 98000,
-  "variable_spend": 1240,
-  "accounts": [
-    { "type": "CASH_SAVINGS",    "local": "貯金", "contribution": 40000 },
-    { "type": "TAX_FREE_INVEST", "local": "NISA", "contribution": 33000 }
-  ]
-}
-```
-
-`type`（汎用の資産クラス）は既存ライフプランアプリと共通なので、国や名称が変わっても受け渡しの形は同じです。
-
-## 技術メモ
-
-- 依存ライブラリなしの素の HTML/CSS/JavaScript（フレームワーク不要）。
-- OCR は初回タップ時に `tesseract.js`（CDN）を読み込む任意機能。読み取れなくても写真は保存され、金額は手入力できます。
-- 将来 React/Vite 化してシリーズ本体に組み込む場合も、状態モデル（`settings` / `tx`）とスナップショット形式はそのまま流用できます。
+静的サイトなのでビルド設定は不要です。Framework Preset は **Other**、
+ビルドコマンドは空欄のまま Deploy してください。
 
 ## 免責
 
