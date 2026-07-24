@@ -1025,10 +1025,16 @@ render();
      ・updateViaCache:"none" で sw.js を必ず取り直す
      ・登録直後に update() で更新確認を明示する
      ・新しい Service Worker に切り替わったら画面を1回だけ読み直す
-     ・再読み込み済みの印を必ず持ち、繰り返しを防ぐ           */
+     ・再読み込み済みの印を必ず持ち、繰り返しを防ぐ
+     ・初めて開いた人（もともと controller が無い人）は読み直さない。
+       初回登録でも controllerchange は発火するため、そのままだと
+       余計なリロードが1回入ってしまう。                      */
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
+      // 登録する前に「すでに Service Worker に制御されていたか」を控えておく
+      const hadController = !!navigator.serviceWorker.controller;
+
       const registration = await navigator.serviceWorker.register("./sw.js", {
         updateViaCache: "none"
       });
@@ -1037,6 +1043,7 @@ if ("serviceWorker" in navigator) {
 
       let refreshing = false;
       navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!hadController) return;  // ← 初回登録。更新ではないので読み直さない
         if (refreshing) return;      // ← 無限に読み直さないための印
         refreshing = true;
         window.location.reload();

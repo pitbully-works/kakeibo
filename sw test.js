@@ -197,6 +197,8 @@ async function runRegistration(opts) {
     console: { error: (...a) => calls.errors.push(a.join(" ")) },
     navigator: {
       serviceWorker: {
+        // すでに Service Worker に制御されている端末かどうか
+        controller: o.controller ? { scriptURL: "./sw.js" } : null,
         register: async (url, options) => {
           calls.register.push({ url, options });
           if (o.failRegister) throw new Error("registration blocked");
@@ -222,7 +224,7 @@ test("登録処理が取り出せる（目印が入っている）", () => {
 });
 
 test("sw.js をキャッシュから読ませない（updateViaCache: none）", async () => {
-  const { calls } = await runRegistration({});
+  const { calls } = await runRegistration({ controller: true });
   assert.equal(calls.register.length, 1, "登録していない");
   assert.equal(calls.register[0].url, "./sw.js");
   // 別の実行環境で作られたオブジェクトなので、中身だけを見る
@@ -233,25 +235,65 @@ test("sw.js をキャッシュから読ませない（updateViaCache: none）", 
 });
 
 test("登録後に update() で更新確認をしている", async () => {
-  const { calls } = await runRegistration({});
+  const { calls } = await runRegistration({ controller: true });
   assert.equal(calls.update, 1, "update() を呼んでいない");
 });
 
-test("新しい Service Worker に切り替わったら、画面を1回だけ読み直す", async () => {
-  const { calls, fire } = await runRegistration({});
+test("更新のとき（すでに制御されていた端末）は、画面を1回だけ読み直す", async () => {
+  const { calls, fire } = await runRegistration({ controller: true });
   assert.equal(calls.reload, 0, "まだ読み直してはいけない");
   fire("controllerchange");
   assert.equal(calls.reload, 1, "切り替わったのに読み直していない");
 });
 
 test("何度切り替わっても、読み直しは1回きり（無限再読み込みしない）", async () => {
-  const { calls, fire } = await runRegistration({});
+  const { calls, fire } = await runRegistration({ controller: true });
   for (let i = 0; i < 10; i++) fire("controllerchange");
   assert.equal(calls.reload, 1, "繰り返し読み直している: " + calls.reload + "回");
 });
 
 test("登録に失敗しても、アプリは落ちない", async () => {
-  const { calls } = await runRegistration({ failRegister: true });
+  const { calls } = await runRegistration({ failRegister: true, controller: true });
   assert.equal(calls.reload, 0);
   assert.ok(calls.errors.length > 0, "失敗を握りつぶしている");
+});
+
+/* ---------- 初回登録では読み直さない ---------- */
+test("初めて開いた人（もともと制御されていない）は、読み直さない", async () => {
+  const { calls, fire } = await runRegistration({ controller: false });
+  assert.equal(calls.register.length, 1, "登録していない");
+  assert.equal(calls.update, 1, "update() を呼んでいない");
+  fire("controllerchange");            // 初回登録でも発火する
+  assert.equal(calls.reload, 0, "初回登録なのに画面を読み直している（余計なリロード）");
+});
+
+test("初回登録では、何度発火しても読み直さない", async () => {
+  const { calls, fire } = await runRegistration({ controller: false });
+  for (let i = 0; i < 10; i++) fire("controllerchange");
+  assert.equal(calls.reload, 0, "初回登録で読み直している: " + calls.reload + "回");
+});
+
+test("制御の有無で挙動が分かれる（同じ発火でも結果が違う）", async () => {
+  const first = await runRegistration({ controller: false });
+  const update = await runRegistration({ controller: true });
+  first.fire("controllerchange");
+  update.fire("controllerchange");
+  assert.equal(first.calls.reload, 0, "初回登録で読み直している");
+  assert.equal(update.calls.reload, 1, "更新なのに読み直していない");
+});
+
+test("制御の有無は、登録する前に控えている", () => {
+  const code = regBlock[0];
+  const check = code.indexOf("navigator.serviceWorker.controller");
+  const register = code.indexOf("navigator.serviceWorker.register");
+  assert.ok(check > 0, "制御の有無を見ていない");
+  assert.ok(check < register, "登録より後に見ている（登録で状態が変わる可能性がある）");
+});
+
+test("初回判定を入れても、更新の仕組みは残っている", () => {
+  const code = regBlock[0];
+  assert.match(code, /updateViaCache: "none"/, "updateViaCache が消えた");
+  assert.match(code, /registration\.update\(\)/, "update() が消えた");
+  assert.match(code, /if \(refreshing\) return;/, "無限リロード防止が消えた");
+  assert.match(code, /window\.location\.reload\(\)/, "読み直しが消えた");
 });
