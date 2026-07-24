@@ -9,14 +9,17 @@
       そこで画面は必ず最新を取りにいき、**通信に失敗したときだけ**
       キャッシュした index.html を返す（オフライン起動は維持）。
 
-   ② それ以外の部品（core.js・アイコン・manifest）＝ キャッシュ優先
-      表示を速くするため。ただし裏でネットワークからも取り直し、
-      次回に備えてキャッシュを更新する。
+   ② アプリのコード（core.js などの .js / .html）＝ ネットワーク優先
+      ここもキャッシュ優先にすると、更新した直後の1回だけ古い core.js が
+      読み込まれてしまう。画面と足並みを揃えて必ず最新を取りにいく。
+
+   ③ 変わらない部品（アイコン・manifest）＝ キャッシュ優先
+      表示を速くするため。裏でネットワークからも取り直して次回に備える。
 
    CACHE の名前を変えると、activate で古いキャッシュを丸ごと捨てる。
    アプリを更新したら、この版数を必ず上げること。
    ============================================================================= */
-const CACHE = "kakeibo-v4";
+const CACHE = "kakeibo-v5";
 const INDEX = "./index.html";
 const ASSETS = [
   "./",
@@ -50,6 +53,25 @@ function isNavigation(request, url) {
   return p.endsWith("/") || p.endsWith("/index.html");
 }
 
+/* アプリのコードかどうか（core.js など）。更新が即座に効いてほしいもの。 */
+function isAppCode(url) {
+  return /\.(js|html)$/i.test(url.pathname);
+}
+
+/* ネットワーク優先で取り、成功したらキャッシュも更新する。
+   失敗したらキャッシュへ落とす（オフラインでも動く）。 */
+function networkFirst(request, cacheKey) {
+  return fetch(request)
+    .then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(cacheKey || request, copy)).catch(() => {});
+      return res;
+    })
+    .catch(() =>
+      caches.match(cacheKey || request).then((hit) => hit || caches.match(request))
+    );
+}
+
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
@@ -59,21 +81,17 @@ self.addEventListener("fetch", (e) => {
 
   // --- ① 画面：ネットワーク優先、失敗したらキャッシュ ---
   if (isNavigation(e.request, url)) {
-    e.respondWith(
-      fetch(e.request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(INDEX, copy)).catch(() => {});
-          return res;
-        })
-        .catch(() =>
-          caches.match(INDEX).then((hit) => hit || caches.match(e.request))
-        )
-    );
+    e.respondWith(networkFirst(e.request, INDEX));
     return;
   }
 
-  // --- ② 部品：キャッシュ優先、裏で更新 ---
+  // --- ② アプリのコード（core.js など）：ネットワーク優先 ---
+  if (isAppCode(url)) {
+    e.respondWith(networkFirst(e.request));
+    return;
+  }
+
+  // --- ③ 変わらない部品：キャッシュ優先、裏で更新 ---
   e.respondWith(
     caches.match(e.request).then((hit) => {
       const fromNet = fetch(e.request)
