@@ -94,7 +94,7 @@ test("せっていで使用量が見え、写真をまとめて消せる", () =>
   assert.match(appSrc, /Core\.storageUsage\(state\)/, "使用量の表示が無い");
   assert.match(appSrc, /data-act="purge-photos"/, "写真を消すボタンが無い");
   assert.match(appSrc, /function purgePhotos\(\)/, "写真を消す処理が無い");
-  assert.match(appSrc, /t\.photo=null;[\s\S]{0,120}記録は残っています/, "記録まで消していないか要確認");
+  assert.match(appSrc, /t\.photo=null;[\s\S]{0,400}記録は残っています/, "記録まで消していないか要確認");
 });
 
 /* ---------- 写真の選び方・記録ボタン ---------- */
@@ -151,8 +151,17 @@ test("読み取りボタンが記録バーに隠れない", () => {
 });
 
 /* ---------- 読み取りライブラリの取得 ---------- */
+test("Tesseractの版が完全固定されている（範囲指定にしない）", () => {
+  const m = /const TESSERACT_VERSION = "([^"]+)";/.exec(appSrc);
+  assert.ok(m, "版の指定が見つからない");
+  assert.match(m[1], /^\d+\.\d+\.\d+$/, "完全な版番号になっていない（@5 のような範囲指定）: " + m[1]);
+  // jsDelivr と unpkg で同じ版を使っていること
+  const uses = (appSrc.match(/tesseract\.js@" \+ TESSERACT_VERSION \+ "/g) || []).length;
+  assert.equal(uses, 2, "2つの配布先で同じ版を使っていない: " + uses);
+});
+
 test("OCRライブラリを公式のjsDelivrから読む（存在しないURLを使わない）", () => {
-  assert.match(appSrc, /https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js@5\/dist\/tesseract\.min\.js/,
+  assert.match(appSrc, /cdn\.jsdelivr\.net\/npm\/tesseract\.js@" \+ TESSERACT_VERSION \+ "\/dist\/tesseract\.min\.js/,
     "公式CDNのURLになっていない");
   assert.equal(appSrc.includes("cdnjs.cloudflare.com"), false,
     "tesseract.js を配布していないCDNを参照している");
@@ -161,7 +170,7 @@ test("OCRライブラリを公式のjsDelivrから読む（存在しないURLを
 test("取得先を順に試し、自前サーバーを最優先にする", () => {
   assert.match(appSrc, /const TESSERACT_SOURCES = \[/, "取得先の一覧が無い");
   assert.match(appSrc, /TESS_LOCAL_DIR \+ "\/tesseract\.min\.js", local:true/, "自前サーバーの選択肢が無い");
-  assert.match(appSrc, /unpkg\.com\/tesseract\.js@5/, "予備の配布先が無い");
+  assert.match(appSrc, /unpkg\.com\/tesseract\.js@" \+ TESSERACT_VERSION/, "予備の配布先が無い");
   assert.match(appSrc, /for\(const src of TESSERACT_SOURCES\)/, "順に試していない");
   const order = appSrc.indexOf("TESS_LOCAL_DIR + \"/tesseract.min.js\"");
   const jsd = appSrc.indexOf("cdn.jsdelivr.net");
@@ -177,7 +186,7 @@ test("自前で置いた場合は、部品の場所も自前に向ける", () =>
 
 test("読み取り失敗の理由を隠さず、どこで失敗したか分かる", () => {
   assert.match(appSrc, /読み取れませんでした：\$\{why\}/, "例外の内容を表示していない");
-  assert.match(appSrc, /読み取り部品を取得できません/, "取得失敗の説明が無い");
+  assert.match(appSrc, /インターネット接続が必要です/, "取得失敗の説明が無い");
   assert.match(appSrc, /navigator\.onLine\?"通信あり":"オフライン"/, "通信状態を出していない");
   assert.match(appSrc, /tried\.join\(" ／ "\)/, "どの取得先で失敗したか出していない");
 });

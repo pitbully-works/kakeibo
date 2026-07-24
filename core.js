@@ -28,7 +28,8 @@
 
   /* ---------- 分類の定義 ---------- */
 
-  /* 固定費の項目（設定に「毎月の予定額」を持ち、実績記録で置き換わる） */
+  /* 固定費として扱う支出カテゴリ。金額はすべて記録から集計する
+     （設定に予定額は持たない。まとめ画面の内わけ表示のためだけの区分） */
   const FIXED_ITEMS = [
     { k: "rent",     e: "🏠", n: "家賃・住居" },
     { k: "power",    e: "💡", n: "電気" },
@@ -858,6 +859,120 @@
   ];
   const OCR_MAX_RUNS = OCR_PLAN.reduce(function (a, st) { return a + st.length; }, 0);
 
+
+  /* =======================================================================
+     バックアップの書き出しと読み込み（純粋関数）
+     -----------------------------------------------------------------------
+     読み込みは「他人が作ったかもしれないファイル」を相手にする。
+     壊れた値・悪意のある値が来てもアプリが壊れないよう、ここで必ず正規化する。
+     ======================================================================= */
+
+  const BACKUP_VERSION = 1;
+  const MEMO_MAX = 60;            // メモの上限文字数（記録画面と同じ）
+  const AMOUNT_MAX = 999999999;   // 金額の上限（これ以上は切り詰める）
+  const TX_MAX = 20000;           // 記録件数の上限（読み込み時の暴走防止）
+
+  /* 書き出す形。version と exportedAt を付ける。 */
+  function buildBackup(state) {
+    const st = state || {};
+    return {
+      version: BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      settings: normalizeSettings(st.settings),
+      tx: (Array.isArray(st.tx) ? st.tx : []).map(normalizeTransaction).filter(Boolean),
+    };
+  }
+
+  /* JSONとして読めるか。読めなければ理由つきで投げる。 */
+  function parseBackupJson(text) {
+    const t = String(text == null ? "" : text).trim();
+    if (!t) throw new Error("ファイルが空です");
+    let data;
+    try {
+      data = JSON.parse(t);
+    } catch (e) {
+      throw new Error("バックアップの中身を読み取れませんでした（JSONではありません）");
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("バックアップの形が違います");
+    }
+    return data;
+  }
+
+  /* YYYY-MM-DD として妥当か（2026-02-31 のような存在しない日付も弾く） */
+  function validateDateString(value) {
+    const v = String(value == null ? "" : value);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+    const y = Number(v.slice(0, 4)), m = Number(v.slice(5, 7)), d = Number(v.slice(8, 10));
+    if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  }
+
+  /* 記録1件を安全な形に整える。整えられなければ null。 */
+  function normalizeTransaction(tx) {
+    if (!tx || typeof tx !== "object" || Array.isArray(tx)) return null;
+
+    const type = tx.type === "income" ? "income" : tx.type === "expense" ? "expense" : null;
+    if (!type) return null;                                   // 不明な種別は捨てる
+
+    let amount = Number(tx.amount);
+    if (!Number.isFinite(amount)) return null;                // 文字列・NaN・Infinity は捨てる
+    amount = Math.floor(Math.abs(amount));                    // 負数・小数は整数の絶対値へ
+    if (amount > AMOUNT_MAX) amount = AMOUNT_MAX;             // 巨大値は上限で止める
+
+    if (!validateDateString(tx.date)) return null;            // 日付が不正なら捨てる
+
+    const pool = type === "income" ? INC_CATS : VAR_CATS.concat(FIXED_ITEMS);
+    const cat = pool.some(function (c) { return c.k === tx.cat; })
+      ? tx.cat
+      : (type === "income" ? "other" : "other");              // 未知のカテゴリは「その他」へ
+
+    const memo = String(tx.memo == null ? "" : tx.memo).slice(0, MEMO_MAX);
+
+    /* 写真は data URL の画像だけを受け入れる。それ以外は捨てる。 */
+    let photo = null;
+    if (typeof tx.photo === "string" && /^data:image\/[a-z+.-]+;base64,/i.test(tx.photo)) {
+      photo = tx.photo;
+    }
+
+    const id = (typeof tx.id === "string" && tx.id) ? tx.id.slice(0, 64) : null;
+
+    return { id: id, type: type, amount: amount, cat: cat, date: tx.date, memo: memo, photo: photo };
+  }
+
+  /* バックアップ全体を安全な形に整える。形が違えば理由つきで投げる。 */
+  function normalizeBackup(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("バックアップの形が違います");
+    }
+    const settings = data.settings;
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+      throw new Error("設定が入っていません");
+    }
+    if (!Array.isArray(data.tx)) {
+      throw new Error("記録が入っていません");
+    }
+    const seen = {};
+    const tx = [];
+    let dropped = 0;
+    data.tx.slice(0, TX_MAX).forEach(function (raw) {
+      const t = normalizeTransaction(raw);
+      if (!t) { dropped++; return; }
+      /* id が無い・重複しているものには新しい id を振る */
+      if (!t.id || seen[t.id]) t.id = "r" + tx.length + "-" + Math.random().toString(36).slice(2, 8);
+      seen[t.id] = true;
+      tx.push(t);
+    });
+    if (data.tx.length > TX_MAX) dropped += data.tx.length - TX_MAX;
+    return {
+      settings: normalizeSettings(settings),
+      tx: tx,
+      dropped: dropped,
+      version: Number(data.version) || 0,   // 旧形式は version が無い＝0
+    };
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -950,6 +1065,15 @@
     firstDigit: firstDigit,
     RECON_MAX_CONF: RECON_MAX_CONF,
     MAX_CHOICES: 5,
+    buildBackup: buildBackup,
+    parseBackupJson: parseBackupJson,
+    validateDateString: validateDateString,
+    normalizeTransaction: normalizeTransaction,
+    normalizeBackup: normalizeBackup,
+    BACKUP_VERSION: BACKUP_VERSION,
+    MEMO_MAX: MEMO_MAX,
+    AMOUNT_MAX: AMOUNT_MAX,
+    TX_MAX: TX_MAX,
     OCR_PLAN: OCR_PLAN,
     OCR_MAX_RUNS: OCR_MAX_RUNS,
     SCORE_CONFIRM: SCORE_CONFIRM,

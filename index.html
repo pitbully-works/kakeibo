@@ -231,6 +231,7 @@
 <div class="sheet" id="sheet"></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="camInput" accept="image/*" capture="environment" class="hidden">
+<input type="file" id="backupInput" accept="application/json,.json" class="hidden">
 
 <script src="./core.js"></script>
 <script>
@@ -459,7 +460,8 @@ function renderSettings(){
       この端末に保存できるのは<b>およそ5MB</b>までです。${u.nearLimit?"<b style=\"color:var(--terra)\">空きが少なくなっています。</b>":""}
     </div>
     <button class="btn-ghost" data-act="export-snapshot">📤 ライフプラン用データを書き出す</button>
-    <button class="btn-quiet" data-act="export-backup">すべてのデータをバックアップ（JSON）</button>
+    <button class="btn-quiet" data-act="export-backup">📥 バックアップを書き出す（JSON）</button>
+    <button class="btn-quiet" data-act="import-backup">📤 バックアップを読み込む（JSON）</button>
     <button class="btn-quiet" data-act="purge-photos">🗑 写真をすべて消す（記録は残ります）</button>
 
     <div class="savebar">
@@ -506,7 +508,8 @@ function renderSheet(){
          <img id="cropimg" src="${st.photo}" alt="レシート">
          <div class="cropbox" id="cropbox"><span class="h tl"></span><span class="h br"></span></div>
        </div>
-       <div class="shothint">白い枠を動かして、<b>合計の金額だけ</b>を囲んでください。<br>枠の中しか読み取らないので、他の金額と混ざりません。</div>
+       <div class="shothint">白い枠を動かして、<b>合計の金額だけ</b>を囲んでください。<br>枠の中しか読み取らないので、他の金額と混ざりません。<br>
+         <span style="color:#a7b2af">初回の読み取りにはインターネット接続が必要です</span></div>
        <button class="photobtn main big" data-act="read-crop">🔍 この枠の金額を読み取る</button>
        <button class="photobtn" data-act="shot-total">📸 撮り直す</button>
        <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
@@ -529,7 +532,7 @@ function renderSheet(){
     ${catNote}
     <div class="row2">
       <div class="field"><label>日付</label><input type="date" id="s-date" value="${st.date}"></div>
-      <div class="field"><label>メモ（任意）</label><input id="s-memo" value="${escapeAttr(st.memo)}" placeholder="お店・内容"></div>
+      <div class="field"><label>メモ（任意）</label><input id="s-memo" maxlength="${Core.MEMO_MAX}" value="${escapeAttr(st.memo)}" placeholder="お店・内容"></div>
     </div>
     ${st.mode==="edit"?`<button class="delbtn" data-act="del-tx">この記録を削除</button>`:""}
     <div class="sheetsave">
@@ -540,7 +543,7 @@ function renderSheet(){
 function readSheetInputs(){
   const st=sheetState; if(!st) return;
   const a=$("s-amt"), d=$("s-date"), m=$("s-memo");
-  if(a) st.amount=a.value; if(d) st.date=d.value||todayISO(); if(m) st.memo=m.value;
+  if(a) st.amount=a.value; if(d) st.date=d.value||todayISO(); if(m) st.memo=String(m.value||"").slice(0,Core.MEMO_MAX);
 }
 function showSheet(on){ $("scrim").classList.toggle("show",on); $("sheet").classList.toggle("show",on);
   if(!on){ releaseOcrImage(sheetState); sheetState=null; clearPending(); } }
@@ -739,11 +742,14 @@ function cropToDataUrl(src, crop, style){
 /* 読み取りライブラリの取得先。
    ①自分のサーバー（tess/ に置いた場合）→ ②jsDelivr → ③unpkg の順に試す。
    ①があれば外部CDNに一切依存せず、オフラインでも動く。 */
+const TESSERACT_VERSION = "5.1.1";   // 完全固定（@5 のような範囲指定にしない）
 const TESS_LOCAL_DIR = "./tess";
 const TESSERACT_SOURCES = [
   { name:"この端末のサーバー", url: TESS_LOCAL_DIR + "/tesseract.min.js", local:true },
-  { name:"jsDelivr",          url:"https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" },
-  { name:"unpkg",             url:"https://unpkg.com/tesseract.js@5/dist/tesseract.min.js" }
+  /* 版は完全固定。jsDelivr と unpkg で同じ版を使う。
+     worker / core / 言語データも、この版に付属するものが使われる。 */
+  { name:"jsDelivr",          url:"https://cdn.jsdelivr.net/npm/tesseract.js@" + TESSERACT_VERSION + "/dist/tesseract.min.js" },
+  { name:"unpkg",             url:"https://unpkg.com/tesseract.js@" + TESSERACT_VERSION + "/dist/tesseract.min.js" }
 ];
 let tessSource=null;
 
@@ -776,7 +782,10 @@ async function loadTesseract(){
     }catch(e){ tried.push(src.name+"："+((e&&e.message)?e.message:"つながらない")); }
   }
   const online = (typeof navigator!=="undefined" && "onLine" in navigator) ? (navigator.onLine?"通信あり":"オフライン") : "通信状態不明";
-  throw new Error(`読み取り部品を取得できません（${online}／${tried.join(" ／ ")}）`);
+  throw new Error(
+    "初回のレシート読み取りにはインターネット接続が必要です。読み取れない場合は金額を手入力してください" +
+    `（${online}／${tried.join(" ／ ")}）`
+  );
 }
 
 /* 自前で置いた場合は、部品の場所も自分のサーバーに向ける */
@@ -924,19 +933,38 @@ async function saveTx(){
   toast(msg);
 }
 
-function delTx(){ if(!sheetState||sheetState.mode!=="edit") return;
-  state.tx=state.tx.filter(t=>t.id!==sheetState.id); save(); showSheet(false); render(); toast("削除しました"); }
+function delTx(){
+  if(!sheetState||sheetState.mode!=="edit") return;
+  const before = JSON.parse(JSON.stringify(state.tx));   // 失敗したら戻せるように退避
+  state.tx = state.tx.filter(t=>t.id!==sheetState.id);
+  if(!save()){
+    state.tx = before;            // 消えたように見えて復活する、を防ぐ
+    toast("削除できませんでした");
+    return;                       // 編集シートは閉じない
+  }
+  showSheet(false); render(); toast("削除しました");
+}
 
 function saveSettings(){
   const g=id=>{ const el=$(id); return el?el.value:""; };
   const num=v=>{ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; };
-  const s=state.settings;
+
+  /* 保存に失敗したときのために、変更前の設定をまるごと退避する */
+  const before = JSON.parse(JSON.stringify(state.settings));
+
+  const s=Object.assign({}, state.settings);
   s.savingsTarget=num(g("f-save"));
   s.nisaMonthly=num(g("f-nisa")); s.goalName=(g("f-gname")||"").slice(0,24);
   s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));
   /* normalizeSettings が新しい設定オブジェクトを返すので、旧フィールドはここで消える */
   state.settings = Core.normalizeSettings(s);
-  save(); toast("保存しました ✓"); view="home"; render();
+
+  if(!save()){
+    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す
+    toast("設定を保存できませんでした");
+    return;                       // 設定画面は閉じない
+  }
+  toast("保存しました ✓"); view="home"; render();
 }
 
 /* ---------- 連携：ライフプラン形式の月次スナップショット ---------- */
@@ -950,12 +978,62 @@ function exportSnapshot(){
 }
 function purgePhotos(){
   const n=state.tx.filter(t=>t.photo).length;
-  if(!n){ toast("消せる写真はありません"); return; }
+  if(!n){ toast("消せる写真はありません"); return; }   // 保存処理そのものを行わない
+  const before = JSON.parse(JSON.stringify(state.tx)); // 失敗したら戻せるように退避
   state.tx.forEach(t=>{ t.photo=null; });
-  if(save()){ render(); toast(`写真${n}枚を消しました（記録は残っています）`); }
-  else { toast("消せませんでした"); }
+  if(!save()){
+    state.tx = before;            // 写真をすべて元へ戻す
+    toast("写真を消せませんでした");
+    return;                       // 再描画しない
+  }
+  render(); toast(`写真${n}枚を消しました（記録は残っています）`);
 }
-function exportBackup(){ downloadText(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(state,null,2)); toast("バックアップを書き出しました"); }
+function exportBackup(){
+  downloadText(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(Core.buildBackup(state), null, 2));
+  toast("バックアップを書き出しました");
+}
+
+/* --- バックアップの読み込み（復元） --- */
+function pickBackup(){ const el=$("backupInput"); if(el){ el.value=""; el.click(); } }
+
+function onBackupPicked(file){
+  const el=$("backupInput");
+  const clear=()=>{ if(el) el.value=""; };   // 同じファイルをもう一度選べるようにする
+  if(!file){ clear(); return; }
+  const reader=new FileReader();
+  reader.onerror=()=>{ toast("ファイルを読み込めませんでした"); clear(); };
+  reader.onload=()=>{
+    let restored;
+    try{
+      const raw = Core.parseBackupJson(reader.result);
+      restored = Core.normalizeBackup(raw);         // ここで壊れた値を安全な形に整える
+    }catch(e){
+      toast(`読み込めません：${(e&&e.message)||"形式が違います"}`);
+      clear(); return;                              // 現在のデータは一切変更しない
+    }
+
+    const ok = confirm(
+      "現在のデータを上書きします。\n先にバックアップを書き出すことをおすすめします。\n\n" +
+      `復元する記録：${restored.tx.length}件` +
+      (restored.dropped ? `（読み取れなかった${restored.dropped}件は除外）` : "") +
+      "\n\n続けますか？"
+    );
+    if(!ok){ clear(); return; }                     // キャンセル：何も変えない
+
+    const before = JSON.parse(JSON.stringify(state));
+    state.settings = restored.settings;
+    state.tx = restored.tx;
+    if(!save()){
+      state = before;                               // 保存できないなら元のまま
+      toast("バックアップを復元できませんでした");
+      clear(); return;
+    }
+    view="home"; render();
+    toast(`バックアップを復元しました（${restored.tx.length}件）`);
+    clear();
+  };
+  reader.readAsText(file);
+}
 function downloadText(name,text){
   const blob=new Blob([text],{type:"application/json"}); const url=URL.createObjectURL(blob);
   const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click();
@@ -1006,8 +1084,10 @@ function handleAct(a,e){
   if(a==="export-snapshot") return exportSnapshot();
   if(a==="export-backup") return exportBackup();
   if(a==="purge-photos") return purgePhotos();
+  if(a==="import-backup") return pickBackup();
 }
 $("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
+$("backupInput").addEventListener("change",e=>{ onBackupPicked(e.target.files&&e.target.files[0]); });
 
 /* ---------- 起動 ---------- */
 render();

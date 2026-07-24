@@ -137,7 +137,7 @@ test("取得に失敗したときは、通信状態つきの説明が返る（Re
     () => vm.runInContext("loadTesseract()", vm.createContext(sb)),
     (err) => {
       assert.equal(err instanceof ReferenceError, false, "関数が存在せず ReferenceError になっている");
-      assert.match(String(err.message), /読み取り部品を取得できません/);
+      assert.match(String(err.message), /インターネット接続が必要です/);
       assert.match(String(err.message), /通信あり|オフライン/);
       return true;
     }

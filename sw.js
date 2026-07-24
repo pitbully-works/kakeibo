@@ -19,7 +19,7 @@
    CACHE の名前を変えると、activate で古いキャッシュを丸ごと捨てる。
    アプリを更新したら、この版数を必ず上げること。
    ============================================================================= */
-const CACHE = "kakeibo-v5";
+const CACHE = "kakeibo-v6";
 const INDEX = "./index.html";
 const ASSETS = [
   "./",
