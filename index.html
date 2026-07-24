@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="かけいぼ">
+<meta name="theme-color" content="#3f826a">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>かけいぼ ― 夢に近づく家計簿</title>
+<style>
+  :root{
+    --bg:#f4f7f5; --card:#ffffff; --ink:#1e2a28; --sub:#647476; --line:#e7ecee; --line2:#eef2f0;
+    --green:#6fa88a; --green-d:#3f826a; --green-dd:#356e59; --green-l:#e6f1eb;
+    --sage:#8fbf7f; --gold:#d9a54f; --gold-d:#b4842f; --gold-l:#f8efd9;
+    --blue:#4fa8d8; --blue-l:#e4f1f9; --amber:#e0972b; --amber-l:#fbeed4;
+    --terra:#c2694f; --terra-l:#f6e5df; --pink:#e2739a; --pink-l:#fbe8f0;
+    --shadow:0 1px 3px rgba(20,40,38,.05),0 10px 26px rgba(20,40,38,.07);
+    --radius:16px; --nav-h:64px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.7;font-size:16px;-webkit-font-smoothing:antialiased;
+    overscroll-behavior-y:none}
+  .mono{font-family:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,"Roboto Mono",monospace;letter-spacing:-.02em}
+  button{font-family:inherit;cursor:pointer;border:0;background:none}
+  input,select,textarea{font-family:inherit;font-size:16px}
+
+  #app{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 8px)}
+  .screen{padding:16px 16px 8px;animation:fadein .28s cubic-bezier(.2,.7,.3,1)}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* top greeting */
+  .greet{padding:10px 4px 2px}
+  .greet .g{font-size:12.5px;color:var(--sub);font-weight:700}
+  .greet .date{font-size:27px;font-weight:800;line-height:1.25;letter-spacing:-.01em;margin-top:1px}
+  .greet .date .wd{font-size:17px;margin-left:4px;color:var(--sub)}
+  .greet .d{font-size:12px;color:var(--sub);margin-top:1px}
+
+  /* hero */
+  .hero{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:22px 18px 18px;text-align:center;box-shadow:var(--shadow);margin-top:8px}
+  .hero .l{font-size:13px;color:var(--sub)}
+  .hero .n{font-size:44px;font-weight:800;color:var(--green-d);line-height:1.12;margin:4px 0;word-break:keep-all}
+  .hero .n.amber{color:var(--amber)}
+  .hero .n.over{color:var(--terra)}
+  .hero .u{font-size:12.5px;color:var(--sub);min-height:18px}
+  .hero .ok{display:inline-block;margin-top:8px;font-size:12px;border-radius:999px;padding:5px 14px;font-weight:800}
+  .hero .ok.good{background:var(--green-l);color:var(--green-d)}
+  .hero .ok.warn{background:var(--amber-l);color:var(--amber)}
+  .hero .ok.over{background:var(--terra-l);color:var(--terra)}
+  .heromini{display:flex;gap:8px;padding:10px 14px 0;justify-content:center;flex-wrap:wrap}
+  .heromini .m{font-size:11px;color:var(--sub);background:#f6f8f7;border-radius:9px;padding:5px 9px}
+  .heromini .m b{color:var(--ink);font-weight:800}
+
+  /* dream strip */
+  .dreamlbl{text-align:center;font-size:10px;color:#9aa6a3;margin:16px 0 6px;letter-spacing:.05em}
+  .dreamstrip{display:flex;gap:8px}
+  .ds{flex:1;min-width:0;border-radius:14px;padding:10px 8px 11px;text-align:center;background:var(--card);border:1px solid var(--line);
+    transition:transform .12s cubic-bezier(.2,.7,.3,1)}
+  .ds:active{transform:scale(.97)}
+  .ds .tapin{font-size:9px;color:#a7b2af;margin-top:5px}
+  .ds .di{font-size:16px}
+  .ds .dk{font-size:9.5px;color:var(--sub);margin-top:2px}
+  .ds .dv{font-size:12.5px;font-weight:800;white-space:nowrap;margin-top:1px}
+  .ds.gold .dv{color:var(--gold-d)}.ds.blue .dv{color:#2f7fad}.ds.green .dv{color:var(--green-d)}
+  .ds .track{height:5px;background:#ecefed;border-radius:3px;overflow:hidden;margin-top:7px}
+  .ds .track>i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#e7c06f,var(--gold));transition:width .5s cubic-bezier(.2,.7,.3,1)}
+
+  /* big record button */
+  .recordbtn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:18px;
+    background:var(--green-d);color:#fff;border-radius:18px;padding:17px;font-size:16.5px;font-weight:800;
+    box-shadow:0 8px 18px rgba(63,130,106,.32);transition:transform .12s cubic-bezier(.2,.7,.3,1)}
+  .recordbtn:active{transform:scale(.975)}
+  .subrow{display:flex;justify-content:center;gap:26px;margin-top:14px}
+  .subrow button{font-size:12.5px;color:var(--green-d);font-weight:700;display:flex;align-items:center;gap:5px}
+
+  /* section titles */
+  .stitle{font-size:13px;font-weight:800;color:var(--sub);margin:20px 4px 8px}
+
+  /* records list */
+  .daygroup{margin-bottom:14px}
+  .dayhd{font-size:11.5px;color:var(--sub);font-weight:700;padding:0 4px 6px;display:flex;justify-content:space-between}
+  .txcard{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .tx{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line2)}
+  .tx:last-child{border-bottom:0}
+  .tx .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:18px;flex:0 0 auto;background:#f4f7f5}
+  .tx .mid{flex:1;min-width:0}
+  .tx .t1{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tx .t2{font-size:11px;color:var(--sub)}
+  .tx .amt{font-size:15px;font-weight:800;white-space:nowrap}
+  .tx .amt.exp{color:var(--ink)}
+  .tx .amt.inc{color:var(--green-d)}
+
+  .empty{text-align:center;color:var(--sub);font-size:13.5px;padding:34px 16px;background:var(--card);border:1px dashed var(--line);border-radius:16px}
+  .empty .e{font-size:30px;display:block;margin-bottom:8px}
+
+  /* summary */
+  .sumcards{display:flex;gap:10px}
+  .sc{flex:1;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px 12px;text-align:center}
+  .sc .l{font-size:10.5px;color:var(--sub)}
+  .sc .v{font-size:18px;font-weight:800;margin-top:2px}
+  .sc .v.inc{color:var(--green-d)}.sc .v.exp{color:var(--terra)}.sc .v.net{color:var(--gold-d)}
+  .barlist{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-top:12px}
+  .brow{display:flex;align-items:center;gap:9px;margin:9px 0;font-size:12px}
+  .brow .bt{width:64px;flex:0 0 auto;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brow .track{flex:1;height:10px;background:#eef1ef;border-radius:6px;overflow:hidden}
+  .brow .fill{display:block;height:100%;border-radius:6px}
+  .brow .bv{width:58px;text-align:right;flex:0 0 auto;font-weight:800}
+  .segbtns{display:flex;background:#eaeeec;border-radius:12px;padding:3px;margin:4px 0 2px}
+  .segbtns button{flex:1;padding:8px;border-radius:9px;font-size:13px;font-weight:800;color:var(--sub)}
+  .segbtns button.on{background:#fff;color:var(--green-d);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+
+  /* settings */
+  .field{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+  .field label{font-size:12px;color:var(--sub);font-weight:700;display:block;margin-bottom:4px}
+  .field .row{display:flex;align-items:center;gap:8px}
+  .field .yen{font-size:16px;color:var(--sub);font-weight:800}
+  .field input,.field select{width:100%;border:0;border-bottom:2px solid var(--line);padding:6px 2px;background:transparent;font-weight:700;color:var(--ink);outline:none}
+  .field input:focus,.field select:focus{border-color:var(--green)}
+  .field input.mono{font-size:20px}
+  .fhelp{font-size:11px;color:var(--sub);margin-top:5px}
+  .savebar{position:sticky;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));padding-top:8px}
+  .btn-primary{width:100%;background:var(--green-d);color:#fff;border-radius:15px;padding:15px;font-size:15.5px;font-weight:800;box-shadow:0 6px 14px rgba(63,130,106,.28)}
+  .btn-ghost{width:100%;background:#fff;color:var(--green-d);border:1.5px solid #bfe0d3;border-radius:15px;padding:13px;font-size:14px;font-weight:800;margin-top:8px}
+  .btn-quiet{width:100%;color:var(--sub);font-size:12.5px;padding:10px;font-weight:700;margin-top:2px}
+
+  /* bottom nav */
+  .nav{position:fixed;left:0;right:0;bottom:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));
+    padding-bottom:env(safe-area-inset-bottom,0px);background:rgba(255,255,255,.94);backdrop-filter:blur(8px);
+    border-top:1px solid var(--line);display:flex;z-index:55}
+  .nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--sub);font-size:10.5px;font-weight:700}
+  .nav button .ni{font-size:20px;line-height:1}
+  .nav button.on{color:var(--green-d)}
+
+  /* sheet (record / edit) */
+  .scrim{position:fixed;inset:0;background:rgba(15,25,23,.4);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));
+    max-width:520px;margin:0 auto;background:var(--bg);
+    border-radius:24px 24px 0 0;z-index:51;transform:translateY(110%);transition:transform .3s cubic-bezier(.2,.8,.25,1);
+    max-height:calc(100vh - var(--nav-h) - env(safe-area-inset-bottom,0px) - 24px);
+    overflow-y:auto;padding:8px 16px 20px}
+  .sheet.show{transform:translateY(0)}
+  /* シートの見出し。左に余白、右に閉じる */
+  .sheethd{position:relative;display:flex;align-items:center;justify-content:center;margin:2px 0 12px}
+  .sheethd h3{font-size:16px;font-weight:800;margin:0}
+  .sheethd .close{position:absolute;right:-4px;top:50%;transform:translateY(-50%);
+    width:34px;height:34px;border-radius:999px;background:#fff;border:1px solid var(--line);
+    color:var(--sub);font-size:16px;font-weight:800;display:grid;place-items:center}
+  .grip{width:40px;height:4px;background:#d3dbd8;border-radius:2px;margin:8px auto 6px}
+  .sheet h3{font-size:16px;font-weight:800;text-align:center;margin:2px 0 12px}
+  .typetog{display:flex;background:#eaeeec;border-radius:12px;padding:3px;margin-bottom:14px}
+  .typetog button{flex:1;padding:9px;border-radius:9px;font-size:13.5px;font-weight:800;color:var(--sub)}
+  .typetog button.on.exp{background:#fff;color:var(--terra)}
+  .typetog button.on.inc{background:#fff;color:var(--green-d)}
+  .amtbox{text-align:center;padding:6px 0 12px}
+  .amtbox .lab{font-size:11px;color:var(--sub)}
+  .amtbox .amtinput{border:0;text-align:center;font-size:44px;font-weight:800;color:var(--ink);width:100%;outline:none;background:transparent}
+  .amtbox .amtinput::placeholder{color:#c8d2cf}
+  .catgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:6px 0 12px}
+  .catbtn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:9px 4px;text-align:center;font-size:11px;color:var(--sub);font-weight:700}
+  .catbtn .ce{font-size:19px;display:block}
+  .catbtn.on{background:var(--green-l);border-color:#bfe0d3;color:var(--green-d)}
+  .row2{display:flex;gap:10px;margin-bottom:12px}
+  .row2 .field{flex:1;margin-bottom:0}
+  .photobtn{display:block;width:100%;border:1.5px dashed #c3d3ce;border-radius:14px;padding:12px;color:var(--green-d);font-weight:800;font-size:13.5px;background:#fff;margin-bottom:8px;text-align:center}
+  .photobtn.main{border-style:solid;border-color:var(--green);background:var(--green-l)}
+  .photobtn.big{padding:16px 12px;font-size:15px;margin-bottom:14px}
+  .photobtn .sm{display:block;font-size:10.5px;font-weight:700;color:var(--sub);margin-top:2px}
+  .shothint{font-size:11px;color:var(--sub);text-align:center;margin:0 0 12px;line-height:1.6}
+  /* 読み取り候補 */
+  .choices{margin:2px 0 12px}
+  .choices .cl{font-size:11px;color:var(--sub);text-align:center;margin-bottom:7px}
+  .choice{display:block;width:100%;background:#fff;border:1.5px solid #bfe0d3;border-radius:14px;
+    padding:14px;font-size:19px;font-weight:800;color:var(--green-d);margin-bottom:8px}
+  .choice:active{transform:scale(.985)}
+  .choice.manual{font-size:13.5px;font-weight:700;color:var(--sub);border-style:dashed;border-color:var(--line);padding:12px}
+  /* 切り取り枠 */
+  .cropwrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);
+    background:#11201c;margin-bottom:8px;touch-action:none;user-select:none;-webkit-user-select:none}
+  .cropwrap img{width:100%;display:block;max-height:44vh;object-fit:contain;pointer-events:none}
+  .cropbox{position:absolute;border:2.5px solid #fff;border-radius:5px;
+    box-shadow:0 0 0 9999px rgba(10,20,18,.55);cursor:move}
+  .cropbox .h{position:absolute;width:34px;height:34px;background:#fff;border-radius:10px;
+    border:1px solid rgba(0,0,0,.12);box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .cropbox .h.tl{left:-17px;top:-17px}
+  .cropbox .h.br{right:-17px;bottom:-17px}
+  .cropbox .h::after{content:"";position:absolute;inset:11px;border-radius:3px;background:#9fb0ab}
+  .photoprev{position:relative;margin-bottom:12px;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+  .photoprev img{width:100%;display:block;max-height:180px;object-fit:cover}
+  .photoprev .rm{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;width:28px;height:28px;font-size:15px}
+  .ocrnote{font-size:11.5px;color:var(--sub);text-align:center;margin:-4px 0 10px}
+  .delbtn{width:100%;color:var(--terra);font-size:13px;font-weight:700;padding:12px;margin-top:2px}
+  /* 記録ボタンはシートの下に貼り付けて、どこまでスクロールしても押せるように */
+  .sheetsave{position:sticky;bottom:0;z-index:3;padding:12px 0 6px;margin-top:10px;background:var(--bg);
+    box-shadow:0 -10px 14px -6px rgba(244,247,245,.95)}
+
+  .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 20px);transform:translateX(-50%) translateY(20px);
+    background:var(--green-dd);color:#fff;font-size:13.5px;font-weight:700;padding:11px 20px;border-radius:999px;
+    z-index:60;opacity:0;transition:all .3s cubic-bezier(.2,.7,.3,1);box-shadow:0 8px 20px rgba(20,40,38,.25);white-space:nowrap}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast .ck{display:inline-block;margin-right:6px}
+
+  /* summary: 内わけ行・タグ・計算式メモ */
+  .krow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;padding:5px 0;color:var(--ink)}
+  .krow span{color:var(--sub)}
+  .krow b{font-weight:800;white-space:nowrap}
+  .krow.sub{padding:0 0 4px;font-size:11px}
+  .tag{display:inline-block;margin-left:6px;font-size:9.5px;font-weight:800;border-radius:999px;padding:1px 7px;vertical-align:1px}
+  .tag.pl{background:#eef2f0;color:var(--sub)}
+  .tag.act{background:var(--green-l);color:var(--green-d)}
+  .calcnote{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 13px;margin-top:10px;
+    font-size:11.5px;color:var(--sub);line-height:1.75}
+  .calcnote b{color:var(--ink);font-weight:800}
+  .catlbl{grid-column:1/-1;font-size:10.5px;color:var(--sub);font-weight:800;margin:2px 2px -2px}
+
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav class="nav" id="nav">
+  <button data-nav="home" class="on"><span class="ni">🏠</span>ホーム</button>
+  <button data-nav="summary"><span class="ni">📊</span>まとめ</button>
+  <button data-nav="settings"><span class="ni">⚙️</span>せってい</button>
+</nav>
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="camInput" accept="image/*" capture="environment" class="hidden">
+
+<script src="./core.js"></script>
+<script>
+/* =========================================================================
+   かけいぼ ― 夢に近づく家計簿（MVP）
+   ・ビルド不要の自己完結アプリ。データは端末内(localStorage)にのみ保存。
+   ・「資産形成総合ライフプラン」へ渡す月次スナップショット書き出しに対応。
+   ========================================================================= */
+"use strict";
+const STORE_KEY = "kakeibo:v1:state";
+
+/* ---------- 分類・計算はすべて core.js（唯一の正）から取る ---------- */
+const Core = window.KakeiboCore;
+const FIXED_ITEMS = Core.FIXED_ITEMS;   // 固定費の項目（予定額を設定に持つ）
+const VAR_CATS    = Core.VAR_CATS;      // 変動支出のカテゴリ
+const INC_CATS    = Core.INC_CATS;      // 収入のカテゴリ
+const catOf       = Core.catOf;
+const isFixedCat  = Core.isFixedCat;
+
+/* ---------- 状態 ---------- */
+const defaultState = ()=>({
+  settings: Core.normalizeSettings({}),
+  tx:[]  // {id,type:'expense'|'income',amount,cat,date:'YYYY-MM-DD',memo,photo?}
+});
+let state = load();
+let view = "home";
+
+function load(){
+  try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
+    /* normalizeSettings が旧形式（固定費が1つの合計欄）を移行する */
+    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[] }; } }
+  catch(e){ /* ignore */ }
+  return defaultState();
+}
+let lastSaveError=null;
+function save(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); lastSaveError=null; return true; }
+  catch(e){ lastSaveError=e; return false; }
+}
+function isQuotaError(e){
+  if(!e) return false;
+  return e.name==="QuotaExceededError" || e.name==="NS_ERROR_DOM_QUOTA_REACHED" || e.code===22 || e.code===1014;
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* ---------- 日付・お金ヘルパ ---------- */
+const pad=n=>String(n).padStart(2,"0");
+function todayISO(d=new Date()){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function ymOf(iso){ return iso.slice(0,7); }
+function curYM(){ return todayISO().slice(0,7); }
+function yen(v){ const n=Math.round(Number(v)||0); return "¥"+n.toLocaleString("en-US"); }
+function daysLeftInMonth(){ const d=new Date(); const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); return last-d.getDate(); }
+function weekRange(){ const d=new Date(); const day=(d.getDay()+6)%7; /*Mon=0*/ const mon=new Date(d); mon.setDate(d.getDate()-day);
+  const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {from:todayISO(mon),to:todayISO(sun)}; }
+
+/* ---------- 集計（計算式は core.js が唯一の正。ここでは足し引きしない） ---------- */
+function compute(){
+  const c = Core.computeMonth(state.settings, state.tx, curYM());
+  const {from,to} = weekRange();
+  c.weekSpent = Core.weekSpent(state.tx, from, to);
+  return c;
+}
+
+/* ---------- ルート描画 ---------- */
+const $=id=>document.getElementById(id);
+function render(){
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on", b.dataset.nav===view));
+  const app=$("app");
+  if(view==="home") app.innerHTML=renderHome();
+  else if(view==="summary") app.innerHTML=renderSummary();
+  else if(view==="settings") app.innerHTML=renderSettings();
+  window.scrollTo(0,0);
+}
+
+function renderHome(){
+  const c=compute(), s=state.settings;
+  const d=new Date();
+  const WD=["日","月","火","水","木","金","土"];
+  const dateBig=`${d.getMonth()+1}月${d.getDate()}日<span class="wd">（${WD[d.getDay()]}）</span>`;
+  const monthLabel=`今月ののこり ${daysLeftInMonth()}日`;
+
+  let heroN, heroCls="", ok="", note;
+  if(c.hasIncome){
+    heroN=yen(c.available);
+    note="先取り貯金・NISA積立の予定額を除いています";
+    if(c.available<0){ heroCls="over"; ok=`<span class="ok over">今月は少し使いすぎ。来月そっと調整🍀</span>`; }
+    else if(c.available < c.incomeTotal*0.08){ heroCls="amber"; ok=`<span class="ok warn">のこりわずか。少しペース注意</span>`; }
+    else ok=`<span class="ok good">👍 このペースなら大丈夫</span>`;
+  } else {
+    heroN="—";
+    note="給料を記録すると、ここに出ます";
+  }
+  const mini = c.hasIncome ? `<div class="heromini">
+      <span class="m">収入<b>${yen(c.incomeTotal)}</b></span>
+      <span class="m">使った<b>${yen(c.spendTotal)}</b></span>
+      <span class="m">先取り<b>${yen(c.setAside)}</b></span></div>` : "";
+
+  // 夢の帯（タップで、それぞれの入力欄へジャンプ）
+  const goalTile = c.goalPct!==null
+    ? `<button class="ds gold" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||"目標")}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div></button>`
+    : `<button class="ds gold" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">設定する</div><div class="tapin">タップで入力</div></button>`;
+  const nisaTile = `<button class="ds blue" data-go="settings" data-focus="f-nisa"><div class="di">📈</div><div class="dk">NISA（予定）</div><div class="dv mono">${yen(c.nisaPlanned)}</div><div class="tapin">タップで入力</div></button>`;
+  const saveTile = `<button class="ds green" data-go="settings" data-focus="f-save"><div class="di">🐷</div><div class="dk">貯金（予定）</div><div class="dv mono">${yen(c.savingsPlanned)}</div><div class="tapin">タップで入力</div></button>`;
+
+  return `<div class="screen">
+    <div class="greet">
+      <div class="g">こんにちは 👋</div>
+      <div class="date">${dateBig}</div>
+      <div class="d">${monthLabel}</div>
+    </div>
+    <div class="hero">
+      <div class="l">今月 あと つかえるお金</div>
+      <div class="n mono ${heroCls}">${heroN}</div>
+      <div class="u">${note}</div>
+      ${ok}
+      ${mini}
+    </div>
+    <div class="dreamlbl">― あなたの夢の進み ―</div>
+    <div class="dreamstrip">${goalTile}${nisaTile}${saveTile}</div>
+    <button class="recordbtn" data-act="open-record">📸 記録する</button>
+    <div style="height:10px"></div>
+  </div>`;
+}
+
+function renderSummary(){
+  const c=compute();
+  /* ホームと同じ定義。のこり ＝ 収入 － 支出 － 先取り ＝ c.available */
+  const net=c.available;
+  // 直近の記録（新しい順、日付グループ）
+  const list=[...state.tx].sort((a,b)=> a.date<b.date?1:a.date>b.date?-1: (a.id<b.id?1:-1));
+  let recHtml="";
+  if(list.length===0){
+    recHtml=`<div class="empty"><span class="e">🧾</span>まだ記録がありません。<br>ホームの「記録する」から、はじめの一歩を。</div>`;
+  } else {
+    const groups={}; list.forEach(t=>{ (groups[t.date]=groups[t.date]||[]).push(t); });
+    recHtml = Object.keys(groups).sort().reverse().slice(0,60).map(date=>{
+      const items=groups[date];
+      const dayTotal=items.filter(t=>t.type==="expense").reduce((a,t)=>a+Number(t.amount),0);
+      const md=date.slice(5).replace("-","/");
+      const rows=items.map(t=>{ const cat=catOf(t.type,t.cat);
+        return `<div class="tx" data-edit="${t.id}"><div class="ic">${t.type==="income"?"💴":cat.e}</div>
+          <div class="mid"><div class="t1">${escapeHtml(t.memo|| (t.type==="income"?cat.n:cat.n))}</div>
+          <div class="t2">${t.type==="income"?"収入・":""}${cat.n}${t.photo?" ・📷":""}</div></div>
+          <div class="amt ${t.type}">${t.type==="income"?"+":""}${yen(t.amount)}</div></div>`;
+      }).join("");
+      return `<div class="daygroup"><div class="dayhd"><span>${md}</span><span>支出 ${yen(dayTotal)}</span></div>
+        <div class="txcard">${rows}</div></div>`;
+    }).join("");
+  }
+  // カテゴリ内訳バー
+  const cats=Object.entries(c.byCat).sort((a,b)=>b[1]-a[1]);
+  const maxCat=cats.length?cats[0][1]:1;
+  const PIE={food:"#8fbf7f",eatout:"#d9a54f",daily:"#4fa8d8",transit:"#b08fd6",hobby:"#e6b0a6",medical:"#c2694f",social:"#6fa88a",other:"#9fb0ab"};
+  const bars = cats.length? cats.map(([k,v])=>{ const cat=catOf("expense",k);
+      return `<div class="brow"><span class="bt">${cat.e} ${cat.n}</span><span class="track"><span class="fill" style="width:${Math.max(4,Math.round(v/maxCat*100))}%;background:${PIE[k]||"#9fb0ab"}"></span></span><span class="bv mono">${yen(v)}</span></div>`;
+    }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の変動支出はまだありません</div>`;
+
+  // 固定費：記録した分だけ
+  const fixedRows = c.fixedDetail.length ? c.fixedDetail.map(d=>`<div class="krow">
+      <span>${d.emoji} ${d.name}</span><b class="mono">${yen(d.amount)}</b></div>`).join("")
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">固定費の記録はまだありません</div>`;
+
+  return `<div class="screen">
+    <div class="stitle" style="margin-top:6px">今月のまとめ（${new Date().getMonth()+1}月）</div>
+    <div class="sumcards">
+      <div class="sc"><div class="l">収入</div><div class="v inc mono">${yen(c.incomeTotal)}</div></div>
+      <div class="sc"><div class="l">支出</div><div class="v exp mono">${yen(c.spendTotal)}</div></div>
+      <div class="sc"><div class="l">先取り（予定）</div><div class="v mono">${yen(c.setAside)}</div></div>
+      <div class="sc"><div class="l">のこり</div><div class="v net mono">${net>=0?"+":""}${yen(net)}</div></div>
+    </div>
+    <div class="calcnote">収入 ${yen(c.incomeTotal)} － 支出 ${yen(c.spendTotal)} － 先取り ${yen(c.setAside)} ＝ <b>${yen(net)}</b><br>
+      この「のこり」は、ホームの「今月あと つかえるお金」と同じ金額です。</div>
+    <div class="barlist">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:4px">
+        <span>収入の内わけ</span><span></span></div>
+      <div class="krow"><span>通常収入（記録した給与）${c.incomeRegularRecorded?"":`<span class="tag pl">未記録</span>`}</span><b class="mono">${yen(c.incomeRegular)}</b></div>
+      <div class="krow"><span>臨時収入</span><b class="mono">${yen(c.incomeExtra)}</b></div>
+      <div style="height:1px;background:var(--line2);margin:10px 0 6px"></div>
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">固定費（記録した分）</div>
+      ${fixedRows}
+      <div class="krow" style="font-weight:800"><span>固定費 合計</span><b class="mono">${yen(c.fixedSpend)}</b></div>
+    </div>
+    <div class="barlist">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:4px">
+        <span>今週つかった（記録した支出）</span><span class="mono" style="font-weight:800;color:var(--ink)">${yen(c.weekSpent)}</span></div>
+      <div style="height:1px;background:var(--line2);margin:8px 0 4px"></div>
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">変動支出の内わけ（今月）　合計 ${yen(c.variableSpend)}</div>
+      ${bars}
+    </div>
+    <div class="stitle">きろく</div>
+    ${recHtml}
+  </div>`;
+}
+
+function renderSettings(){
+  const s=state.settings;
+  const u=Core.storageUsage(state);
+  const mb=b=>{ const m=b/1024/1024; return m>=0.1 ? m.toFixed(1)+"MB" : Math.max(1,Math.round(b/1024))+"KB"; };
+  return `<div class="screen">
+    <div class="stitle" style="margin-top:6px">先取り（月・予定額）</div>
+    <div class="calcnote" style="margin:0 0 10px">
+      入力口は<b>「記録」ひとつだけ</b>です。給料も、家賃も、電気代も、
+      買いものも、すべて記録から入れてください。<br>
+      ここに入れるのは<b>まだ出ていないお金</b>——先に取り分ける貯金とNISAだけです。
+    </div>
+    <div class="field"><label>先取り貯金（月・予定額）</label><div class="row"><span class="yen">¥</span>
+      <input class="mono" id="f-save" inputmode="numeric" value="${s.savingsTarget||""}" placeholder="0"></div>
+      <div class="fhelp">先に貯める予定の分。使えるお金から先に取り分けます</div></div>
+    <div class="field"><label>NISA 積立（月・予定額）</label><div class="row"><span class="yen">¥</span>
+      <input class="mono" id="f-nisa" inputmode="numeric" value="${s.nisaMonthly||""}" placeholder="0"></div>
+      <div class="fhelp">こちらも「使えるお金」から先に取り分けます</div></div>
+
+    <div class="stitle">夢・目標</div>
+    <div class="field"><label>目標の名前</label>
+      <input id="f-gname" value="${escapeAttr(s.goalName||"")}" placeholder="例：旅行 / 車 / 緊急資金"></div>
+    <div class="row2">
+      <div class="field"><label>目標金額</label><div class="row"><span class="yen">¥</span>
+        <input class="mono" id="f-gtarget" inputmode="numeric" value="${s.goalTarget||""}" placeholder="0"></div></div>
+      <div class="field"><label>いま貯まってる額</label><div class="row"><span class="yen">¥</span>
+        <input class="mono" id="f-gcur" inputmode="numeric" value="${s.goalCurrent||""}" placeholder="0"></div></div>
+    </div>
+
+    <div class="stitle">データ</div>
+    <div class="calcnote" style="margin:0 0 10px">
+      使用中のデータ：<b>${mb(u.total)}</b>（うち写真 ${mb(u.photos)}／${u.photoCount}枚）<br>
+      この端末に保存できるのは<b>およそ5MB</b>までです。${u.nearLimit?"<b style=\"color:var(--terra)\">空きが少なくなっています。</b>":""}
+    </div>
+    <button class="btn-ghost" data-act="export-snapshot">📤 ライフプラン用データを書き出す</button>
+    <button class="btn-quiet" data-act="export-backup">すべてのデータをバックアップ（JSON）</button>
+    <button class="btn-quiet" data-act="purge-photos">🗑 写真をすべて消す（記録は残ります）</button>
+
+    <div class="savebar">
+      <button class="btn-primary" data-act="save-settings">保存する</button>
+    </div>
+    <div style="height:12px"></div>
+    <div class="fhelp" style="text-align:center;padding:0 10px 8px">データはこの端末の中だけに保存されます（外部に送信しません）。</div>
+  </div>`;
+}
+
+/* ---------- 記録シート ---------- */
+let sheetState=null; // {mode:'add'|'edit', id?, type, amount, cat, date, memo, photo}
+function openRecord(editId){
+  if(editId){ const t=state.tx.find(x=>x.id===editId); if(!t) return;
+    sheetState={mode:"edit", id:t.id, type:t.type, amount:String(t.amount), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null, shot:"total"};
+  } else {
+    sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total"};
+  }
+  renderSheet(); showSheet(true);
+}
+function renderSheet(){
+  const st=sheetState;
+  const cats = st.type==="income" ? INC_CATS : VAR_CATS.concat(FIXED_ITEMS);
+  if(st.cat && !cats.find(c=>c.k===st.cat)) st.cat = cats[0].k;
+  const btn=c=>`<button class="catbtn ${st.cat===c.k?"on":""}" data-cat="${c.k}"><span class="ce">${c.e}</span>${c.n}</button>`;
+  const catHtml = st.type==="income"
+    ? INC_CATS.map(btn).join("")
+    : `<div class="catlbl">変動費（記録するたびに積み上がります）</div>${VAR_CATS.map(btn).join("")}
+       <div class="catlbl">固定費</div>${FIXED_ITEMS.map(btn).join("")}`;
+  const catNote = st.type==="income"
+    ? (st.cat==="salary"
+        ? `<div class="ocrnote">給料の入力口はここだけです。今月の通常収入になります。</div>`
+        : `<div class="ocrnote">臨時の収入として、今月の収入に上のせされます。</div>`)
+    : `<div class="ocrnote">&nbsp;</div>`;
+  const choicesHtml = (st.ocrChoices&&st.ocrChoices.length)
+    ? `<div class="choices">
+         <div class="cl">タップして金額を入れます（記録はまだされません）</div>
+         ${st.ocrChoices.map(a=>`<button class="choice mono" data-pick="${a}">${yen(a)}</button>`).join("")}
+         <button class="choice manual" data-act="manual-amount">✍️ 手入力する</button>
+       </div>`
+    : "";
+  const photoHtml = st.photo
+    ? `<div class="cropwrap" id="cropwrap">
+         <img id="cropimg" src="${st.photo}" alt="レシート">
+         <div class="cropbox" id="cropbox"><span class="h tl"></span><span class="h br"></span></div>
+       </div>
+       <div class="shothint">白い枠を動かして、<b>合計の金額だけ</b>を囲んでください。<br>枠の中しか読み取らないので、他の金額と混ざりません。</div>
+       <button class="photobtn main big" data-act="read-crop">🔍 この枠の金額を読み取る</button>
+       <button class="photobtn" data-act="shot-total">📸 撮り直す</button>
+       <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
+       ${choicesHtml}`
+    : `<button class="photobtn main" data-act="shot-total">📸 レシートを撮る
+         <span class="sm">合計の行にアップで寄せて撮ってください</span></button>
+       <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
+       ${choicesHtml}`;
+  $("sheet").innerHTML=`<div class="grip"></div>
+    <div class="sheethd"><h3>${st.mode==="edit"?"記録をなおす":"記録する"}</h3>
+      <button class="close" data-act="close-sheet" aria-label="閉じる">✕</button></div>
+    <div class="typetog">
+      <button class="${st.type==="expense"?"on exp":""}" data-type="expense">支出</button>
+      <button class="${st.type==="income"?"on inc":""}" data-type="income">収入</button>
+    </div>
+    ${st.type==="expense"?photoHtml:""}
+    <div class="amtbox"><div class="lab">金額</div>
+      <input class="amtinput mono" id="s-amt" inputmode="numeric" placeholder="0" value="${st.amount||""}"></div>
+    <div class="catgrid">${catHtml}</div>
+    ${catNote}
+    <div class="row2">
+      <div class="field"><label>日付</label><input type="date" id="s-date" value="${st.date}"></div>
+      <div class="field"><label>メモ（任意）</label><input id="s-memo" value="${escapeAttr(st.memo)}" placeholder="お店・内容"></div>
+    </div>
+    ${st.mode==="edit"?`<button class="delbtn" data-act="del-tx">この記録を削除</button>`:""}
+    <div class="sheetsave">
+      <button class="btn-primary" data-act="save-tx">${st.mode==="edit"?"更新する":"✓ この内容で記録する"}</button>
+    </div>`;
+  if(st.photo) initCrop();
+}
+function readSheetInputs(){
+  const st=sheetState; if(!st) return;
+  const a=$("s-amt"), d=$("s-date"), m=$("s-memo");
+  if(a) st.amount=a.value; if(d) st.date=d.value||todayISO(); if(m) st.memo=m.value;
+}
+function showSheet(on){ $("scrim").classList.toggle("show",on); $("sheet").classList.toggle("show",on);
+  if(!on){ releaseOcrImage(sheetState); sheetState=null; clearPending(); } }
+
+/* いま何が起きているかを必ず画面に出す（黙って失敗しない） */
+function setStatus(msg){
+  if(sheetState){ sheetState.ocrNote=msg; const n=$("ocrnote"); if(n){ n.textContent=msg; return; } }
+  toast(msg);
+}
+
+/* ---------- カメラ起動でページが再読み込みされても記録を続けられるように ---------- */
+const PENDING_KEY="kakeibo:v1:pending";
+function savePending(){
+  try{
+    const st=sheetState; if(!st) return;
+    const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo};
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify(light));
+  }catch(e){}
+}
+function loadPending(){
+  try{ const raw=sessionStorage.getItem(PENDING_KEY); return raw?JSON.parse(raw):null; }catch(e){ return null; }
+}
+function clearPending(){ try{ sessionStorage.removeItem(PENDING_KEY); }catch(e){} }
+
+/* 写真が届いたのにシートが消えていたら、作り直して必ず受け取る */
+function ensureSheetForPhoto(){
+  if(sheetState) return;
+  const p=loadPending();
+  sheetState = p
+    ? {mode:p.mode||"add", id:p.id||undefined, type:p.type||"expense", amount:p.amount||"",
+       cat:p.cat||"food", date:p.date||todayISO(), memo:p.memo||"", photo:null}
+    : {mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null};
+  showSheet(true);
+}
+
+/* ---------- 写真＋OCR（任意・失敗しても写真は残る） ---------- */
+function onPhotoPicked(file){
+  const reader=new FileReader();
+  ensureSheetForPhoto();
+  const kb=Math.round((file.size||0)/1024);
+  setStatus(`写真を受け取りました（${kb}KB / ${file.type||"形式不明"}）。準備中…`);
+  reader.onerror=()=>{ setStatus("写真を読み込めませんでした。もう一度おねがいします"); };
+  reader.onload=async()=>{
+    try{
+      setStatus("写真を準備中…");
+      /* 表示・保存用は縮小版。読み取り用は高解像度版を別に持つ（保存しない）。 */
+      const shrunk=await resizeDataUrl(reader.result, Core.PHOTO_VIEW_MAX, 0.85);
+      const hires =await resizeDataUrl(reader.result, Core.PHOTO_OCR_MAX, 0.95);
+      ensureSheetForPhoto();
+      if(!shrunk || shrunk.length<100){ setStatus("この形式の写真は表示できませんでした。もう一度撮ってください"); return; }
+      releaseOcrImage(sheetState);        // 前の写真の高解像度版を先に手放す
+      sheetState.photo=shrunk;
+      sheetState.photoHi=hires||shrunk;   // メモリ内だけ。localStorageには入れない
+      sheetState.crop=Object.assign({},Core.CROP_DEFAULT);
+      sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";
+      sheetState.ocrChoices=null;
+      clearPending();
+      renderSheet(); showSheet(true);
+      loadTesseract().catch(()=>{});   // 枠を合わせている間に先読み
+    }catch(e){ setStatus("写真を扱えませんでした。金額は手で入れられます"); }
+  };
+  reader.readAsDataURL(file);
+}
+/* 写真を指定の長辺まで縮める。保存領域を超えないための要。 */
+function resizeDataUrl(src, maxEdge, quality){
+  return new Promise((resolve)=>{
+    const im=new Image();
+    im.onload=()=>{
+      try{
+        const out=Core.fitSize(im.naturalWidth, im.naturalHeight, maxEdge);
+        const cv=document.createElement("canvas"); cv.width=out.w; cv.height=out.h;
+        const cx=cv.getContext("2d");
+        cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality="high";
+        cx.drawImage(im,0,0,out.w,out.h);
+        resolve(cv.toDataURL("image/jpeg", quality));
+      }catch(e){ resolve(src); }
+    };
+    im.onerror=()=>resolve(src);
+    im.src=src;
+  });
+}
+
+/* 枠の中だけを切り出して読む。他の金額は物理的に視界に入らない。 */
+/* 読み取り用の高解像度画像をメモリから手放す */
+function releaseOcrImage(st){
+  const t = st || sheetState;
+  if(t && t.photoHi){ t.photoHi = null; }
+}
+
+async function readCrop(){
+  const st=sheetState; if(!st||!st.photo) return;
+  st.ocrChoices=null;
+  setStatus("画像を調整しています…");
+  renderSheet();
+  try{
+    const crop = st.crop||Core.CROP_DEFAULT;
+    const source = st.photoHi || st.photo;
+
+    /* 枠3種 × 画像処理 の切り抜きは、必要になったときだけ1回作って使い回す */
+    const cache={};
+    const imageFor = async (cropKey, style)=>{
+      const key=cropKey+"|"+style;
+      if(!cache[key]) cache[key] = await cropToDataUrl(source, Core.cropVariant(crop, cropKey), style);
+      return cache[key];
+    };
+
+    const candidates=[];
+    let runs=0;
+    for(let i=0;i<Core.OCR_PLAN.length;i++){
+      setStatus(i===0 ? "金額を確認しています…" : "もう少し詳しく確認しています…");
+      const jobs=[];
+      for(const step of Core.OCR_PLAN[i]){
+        jobs.push({ img: await imageFor(step.crop, step.image), psm: step.psm });
+      }
+      const got = await ocrCandidates(jobs);
+      runs += jobs.length;
+      got.forEach(c=>candidates.push(c));
+      if(Core.ocrEnough(candidates)) break;
+    }
+
+    /* 先頭の桁が欠けていそうなら、その1文字だけを画像から読み直す（最大1回） */
+    const details = candidates.map(c=>c.detail).filter(Boolean);
+    const plan = Core.reconstructionPlan(details, crop);
+    const already4 = candidates.some(c=>Number(c.amount)>=1000);
+    if(plan && !already4){
+      setStatus("先頭の桁を読み直しています…");
+      const base = candidates.filter(c=>c.amount===plan.base);
+      const agree = base.length || 1;
+      const conf  = base.reduce((a,c)=>Math.max(a,Number(c.confidence)||0),0);
+      let digits = plan.digits || null;
+      if(plan.kind==="strip"){
+        try{
+          const stripImg = await cropToDataUrl(source, plan.strip, "bw");
+          const got = await ocrCandidates([{ img:stripImg, psm:"10" }], { raw:true });
+          digits = Core.firstDigit(got);
+        }catch(e){ digits = null; }
+      }
+      const rebuilt = Core.buildReconstructed(plan.base, digits, { confidence:conf, agree:agree, posScore:0.6 });
+      if(rebuilt) candidates.push(rebuilt);
+    }
+
+    const ranked = Core.rankCandidates(candidates);
+    if(!ranked.length){
+      st.ocrChoices=null;
+      setStatus("枠の中に数字が見つかりませんでした。枠を合計に合わせ直すか、金額を入れてね");
+      renderSheet(); return;
+    }
+    if(Core.needsConfirmation(ranked)){
+      st.ocrChoices = ranked.slice(0, Core.MAX_CHOICES).map(r=>r.amount);
+      setStatus("どれが合計か選んでください");
+      renderSheet(); return;
+    }
+    st.ocrChoices=null;
+    st.amount=String(ranked[0].amount);
+    setStatus(`金額を「${yen(ranked[0].amount)}」と読みました。ちがう時は直してね`);
+    renderSheet();
+  }catch(e){
+    const why=(e&&e.message)?e.message:String(e||"原因不明");
+    st.ocrChoices=null;
+    setStatus(`読み取れませんでした：${why}。金額は手で入れられます`);
+    renderSheet();
+  }finally{
+    /* 高解像度画像はここでは解放しない。
+       枠を直してもう一度読み取るとき、表示用(1600px)へ落ちてしまうため。
+       解放するのは：シートを閉じた時／写真を消した時／写真を撮り直した時／記録を確定した時。
+       加工画像 cache はこの関数のローカル変数なので、抜ければ参照が消える。 */
+  }
+}
+
+/* 枠の範囲を切り出し、拡大＋白黒コントラスト調整をしてから渡す */
+function cropToDataUrl(src, crop, style){
+  return new Promise((resolve,reject)=>{
+    const im=new Image();
+    im.onload=()=>{
+      try{
+        const nat={w:im.naturalWidth, h:im.naturalHeight};
+        const r=Core.cropRect(crop, nat);
+        const out=Core.cropOutputSize(r.w, r.h);
+        const cv=document.createElement("canvas"); cv.width=out.w; cv.height=out.h;
+        const cx=cv.getContext("2d");
+        cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality="high";
+        cx.drawImage(im, r.x, r.y, r.w, r.h, 0, 0, out.w, out.h);
+        try{
+          const d=cx.getImageData(0,0,out.w,out.h);
+          Core.prepareForOcr(d.data, out.w, out.h, style);  // 反転の判断もここ1か所だけ
+          cx.putImageData(d,0,0);
+        }catch(e){}
+        resolve(cv.toDataURL("image/png"));
+      }catch(e){ reject(e); }
+    };
+    im.onerror=reject;
+    im.src=src;
+  });
+}
+
+/* 読み取りライブラリの取得先。
+   ①自分のサーバー（tess/ に置いた場合）→ ②jsDelivr → ③unpkg の順に試す。
+   ①があれば外部CDNに一切依存せず、オフラインでも動く。 */
+const TESS_LOCAL_DIR = "./tess";
+const TESSERACT_SOURCES = [
+  { name:"この端末のサーバー", url: TESS_LOCAL_DIR + "/tesseract.min.js", local:true },
+  { name:"jsDelivr",          url:"https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" },
+  { name:"unpkg",             url:"https://unpkg.com/tesseract.js@5/dist/tesseract.min.js" }
+];
+let tessSource=null;
+
+/* 外部スクリプトを読み込む。読み込み完了かエラーかを必ず返す。 */
+function loadScript(src){
+  return new Promise((resolve,reject)=>{
+    const existing=document.querySelector(`script[data-src="${src}"]`);
+    if(existing){
+      if(existing.dataset.loaded==="1") return resolve();
+      existing.addEventListener("load",()=>resolve());
+      existing.addEventListener("error",()=>reject(new Error("読み込み失敗")));
+      return;
+    }
+    const el=document.createElement("script");
+    el.src=src; el.async=true; el.dataset.src=src;
+    el.onload=()=>{ el.dataset.loaded="1"; resolve(); };
+    el.onerror=()=>reject(new Error("読み込み失敗"));
+    document.head.appendChild(el);
+  });
+}
+
+async function loadTesseract(){
+  if(window.Tesseract) return window.Tesseract;
+  const tried=[];
+  for(const src of TESSERACT_SOURCES){
+    try{
+      await loadScript(src.url);
+      if(window.Tesseract){ tessSource=src; return window.Tesseract; }
+      tried.push(src.name+"：取得できたが中身が違う");
+    }catch(e){ tried.push(src.name+"："+((e&&e.message)?e.message:"つながらない")); }
+  }
+  const online = (typeof navigator!=="undefined" && "onLine" in navigator) ? (navigator.onLine?"通信あり":"オフライン") : "通信状態不明";
+  throw new Error(`読み取り部品を取得できません（${online}／${tried.join(" ／ ")}）`);
+}
+
+/* 自前で置いた場合は、部品の場所も自分のサーバーに向ける */
+function tessWorkerOptions(){
+  if(tessSource && tessSource.local){
+    return {
+      workerPath: TESS_LOCAL_DIR + "/worker.min.js",
+      corePath:   TESS_LOCAL_DIR + "/core",
+      langPath:   TESS_LOCAL_DIR + "/lang"
+    };
+  }
+  return {};
+}
+
+/* 数字だけを読む設定で、渡された「画像 × 読み取り方」の組を順に試す。
+   偶然の誤読は重ならないので、同じ数字が複数回出たものを採用する。 */
+async function ocrCandidates(jobs, opts){
+  const T = await loadTesseract();
+  const out=[];
+  let worker=null;
+  try{
+    worker=await T.createWorker("eng", 1, Object.assign({}, tessWorkerOptions(), {
+      logger: m=>{
+        if(m && m.status && typeof m.progress==="number"){
+          const pct=Math.round(m.progress*100);
+          if(m.status.indexOf("load")>=0||m.status.indexOf("initial")>=0) setStatus(`読み取りの準備中… ${pct}%（初回だけ少し時間がかかります）`);
+          else if(m.status.indexOf("recogniz")>=0) setStatus(`読み取り中… ${pct}%`);
+        }
+      }
+    }));
+    for(const job of jobs){
+      try{
+        await worker.setParameters({
+          tessedit_pageseg_mode: job.psm,
+          tessedit_char_whitelist: (opts&&opts.raw) ? "0123456789" : "0123456789,.¥￥"
+        });
+        const { data } = await worker.recognize(job.img);
+        const conf = data.confidence||0;
+        if(opts&&opts.raw){ out.push({ text:data.text, confidence:conf }); continue; }
+        Core.amountDetails(data.text).forEach(d=>{
+          out.push({
+            amount:d.amount, raw:d.raw, confidence:conf,
+            posScore:Core.textPositionScore(d),
+            context:Core.totalHint(d),                 // ¥ / カンマ / 合計 などの手がかり
+            truncated:!!Core.truncatedLeading(d),      // 先頭の桁が欠けている疑い
+            detail:d,
+            source:"ocr",
+          });
+        });
+      }catch(e){}
+    }
+  } finally { if(worker){ try{ await worker.terminate(); }catch(e){} } }
+  return out;
+}
+
+/* 枠のドラッグ（移動／左上・右下でサイズ変更）
+   注意：setPointerCapture を画像全体にかけると、指を離したあとも
+   タップが画像に吸われてボタンが押せなくなる。ドラッグ中だけ
+   document で受けて、終わったら必ず外す。 */
+function initCrop(){
+  const wrap=$("cropwrap"), box=$("cropbox");
+  if(!wrap||!box||!sheetState) return;
+  const st=sheetState;
+  if(!st.crop) st.crop=Object.assign({},Core.CROP_DEFAULT);
+  const apply=()=>{ box.style.left=(st.crop.x*100)+"%"; box.style.top=(st.crop.y*100)+"%";
+    box.style.width=(st.crop.w*100)+"%"; box.style.height=(st.crop.h*100)+"%"; };
+  apply();
+
+  let mode=null, start=null;
+
+  const onMove=e=>{
+    if(!mode||!start) return;
+    const dx=(e.clientX-start.px)/start.w, dy=(e.clientY-start.py)/start.h;
+    st.crop=Core.moveCrop(start.c, dx, dy, mode);
+    apply();
+    if(e.cancelable) e.preventDefault();
+  };
+  const onEnd=()=>{
+    mode=null; start=null;
+    document.removeEventListener("pointermove",onMove);
+    document.removeEventListener("pointerup",onEnd);
+    document.removeEventListener("pointercancel",onEnd);
+  };
+
+  wrap.addEventListener("pointerdown",e=>{
+    const t=e.target;
+    if(t.classList&&t.classList.contains("br")) mode="br";
+    else if(t.classList&&t.classList.contains("tl")) mode="tl";
+    else if(t===box) mode="move";
+    else return;                      // 枠の外は無視（他のボタンを邪魔しない）
+    const r=wrap.getBoundingClientRect();
+    start={px:e.clientX, py:e.clientY, c:Object.assign({},st.crop), w:r.width||1, h:r.height||1};
+    document.addEventListener("pointermove",onMove,{passive:false});
+    document.addEventListener("pointerup",onEnd);
+    document.addEventListener("pointercancel",onEnd);
+    if(e.cancelable) e.preventDefault();
+  });
+}
+
+/* ---------- 保存アクション ---------- */
+async function saveTx(){
+  readSheetInputs(); const st=sheetState;
+  const amount=parseInt(String(st.amount).replace(/[^\d]/g,""),10);
+  if(!amount||amount<=0){ toast("金額を入れてね"); const ai=$("s-amt"); if(ai) ai.focus(); return; }
+
+  /* 保存用に写真を小さくする（そのままだと保存領域を超えて何も残らない）。
+     読み取り用の高解像度画像は、保存が成功してから手放す。
+     ここで手放すと、保存に失敗してシートが残ったとき、
+     枠を直して読み直すと表示用(1600px)へ落ちてしまう。 */
+  let photo = st.photo || null;
+  if(photo) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);
+
+  const before = JSON.stringify(state.tx);
+  if(st.mode==="edit"){
+    const t=state.tx.find(x=>x.id===st.id);
+    if(t){ t.type=st.type; t.amount=amount; t.cat=st.cat; t.date=st.date; t.memo=st.memo; t.photo=photo; }
+  } else {
+    state.tx.push({id:uid(),type:st.type,amount,cat:st.cat,date:st.date,memo:st.memo,photo:photo});
+  }
+
+  if(save()){
+    releaseOcrImage(st);            // 記録が確定した。高解像度はここで手放す
+    showSheet(false); render(); toast(st.mode==="edit"?"更新しました":"記録できました ✓");
+    return;
+  }
+
+  /* 入りきらなかった。写真だけ落として、記録そのものは必ず残す。 */
+  if(photo){
+    const t2 = st.mode==="edit" ? state.tx.find(x=>x.id===st.id) : state.tx[state.tx.length-1];
+    if(t2) t2.photo=null;
+    if(save()){
+      releaseOcrImage(st);          // 写真は諦めたが記録は確定した
+      showSheet(false); render();
+      toast("記録しました（写真は容量オーバーで保存できません）");
+      return;
+    }
+  }
+
+  /* それでも駄目なら元に戻して、理由をはっきり伝える。
+     シートは開いたままなので、photoHi は解放しない（枠を直して読み直せるように）。 */
+  state.tx = JSON.parse(before);
+  const msg = isQuotaError(lastSaveError)
+    ? "保存できません。せっていの「写真をすべて消す」で空きを作ってください"
+    : "この端末では保存が使えません（プライベートブラウズ等）";
+  toast(msg);
+}
+
+function delTx(){ if(!sheetState||sheetState.mode!=="edit") return;
+  state.tx=state.tx.filter(t=>t.id!==sheetState.id); save(); showSheet(false); render(); toast("削除しました"); }
+
+function saveSettings(){
+  const g=id=>{ const el=$(id); return el?el.value:""; };
+  const num=v=>{ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; };
+  const s=state.settings;
+  s.savingsTarget=num(g("f-save"));
+  s.nisaMonthly=num(g("f-nisa")); s.goalName=(g("f-gname")||"").slice(0,24);
+  s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));
+  /* normalizeSettings が新しい設定オブジェクトを返すので、旧フィールドはここで消える */
+  state.settings = Core.normalizeSettings(s);
+  save(); toast("保存しました ✓"); view="home"; render();
+}
+
+/* ---------- 連携：ライフプラン形式の月次スナップショット ---------- */
+function buildSnapshot(){
+  return Core.buildSnapshot(state.settings, state.tx, curYM());
+}
+function exportSnapshot(){
+  const snap=buildSnapshot(); const text=JSON.stringify(snap,null,2);
+  downloadText(`lifeplan-snapshot-${snap.year_month}.json`, text);
+  toast("連携データを書き出しました 📤");
+}
+function purgePhotos(){
+  const n=state.tx.filter(t=>t.photo).length;
+  if(!n){ toast("消せる写真はありません"); return; }
+  state.tx.forEach(t=>{ t.photo=null; });
+  if(save()){ render(); toast(`写真${n}枚を消しました（記録は残っています）`); }
+  else { toast("消せませんでした"); }
+}
+function exportBackup(){ downloadText(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(state,null,2)); toast("バックアップを書き出しました"); }
+function downloadText(name,text){
+  const blob=new Blob([text],{type:"application/json"}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },500);
+}
+
+function focusField(id){
+  if(!id) return;
+  setTimeout(()=>{ const el=$(id); if(!el) return;
+    el.scrollIntoView({block:"center",behavior:"smooth"});
+    try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); } }, 60);
+}
+
+/* ---------- ちいさなUI ---------- */
+let toastT=null;
+function toast(msg){ const el=$("toast"); el.innerHTML=`<span class="ck">✓</span>${escapeHtml(msg).replace("✓","")}`;
+  el.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove("show"),1900); }
+function escapeHtml(s){ return String(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
+
+/* ---------- イベント（委譲） ---------- */
+document.addEventListener("click",e=>{
+  const nav=e.target.closest("#nav button"); if(nav){ showSheet(false); view=nav.dataset.nav; render(); return; }
+  const go=e.target.closest("[data-go]"); if(go){ showSheet(false); view=go.dataset.go; render(); focusField(go.dataset.focus); return; }
+  const pick=e.target.closest("[data-pick]");
+  if(pick&&sheetState){ readSheetInputs();
+    sheetState.amount=String(pick.dataset.pick);
+    sheetState.ocrChoices=null;
+    sheetState.ocrNote="金額を入れました。内容を確かめて「記録する」を押してください";
+    renderSheet(); return; }
+  const act=e.target.closest("[data-act]"); if(act){ handleAct(act.dataset.act,e); return; }
+  const edit=e.target.closest("[data-edit]"); if(edit){ openRecord(edit.dataset.edit); return; }
+  const type=e.target.closest("[data-type]"); if(type&&sheetState){ readSheetInputs(); sheetState.type=type.dataset.type; renderSheet(); return; }
+  const cat=e.target.closest("[data-cat]"); if(cat&&sheetState){ readSheetInputs(); sheetState.cat=cat.dataset.cat; renderSheet(); return; }
+  if(e.target.id==="scrim") showSheet(false);
+});
+function handleAct(a,e){
+  if(a==="open-record") return openRecord(null);
+  if(a==="close-sheet") return showSheet(false);
+  if(a==="save-tx") return saveTx();
+  if(a==="del-tx") return delTx();
+  if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); releaseOcrImage(sheetState); sheetState.photo=null; sheetState.crop=null; sheetState.ocrNote=""; sheetState.ocrChoices=null; renderSheet(); } return; }
+  if(a==="shot-total"){ readSheetInputs(); savePending(); $("camInput").value=""; $("camInput").click(); return; }
+  if(a==="read-crop"){ readSheetInputs(); return readCrop(); }
+  if(a==="manual-amount"){ if(sheetState){ readSheetInputs(); sheetState.ocrChoices=null;
+      sheetState.ocrNote="金額を入れてください"; renderSheet(); focusField("s-amt"); } return; }
+  if(a==="save-settings") return saveSettings();
+  if(a==="export-snapshot") return exportSnapshot();
+  if(a==="export-backup") return exportBackup();
+  if(a==="purge-photos") return purgePhotos();
+}
+$("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
+
+/* ---------- 起動 ---------- */
+render();
+/* カメラでページが再読み込みされた場合、記録の途中から戻す */
+(function restorePending(){
+  const p=loadPending(); if(!p) return;
+  sheetState={mode:p.mode||"add", id:p.id||undefined, type:p.type||"expense", amount:p.amount||"",
+              cat:p.cat||"food", date:p.date||todayISO(), memo:p.memo||"", photo:null,
+              ocrNote:"カメラから戻りました。もう一度「レシートを撮る」を押してください"};
+  renderSheet(); showSheet(true);
+})();
+/* --- SW-REGISTRATION-START ---
+   iPhone の Safari は sw.js 自体をキャッシュすることがあり、
+   放っておくと古い画面・古い core.js がいつまでも残る。
+     ・updateViaCache:"none" で sw.js を必ず取り直す
+     ・登録直後に update() で更新確認を明示する
+     ・新しい Service Worker に切り替わったら画面を1回だけ読み直す
+     ・再読み込み済みの印を必ず持ち、繰り返しを防ぐ
+     ・初めて開いた人（もともと controller が無い人）は読み直さない。
+       初回登録でも controllerchange は発火するため、そのままだと
+       余計なリロードが1回入ってしまう。                      */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", async () => {
+    try {
+      // 登録する前に「すでに Service Worker に制御されていたか」を控えておく
+      const hadController = !!navigator.serviceWorker.controller;
+
+      const registration = await navigator.serviceWorker.register("./sw.js", {
+        updateViaCache: "none"
+      });
+
+      await registration.update();
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!hadController) return;  // ← 初回登録。更新ではないので読み直さない
+        if (refreshing) return;      // ← 無限に読み直さないための印
+        refreshing = true;
+        window.location.reload();
+      });
+    } catch (error) {
+      console.error("Service Worker registration failed:", error);
+    }
+  });
+}
+/* --- SW-REGISTRATION-END --- */
+
+/* テスト用フック（本番挙動には影響しない） */
+window.__kakeibo={ get state(){return state;}, Core, compute, buildSnapshot, save, render, load:()=>{state=load();}, setView:v=>{view=v;render();} };
+</script>
+</body>
+</html>
