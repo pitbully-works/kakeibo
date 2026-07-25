@@ -1475,6 +1475,128 @@
     };
   }
 
+  /* =======================================================================
+     今日やることカード（ホームの上に出る、最大2件のうながし）
+     -----------------------------------------------------------------------
+     方針：**やることを増やさない**。
+       ・出すのは最大2件。多いと重荷になって、アプリ自体を閉じてしまう
+       ・「まだ使っていない機能」は催促しない。
+         給料は先月までに記録した日を過ぎてから、日記・健康は
+         続けている人にだけ声をかける
+       ・済んだ項目は自動で消える（チェックを付ける操作は要らない）
+     すべて純粋関数。「今日」は引数で受け取る。
+     ======================================================================= */
+
+  const TASK_MAX = 2;            // 一度に出すやることの上限
+  const TASK_QUIET_DAYS = 3;     // 支出の記録が何日とだえたら声をかけるか
+  const HABIT_WINDOW = 14;       // 習慣とみなすために見る日数
+  const HABIT_MIN = 3;           // その中で何日つけていれば習慣とみなすか
+
+  /* 2つの日付が何日はなれているか（UTC固定。端末のタイムゾーンで狂わせない） */
+  function daysApart(fromIso, toIso) {
+    const a = Date.UTC(Number(fromIso.slice(0, 4)), Number(fromIso.slice(5, 7)) - 1, Number(fromIso.slice(8, 10)));
+    const b = Date.UTC(Number(toIso.slice(0, 4)), Number(toIso.slice(5, 7)) - 1, Number(toIso.slice(8, 10)));
+    return Math.round((b - a) / 86400000);
+  }
+
+  /* 日付をずらす（"YYYY-MM-DD"） */
+  function shiftDate(iso, delta) {
+    const d = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + Number(delta || 0)));
+    return d.toISOString().slice(0, 10);
+  }
+
+  /* 先月までに通常給与を記録した「日」。無ければ null（はじめての人は催促しない）。 */
+  function salaryDayHint(txs, ym) {
+    const past = (Array.isArray(txs) ? txs : []).filter(function (t) {
+      return t && t.type === "income" && t.cat === REGULAR_INCOME_CAT
+        && validateDateString(t.date) && monthOf(t.date) < ym;
+    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    return past.length ? Number(past[0].date.slice(8, 10)) : null;
+  }
+
+  /* 今日より前で、最後に支出を記録した日。無ければ null。
+     まだ来ていない日付の記録は「最後の記録」に数えない。 */
+  function lastExpenseDate(txs, today) {
+    const past = (Array.isArray(txs) ? txs : []).filter(function (t) {
+      return t && t.type === "expense" && validateDateString(t.date) && t.date <= today;
+    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    return past.length ? past[0].date : null;
+  }
+
+  /* 続けている習慣か（今日を除く直近 HABIT_WINDOW 日のうち HABIT_MIN 日以上ついている） */
+  function isHabit(map, today) {
+    const m = map || {};
+    const from = shiftDate(today, -HABIT_WINDOW);
+    let n = 0;
+    Object.keys(m).forEach(function (d) {
+      if (d >= from && d < today) n += 1;
+    });
+    return n >= HABIT_MIN;
+  }
+
+  /* やることを組み立てる（優先度の高い順） */
+  function todayTasks(state, today) {
+    const st = state || {};
+    if (!validateDateString(today)) return [];
+    const txs = Array.isArray(st.tx) ? st.tx : [];
+    const ym = monthOf(today);
+    const day = Number(today.slice(8, 10));
+    const out = [];
+
+    /* 1. 先月の「毎月固定」がまだ入っていない（金額に効くので最優先） */
+    const plan = recurringCarryPlan(txs, ym);
+    if (plan.toAdd.length > 0) {
+      out.push({
+        key: "carry", icon: "🔁", act: "carry",
+        text: "先月の毎月固定が " + plan.toAdd.length + "件、まだ入っていません",
+        sub: "まとめて入れられます（合計 " + fmtYen(plan.total) + "）",
+      });
+    }
+
+    /* 2. 今月の給料がまだ。ただし、先月までに記録した給料日を過ぎてから。
+          はじめて使う人（履歴が無い人）には催促しない。 */
+    const c = computeMonth(st.settings, txs, ym);
+    if (!c.incomeRegularRecorded) {
+      const hint = salaryDayHint(txs, ym);
+      if (hint !== null && day >= hint) {
+        out.push({
+          key: "salary", icon: "💴", act: "salary",
+          text: "今月の給料が、まだ記録されていません",
+          sub: "記録すると「あと つかえるお金」が出ます",
+        });
+      }
+    }
+
+    /* 3. 支出の記録がとだえている。1件も記録が無い人には出さない。 */
+    const last = lastExpenseDate(txs, today);
+    if (last) {
+      const gap = daysApart(last, today);
+      if (gap >= TASK_QUIET_DAYS) {
+        out.push({
+          key: "quiet", icon: "🧾", act: "record",
+          text: gap + "日、支出の記録がありません",
+          sub: "レシートが手元にあれば、いまのうちに",
+        });
+      }
+    }
+
+    /* 4. 続けている習慣が、今日はまだ。続けていない人には出さない。 */
+    if (isHabit(st.diary, today) && !(st.diary || {})[today]) {
+      out.push({
+        key: "diary", icon: "📖", act: "diary",
+        text: "今日の日記が、まだです", sub: "ひとことでも大丈夫です",
+      });
+    }
+    if (isHabit(st.health, today) && !(st.health || {})[today]) {
+      out.push({
+        key: "health", icon: "❤️", act: "health",
+        text: "今日の体重・血圧が、まだです", sub: "1日1件で、あとから直せます",
+      });
+    }
+
+    return out.slice(0, TASK_MAX);
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -1534,6 +1656,16 @@
     VAR_CATS: EXP_CATS,   // 旧名の互換（中身は全支出カテゴリ）
     EXP_PICK_CATS: EXP_PICK_CATS,
     recurringCarryPlan: recurringCarryPlan,
+    todayTasks: todayTasks,
+    salaryDayHint: salaryDayHint,
+    lastExpenseDate: lastExpenseDate,
+    isHabit: isHabit,
+    daysApart: daysApart,
+    shiftDate: shiftDate,
+    TASK_MAX: TASK_MAX,
+    TASK_QUIET_DAYS: TASK_QUIET_DAYS,
+    HABIT_WINDOW: HABIT_WINDOW,
+    HABIT_MIN: HABIT_MIN,
     isRecurring: isRecurring,
     INC_CATS: INC_CATS,
     REGULAR_INCOME_CAT: REGULAR_INCOME_CAT,

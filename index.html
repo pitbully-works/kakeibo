@@ -245,6 +245,16 @@
   .fixtog.on .sw i{left:13px}
   .fixhint{font-size:10.5px;color:var(--sub);margin-top:4px}
   .tag.fx{background:var(--green-l);color:var(--green-d)}
+  /* 今日やることカード */
+  .todos{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 13px;margin-top:12px}
+  .todos .hd{font-size:11.5px;color:var(--sub);font-weight:800;margin-bottom:6px}
+  .todo{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 2px;border-top:1px solid var(--line);background:none}
+  .todo.first{border-top:none;padding-top:2px}
+  .todo .ti{flex:0 0 auto;font-size:19px;line-height:1.2}
+  .todo .tm{flex:1;min-width:0}
+  .todo .t1{display:block;font-size:12.5px;font-weight:700;color:var(--ink);line-height:1.4}
+  .todo .t2{display:block;font-size:10.5px;color:var(--sub);margin-top:1px}
+  .todo .tg{flex:0 0 auto;color:#c3ccc8;font-size:17px;font-weight:800}
   /* 分析タブ */
   .seg{display:flex;gap:6px;margin:6px 0 2px}
   .mbars{display:flex;gap:6px;align-items:flex-end;height:104px;margin:8px 0 2px}
@@ -366,6 +376,31 @@ function render(){
   window.scrollTo(0,0);
 }
 
+/* 今日やることカード。やることが無いときは、何も出さない。 */
+function taskCard(){
+  const tasks=Core.todayTasks(state, todayISO());
+  if(!tasks.length) return "";
+  const rows=tasks.map((t,i)=>`<button class="todo${i===0?" first":""}" data-act="task" data-task="${t.act}">
+      <span class="ti">${t.icon}</span>
+      <span class="tm"><span class="t1">${escapeHtml(t.text)}</span>${t.sub?`<span class="t2">${escapeHtml(t.sub)}</span>`:""}</span>
+      <span class="tg">›</span>
+    </button>`).join("");
+  return `<div class="todos"><div class="hd">今日やること</div>${rows}</div>`;
+}
+
+/* やることをタップしたときの行き先。ここでは記録を書き換えない。 */
+function goTask(act){
+  if(act==="carry"){ view="summary"; sumTab="month"; render(); return; }
+  if(act==="record"){ openRecord(null); return; }
+  if(act==="salary"){
+    openRecord(null);
+    sheetState.type="income"; sheetState.cat="salary";
+    renderSheet(); return;
+  }
+  if(act==="diary"){ diaryEditDate=null; diaryPhotoPending=undefined; view="diary"; render(); return; }
+  if(act==="health"){ view="health"; render(); return; }
+}
+
 function renderHome(){
   const c=compute(), s=state.settings;
   const d=new Date();
@@ -409,6 +444,7 @@ function renderHome(){
       ${ok}
       ${mini}
     </div>
+    ${taskCard()}
     <div class="dreamlbl">― あなたの夢の進み ―</div>
     <div class="dreamstrip">${goalTile}${nisaTile}${saveTile}</div>
     <button class="recordbtn" data-act="open-record">📸 記録する</button>
@@ -1584,6 +1620,7 @@ function handleAct(a,e){
   if(a==="add-diary-photo"){ const el=$("diaryPhotoInput"); if(el){ el.value=""; el.click(); } return; }
   if(a==="rm-diary-photo"){ diaryPhotoPending=null; render(); return; }
   if(a==="toggle-recurring"){ if(sheetState){ readSheetInputs(); sheetState.recurring=!sheetState.recurring; renderSheet(); } return; }
+  if(a==="task"){ const el=e&&e.target&&e.target.closest("[data-task]"); if(el) goTask(el.dataset.task); return; }
   if(a==="carry-recurring") return carryRecurring();
   if(a==="sum-tab"){ const el=e&&e.target&&e.target.closest("[data-tab]"); sumTab=(el&&el.dataset.tab)||"month"; render(); return; }
   if(a==="health-range"){ const el=e&&e.target&&e.target.closest("[data-range]"); healthRange=(el&&el.dataset.range)||"month"; render(); return; }
