@@ -280,3 +280,63 @@ test("まとめの記録一覧の見出しが「記録（タップで編集）�
   assert.match(appSrc, /記録（タップで編集）/, "見出しが更新されていない");
   assert.equal(appSrc.includes(">きろく<"), false, "古い「きろく」見出しが残っている");
 });
+
+/* ---------- まとめの円グラフ（Ver.2 ④） ---------- */
+test("収入を100%として支出・先取り・のこりの割合を返す", () => {
+  const c = { incomeTotal: 290000, spendTotal: 80000, setAside: 73000, available: 137000 };
+  const b = Core.budgetBreakdown(c);
+  assert.equal(b.income, 290000);
+  const spend = b.parts.find(p => p.key === "spend");
+  const setAside = b.parts.find(p => p.key === "setAside");
+  const remain = b.parts.find(p => p.key === "remain");
+  assert.equal(spend.amount, 80000);
+  assert.equal(setAside.amount, 73000);
+  assert.equal(remain.amount, 137000);
+  assert.equal(spend.pct + setAside.pct + remain.pct, 100, "割合の合計が100%でない");
+});
+
+test("使いすぎ（支出+先取り>収入）は over で示し、のこりは0", () => {
+  const c = { incomeTotal: 100000, spendTotal: 150000, setAside: 100000 };
+  const b = Core.budgetBreakdown(c);
+  assert.equal(b.over, 150000, "使いすぎ分が合わない");
+  assert.equal(b.parts.find(p => p.key === "remain").amount, 0, "のこりがマイナスになっている");
+});
+
+test("収入0でも割合計算が壊れない", () => {
+  const b = Core.budgetBreakdown({ incomeTotal: 0, spendTotal: 5000, setAside: 0 });
+  assert.equal(b.income, 0);
+  b.parts.forEach(p => assert.ok(Number.isFinite(p.pct), "pctがNaN"));
+});
+
+test("まとめ画面に円グラフ（SVG）が出る", () => {
+  const { app, html: out } = bootApp({ settings: SETTINGS, tx: [
+    { id: "s", type: "income", amount: 290000, cat: "salary", date: D(25) },
+    { id: "e", type: "expense", amount: 80000, cat: "food", date: D(5) },
+  ]});
+  app.setView("summary");
+  const h = out();
+  assert.match(h, /収入の使いみち/, "円グラフの見出しが無い");
+  assert.match(h, /<svg/, "SVGが描かれていない");
+  assert.match(h, /<circle/, "円が描かれていない");
+  assert.ok(h.includes("支出") && h.includes("先取り") && h.includes("のこり"), "凡例が無い");
+});
+
+test("円グラフの割合表示が正しい（支出28%など）", () => {
+  const { app, html: out } = bootApp({ settings: SETTINGS, tx: [
+    { id: "s", type: "income", amount: 290000, cat: "salary", date: D(25) },
+    { id: "e", type: "expense", amount: 80000, cat: "food", date: D(5) },
+  ]});
+  app.setView("summary");
+  const h = out();
+  assert.ok(h.includes("28%"), "支出28%が出ていない: " + (h.match(/\d+%/g) || []).join(","));
+});
+
+test("既存のカード表示・横棒グラフは残っている", () => {
+  const { app, html: out } = bootApp({ settings: SETTINGS, tx: [
+    { id: "e", type: "expense", amount: 80000, cat: "food", date: D(5) },
+  ]});
+  app.setView("summary");
+  const h = out();
+  assert.ok(h.includes("sumcards"), "サマリーカードが消えている");
+  assert.match(appSrc, /const bars =/, "横棒グラフが消えている");
+});

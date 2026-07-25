@@ -26,6 +26,8 @@ const KNOWN_GLOBALS = new Set([
   "Uint8ClampedArray", "Uint8Array", "Float64Array", "Float32Array", "Int32Array", "Intl", "Symbol", "WeakMap",
   "var", "let", "const", "async", "else", "do", "try", "finally", "of", "in",
   "delete", "void", "yield", "throw", "case",
+  /* SVG の transform 関数名（テンプレート文字列内に現れるが JS の呼び出しではない） */
+  "rotate", "translate", "scale", "matrix",
 ]);
 
 /* コメントを取り除く。説明文の中の「update() で〜」のような日本語を

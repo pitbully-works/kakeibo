@@ -381,6 +381,33 @@ function renderHome(){
   </div>`;
 }
 
+
+/* 収入を100%とした割合のドーナツ円グラフ（SVG・外部ライブラリなし） */
+function donutChart(bd){
+  const R=52, C=Math.PI*2*R, cx=60, cy=60;
+  let acc=0;
+  const total=bd.parts.reduce((s,p)=>s+p.amount,0);
+  const segs = total>0 ? bd.parts.filter(p=>p.amount>0).map(p=>{
+    const frac=p.amount/Math.max(total, bd.base);
+    const len=C*frac;
+    const seg=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${p.color}" stroke-width="14"
+      stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}"
+      transform="rotate(-90 ${cx} ${cy})"></circle>`;
+    acc+=len; return seg;
+  }).join("") : `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--line2)" stroke-width="14"></circle>`;
+  const legend=bd.parts.map(p=>`<div style="display:flex;align-items:center;gap:6px;font-size:12px">
+    <span style="width:10px;height:10px;border-radius:3px;background:${p.color};flex:0 0 auto"></span>
+    <span style="flex:1">${p.name}</span><b class="mono">${p.pct}%</b></div>`).join("");
+  return `<div style="display:flex;align-items:center;gap:16px">
+    <svg viewBox="0 0 120 120" style="width:120px;height:120px;flex:0 0 auto">${segs}
+      <text x="60" y="56" text-anchor="middle" style="font-size:11px;fill:var(--sub)">収入</text>
+      <text x="60" y="72" text-anchor="middle" style="font-size:13px;font-weight:800;fill:var(--ink)" class="mono">${yen(bd.income)}</text>
+    </svg>
+    <div style="flex:1;display:flex;flex-direction:column;gap:6px">${legend}
+      ${bd.over>0?`<div style="font-size:11px;color:#c2694f">⚠️ 収入を ${yen(bd.over)} 超えています</div>`:""}
+    </div>
+  </div>`;
+}
 function renderSummary(){
   const c=compute();
   /* ホームと同じ定義。のこり ＝ 収入 － 支出 － 先取り ＝ c.available */
@@ -427,6 +454,10 @@ function renderSummary(){
     </div>
     <div class="calcnote">収入 ${yen(c.incomeTotal)} － 支出 ${yen(c.spendTotal)} － 先取り ${yen(c.setAside)} ＝ <b>${yen(net)}</b><br>
       この「のこり」は、ホームの「今月あと つかえるお金」と同じ金額です。</div>
+    <div class="barlist">
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:8px">収入の使いみち（支出・先取り・のこり）</div>
+      ${donutChart(Core.budgetBreakdown(c))}
+    </div>
     <div class="barlist">
       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:4px">
         <span>収入の内わけ</span><span></span></div>

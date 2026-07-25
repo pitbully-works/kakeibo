@@ -1110,6 +1110,26 @@
     return marks;
   }
 
+
+  /* =======================================================================
+     まとめの円グラフ用：収入を100%として、支出・先取り・のこりの割合を返す
+     ======================================================================= */
+  function budgetBreakdown(c) {
+    const income = Math.max(0, Number(c && c.incomeTotal) || 0);
+    const spend = Math.max(0, Number(c && c.spendTotal) || 0);
+    const setAside = Math.max(0, Number(c && c.setAside) || 0);
+    const remain = Math.max(0, income - spend - setAside);   // のこり（マイナスは0扱い）
+    const over = Math.max(0, spend + setAside - income);     // 使いすぎ分（収入を超えた分）
+    const base = income > 0 ? income : (spend + setAside);   // 収入0なら支出+先取りを基準に
+    const pct = function (v) { return base > 0 ? Math.round((v / base) * 100) : 0; };
+    const parts = [
+      { key: "spend",    name: "支出",   amount: spend,    color: "#c2694f", pct: pct(spend) },
+      { key: "setAside", name: "先取り", amount: setAside, color: "#7f9cc0", pct: pct(setAside) },
+      { key: "remain",   name: "のこり", amount: remain,   color: "#6f9c78", pct: pct(remain) },
+    ];
+    return { income: income, base: base, over: over, parts: parts };
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -1217,6 +1237,7 @@
     diaryList: diaryList,
     dayDetail: dayDetail,
     monthMarks: monthMarks,
+    budgetBreakdown: budgetBreakdown,
     BACKUP_VERSION: BACKUP_VERSION,
     MEMO_MAX: MEMO_MAX,
     AMOUNT_MAX: AMOUNT_MAX,
