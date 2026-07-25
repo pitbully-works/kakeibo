@@ -86,6 +86,13 @@ test("撮影しただけでは読み取らず、枠を決めてから読む", ()
   assert.match(src, /function initCrop\(\)/, "枠を動かす処理が無い");
 });
 
+test("まとめのカードが、横1列で はみ出さない作りになっている", () => {
+  // 横並び（flex）に戻すと、金額が長い月に右端のカードが画面外へ切れる
+  assert.match(html, /\.sumcards\{display:grid/, "カードの並びが grid でない");
+  assert.equal(/\.sumcards\{display:flex/.test(html), false, "横1列に戻っている");
+  assert.equal(/\.sc\{flex:1/.test(html), false, "カードが縮まない指定に戻っている");
+});
+
 test("service worker が core.js をキャッシュし、版が上がっている", () => {
   assert.match(sw, /"\.\/core\.js"/);
   assert.match(sw, /kakeibo-v\d+/, "キャッシュ名に版が付いていない");

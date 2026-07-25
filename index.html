@@ -98,10 +98,14 @@
   .empty .e{font-size:30px;display:block;margin-bottom:8px}
 
   /* summary */
-  .sumcards{display:flex;gap:10px}
-  .sc{flex:1;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px 12px;text-align:center}
+  /* 横1列に4枚並べると、金額が長い月に右端がはみ出して切れる。
+     枚数に関係なく収まるよう、2列のグリッドで折り返す。 */
+  .sumcards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .sc{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px 12px;text-align:center}
   .sc .l{font-size:10.5px;color:var(--sub)}
-  .sc .v{font-size:18px;font-weight:800;margin-top:2px}
+  .sc .v{font-size:18px;font-weight:800;margin-top:2px;overflow-wrap:anywhere}
+  /* 3枚のときは、最後の1枚を横いっぱいに（2枚＋1枚で座りをよくする） */
+  .sumcards.three .sc:last-child{grid-column:1 / -1}
   .sc .v.inc{color:var(--green-d)}.sc .v.exp{color:var(--terra)}.sc .v.net{color:var(--gold-d)}
   .barlist{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-top:12px}
   .brow{display:flex;align-items:center;gap:9px;margin:9px 0;font-size:12px}
@@ -687,7 +691,7 @@ function renderAnalysis(){
     <div class="barlist" style="margin-top:0">${insHtml}</div>
 
     <div class="stitle">つかうペース</div>
-    <div class="sumcards">
+    <div class="sumcards three">
       <div class="sc"><div class="l">これまで</div><div class="v exp mono">${yen(p.spendTotal)}</div></div>
       <div class="sc"><div class="l">1日あたり</div><div class="v mono">${yen(p.perDay)}</div></div>
       ${forecastCard}

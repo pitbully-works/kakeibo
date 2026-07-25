@@ -15,9 +15,9 @@ const CORE = ORIGIN + "/core.js";
 const ICON = ORIGIN + "/icon-192.png";
 
 /* ---------- 1. キャッシュ名 ---------- */
-test("キャッシュ名が新しくなっている（kakeibo-v10）", () => {
-  assert.match(swSrc, /const CACHE = "kakeibo-v10";/, "版数が上がっていない");
-  for (const old of ["kakeibo-v1", "kakeibo-v2", "kakeibo-v3", "kakeibo-v4", "kakeibo-v5", "kakeibo-v6", "kakeibo-v7", "kakeibo-v8", "kakeibo-v9"]) {
+test("キャッシュ名が新しくなっている（kakeibo-v11）", () => {
+  assert.match(swSrc, /const CACHE = "kakeibo-v11";/, "版数が上がっていない");
+  for (const old of ["kakeibo-v1", "kakeibo-v2", "kakeibo-v3", "kakeibo-v4", "kakeibo-v5", "kakeibo-v6", "kakeibo-v7", "kakeibo-v8", "kakeibo-v9", "kakeibo-v10"]) {
     assert.equal(swSrc.includes('"' + old + '"'), false, "古い版数が残っている: " + old);
   }
 });
@@ -25,7 +25,7 @@ test("キャッシュ名が新しくなっている（kakeibo-v10）", () => {
 test("install で必要な部品が先に取り込まれる", async () => {
   const sw = bootSW({});
   await sw.install();
-  const urls = sw.cachedUrls("kakeibo-v10");
+  const urls = sw.cachedUrls("kakeibo-v11");
   for (const must of [ROOT, INDEX, CORE, ORIGIN + "/manifest.webmanifest", ICON]) {
     assert.ok(urls.includes(must), must + " が取り込まれていない");
   }
@@ -33,15 +33,15 @@ test("install で必要な部品が先に取り込まれる", async () => {
 
 /* ---------- 2. activate で古いキャッシュを消す ---------- */
 test("activate で古いキャッシュを削除する", async () => {
-  const sw = bootSW({ oldCaches: ["kakeibo-v1", "kakeibo-v2", "kakeibo-v3", "kakeibo-v4", "kakeibo-v5", "kakeibo-v6", "kakeibo-v7", "kakeibo-v8", "kakeibo-v9"] });
+  const sw = bootSW({ oldCaches: ["kakeibo-v1", "kakeibo-v2", "kakeibo-v3", "kakeibo-v4", "kakeibo-v5", "kakeibo-v6", "kakeibo-v7", "kakeibo-v8", "kakeibo-v9", "kakeibo-v10"] });
   await sw.seedOld();
-  assert.equal(sw.cacheNames().length, 9, "前提の古いキャッシュが用意できていない");
+  assert.equal(sw.cacheNames().length, 10, "前提の古いキャッシュが用意できていない");
 
   await sw.install();
   await sw.activate();
 
   const names = sw.cacheNames();
-  assert.deepEqual(names, ["kakeibo-v10"], "古いキャッシュが残っている: " + names.join(", "));
+  assert.deepEqual(names, ["kakeibo-v11"], "古いキャッシュが残っている: " + names.join(", "));
 });
 
 test("activate 後、すぐに制御を引き継ぐ", async () => {
@@ -74,7 +74,7 @@ test("画面を取り直したら、その内容をキャッシュに入れ直�
   const sw = bootSW({});
   await sw.install();
   await sw.fetchEvent(INDEX, { mode: "navigate" });
-  const stored = await (await sw.caches.open("kakeibo-v10")).match(INDEX);
+  const stored = await (await sw.caches.open("kakeibo-v11")).match(INDEX);
   assert.equal(stored.body, "network:" + INDEX, "新しい画面がキャッシュに反映されていない");
 });
 
@@ -83,7 +83,7 @@ test("index.html を更新すれば、次に開いたとき新しい画面にな
   await sw.install();
   await sw.activate();
   // 初回：キャッシュには install 時の内容が入っている
-  const cachedFirst = await (await sw.caches.open("kakeibo-v10")).match(INDEX);
+  const cachedFirst = await (await sw.caches.open("kakeibo-v11")).match(INDEX);
   assert.match(cachedFirst.body, /^precached:/);
   // 画面を開くとネットワークの新しい内容になる
   const res = await sw.fetchEvent(INDEX, { mode: "navigate" });
@@ -126,7 +126,7 @@ test("core.js を取り直したら、その内容をキャッシュに入れ直
   const sw = bootSW({});
   await sw.install();
   await sw.fetchEvent(CORE);
-  const stored = await (await sw.caches.open("kakeibo-v10")).match(CORE);
+  const stored = await (await sw.caches.open("kakeibo-v11")).match(CORE);
   assert.equal(stored.body, "network:" + CORE, "新しい core.js がキャッシュに反映されていない");
 });
 
