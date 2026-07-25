@@ -76,7 +76,7 @@ test("save() は成否を返し、失敗を握りつぶさない", () => {
 });
 
 test("保存前に写真を縮めている", () => {
-  assert.match(appSrc, /resizeDataUrl\(photo, Core\.PHOTO_STORE_MAX/, "保存用の縮小をしていない");
+  assert.match(appSrc, /if\(photo\) photo = await resizeDataUrl\(photo, Core\.PHOTO_STORE_MAX/, "保存用の縮小をしていない");
   assert.match(appSrc, /resizeDataUrl\(reader\.result, Core\.PHOTO_VIEW_MAX/, "撮影時の縮小をしていない");
 });
 

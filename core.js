@@ -1028,26 +1028,48 @@
      ======================================================================= */
   const DIARY_MAX = 2000;   // 1日の本文の上限文字数
 
-  /* 日記ぜんぶを安全な形に整える。日付が妥当で、本文が空でないものだけ残す。 */
+  /* 日記1件を安全な形に整える。
+     旧形式（本文の文字列だけ）も新形式（{text, photo}）も受け入れる。
+     戻り値は必ず {text, photo?} か null。 */
+  function normalizeDiaryEntry(raw) {
+    let text = "", photo = null;
+    if (typeof raw === "string") {
+      text = raw;                                    // 旧形式：文字列だけ
+    } else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      if (typeof raw.text === "string") text = raw.text;
+      /* 写真は画像の data URL だけ受け入れる（XSS・不正値を弾く） */
+      if (typeof raw.photo === "string" && /^data:image\/[a-z+.-]+;base64,/i.test(raw.photo)) {
+        photo = raw.photo;
+      }
+    } else {
+      return null;
+    }
+    text = text.slice(0, DIARY_MAX);
+    /* 本文も写真も無ければ、その日の日記は残さない */
+    if (text.trim() === "" && !photo) return null;
+    const out = { text: text };
+    if (photo) out.photo = photo;
+    return out;
+  }
+
+  /* 日記ぜんぶを安全な形に整える。日付が妥当で中身のあるものだけ残す。 */
   function normalizeDiary(diary) {
     const out = {};
     if (!diary || typeof diary !== "object" || Array.isArray(diary)) return out;
     Object.keys(diary).forEach(function (date) {
       if (!validateDateString(date)) return;
-      let text = diary[date];
-      if (typeof text !== "string") return;
-      text = text.slice(0, DIARY_MAX);
-      if (text.trim() === "") return;      // 空の日記は残さない
-      out[date] = text;
+      const e = normalizeDiaryEntry(diary[date]);
+      if (e) out[date] = e;
     });
     return out;
   }
 
-  /* 一覧用：日付の新しい順に返す。 */
+  /* 一覧用：日付の新しい順に返す。text と photo を持つ。 */
   function diaryList(diary) {
     const d = diary || {};
     return Object.keys(d).sort().reverse().map(function (date) {
-      return { date: date, text: d[date] };
+      const e = d[date] || {};
+      return { date: date, text: e.text || "", photo: e.photo || null };
     });
   }
 
@@ -1154,6 +1176,7 @@
     healthSeries: healthSeries,
     DIARY_MAX: DIARY_MAX,
     normalizeDiary: normalizeDiary,
+    normalizeDiaryEntry: normalizeDiaryEntry,
     diaryList: diaryList,
     BACKUP_VERSION: BACKUP_VERSION,
     MEMO_MAX: MEMO_MAX,

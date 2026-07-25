@@ -235,6 +235,7 @@
 <div class="sheet" id="sheet"></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="camInput" accept="image/*" capture="environment" class="hidden">
+<input type="file" id="diaryPhotoInput" accept="image/*" class="hidden">
 <input type="file" id="backupInput" accept="application/json,.json" class="hidden">
 
 <script src="./core.js"></script>
@@ -429,24 +430,32 @@ function renderSummary(){
 
 /* ---------- 日記ページ ---------- */
 let diaryEditDate=null;   // 編集中の日付（null＝今日を新規）
+let diaryPhotoPending=undefined;   // 編集中に選んだ写真（undefined=未変更, null=外した, 文字列=新規）
 function renderDiary(){
   const editing = diaryEditDate || todayISO();
-  const cur = state.diary[editing] || "";
+  const curEntry = state.diary[editing] || {};
+  const curText = curEntry.text || "";
+  const curPhoto = diaryPhotoPending!==undefined ? diaryPhotoPending : (curEntry.photo || null);
   const list = Core.diaryList(state.diary);
   const listHtml = list.length ? list.map(d=>{
     const md=d.date.slice(5).replace("-","/");
     const preview=escapeHtml(d.text.length>60?d.text.slice(0,60)+"…":d.text);
-    return `<div class="krow diary-row" data-act="edit-diary" data-date="${d.date}" style="cursor:pointer;align-items:flex-start">
-      <span style="min-width:44px;color:var(--sub);font-weight:700">${md}</span>
-      <span style="flex:1;white-space:pre-wrap;line-height:1.5">${preview}</span></div>`;
+    const thumb=d.photo?`<img src="${d.photo}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex:0 0 auto">`:"";
+    return `<div class="krow diary-row" data-act="edit-diary" data-date="${d.date}" style="cursor:pointer;align-items:flex-start;gap:8px">
+      <span style="min-width:40px;color:var(--sub);font-weight:700">${md}</span>
+      <span style="flex:1;white-space:pre-wrap;line-height:1.5">${preview||(d.photo?"（写真のみ）":"")}</span>${thumb}</div>`;
   }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">まだ日記がありません</div>`;
+  const photoBlock = curPhoto
+    ? `<div style="margin-top:8px"><img src="${curPhoto}" style="width:100%;border-radius:10px;display:block"><button class="btn-quiet" data-act="rm-diary-photo" style="margin-top:6px">🗑 写真を外す</button></div>`
+    : `<button class="btn-quiet" data-act="add-diary-photo" style="margin-top:8px">📷 写真を追加（撮影・ライブラリ）</button>`;
   return `<div class="screen">
     <div class="stitle" style="margin-top:6px">日記（${editing.slice(5).replace("-","/")}）</div>
     <div class="calcnote" style="margin:0 0 10px">1日1件です。過去の日付をタップすると、その日の日記を直せます。</div>
     <div class="barlist">
       <div class="field"><label>本文</label>
-        <textarea id="d-text" rows="6" maxlength="${Core.DIARY_MAX}" placeholder="今日のできごと・気づいたこと" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit;padding:10px;border:1px solid var(--line2);border-radius:10px">${escapeHtml(cur)}</textarea>
+        <textarea id="d-text" rows="6" maxlength="${Core.DIARY_MAX}" placeholder="今日のできごと・気づいたこと" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit;padding:10px;border:1px solid var(--line2);border-radius:10px">${escapeHtml(curText)}</textarea>
       </div>
+      ${photoBlock}
       <div style="display:flex;gap:10px">
         <button class="btn-main" data-act="save-diary" style="flex:1">📖 保存する</button>
         ${diaryEditDate?`<button class="btn-quiet" data-act="new-diary" style="flex:0 0 auto">今日に戻る</button>`:""}
@@ -456,21 +465,40 @@ function renderDiary(){
     <div class="barlist">${listHtml}</div>
   </div>`;
 }
-function saveDiary(){
+async function saveDiary(){
   const el=$("d-text"); const text=el?el.value:"";
   const date=diaryEditDate||todayISO();
+  const cur=state.diary[date]||{};
+  /* 写真：未変更なら今の写真、null なら外す、文字列なら新規（縮小してから） */
+  let photo = diaryPhotoPending!==undefined ? diaryPhotoPending : (cur.photo||null);
+  if(photo && diaryPhotoPending) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);
+
   const before=JSON.parse(JSON.stringify(state.diary));
-  const next=Object.assign({}, state.diary);
-  if(text.trim()===""){ delete next[date]; }   // 空にしたら、その日の日記は消す
-  else { next[date]=text.slice(0,Core.DIARY_MAX); }
-  state.diary=next;
-  if(!save()){
-    state.diary=before;
-    toast("日記を保存できませんでした");
+  const build=(withPhoto)=>{
+    const next=Object.assign({}, state.diary);
+    if(text.trim()==="" && !(withPhoto&&photo)){ delete next[date]; }   // 本文も写真も無ければ消す
+    else {
+      const e={ text:text.slice(0,Core.DIARY_MAX) };
+      if(withPhoto && photo) e.photo=photo;
+      next[date]=e;
+    }
+    return next;
+  };
+  state.diary=build(true);
+  if(save()){
+    diaryEditDate=null; diaryPhotoPending=undefined;
+    render(); toast((text.trim()===""&&!photo)?"日記を消しました":"日記を保存しました ✓");
     return;
   }
-  diaryEditDate=null;   // 保存したら今日へ戻す
-  render(); toast(text.trim()===""?"日記を消しました":"日記を保存しました ✓");
+  /* 容量オーバー：写真を落として本文だけで再挑戦 */
+  state.diary=build(false);
+  if(photo && save()){
+    diaryEditDate=null; diaryPhotoPending=undefined;
+    render(); toast("日記を保存しました（写真は容量オーバーで保存できません）");
+    return;
+  }
+  state.diary=before;   // それでも駄目なら完全に戻す
+  toast("日記を保存できませんでした");
 }
 
 /* ---------- 健康ページ ---------- */
@@ -1214,12 +1242,23 @@ function handleAct(a,e){
   if(a==="import-backup") return pickBackup();
   if(a==="save-health") return saveHealth();
   if(a==="save-diary") return saveDiary();
-  if(a==="new-diary"){ diaryEditDate=null; render(); return; }
-  if(a==="edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=(el&&el.dataset.date)||null; render(); return; }
+  if(a==="new-diary"){ diaryEditDate=null; diaryPhotoPending=undefined; render(); return; }
+  if(a==="edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=(el&&el.dataset.date)||null; diaryPhotoPending=undefined; render(); return; }
+  if(a==="add-diary-photo"){ const el=$("diaryPhotoInput"); if(el){ el.value=""; el.click(); } return; }
+  if(a==="rm-diary-photo"){ diaryPhotoPending=null; render(); return; }
   if(a==="health-range"){ const el=e&&e.target&&e.target.closest("[data-range]"); healthRange=(el&&el.dataset.range)||"month"; render(); return; }
 }
 $("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
 $("backupInput").addEventListener("change",e=>{ onBackupPicked(e.target.files&&e.target.files[0]); });
+$("diaryPhotoInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return;
+  const tEl=$("d-text"); const keepText=tEl?tEl.value:"";   // 入力中の本文を失わない
+  const r=new FileReader();
+  r.onload=()=>{ diaryPhotoPending=r.result;
+    const cur=state.diary[diaryEditDate||todayISO()]||{}; cur.text=keepText;   // 本文を保って再描画
+    render(); const t2=$("d-text"); if(t2) t2.value=keepText; };
+  r.onerror=()=>toast("写真を読み込めませんでした");
+  r.readAsDataURL(f);
+});
 
 /* ---------- 起動 ---------- */
 render();
