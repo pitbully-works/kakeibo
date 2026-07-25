@@ -235,6 +235,29 @@
   .calcnote b{color:var(--ink);font-weight:800}
   .catlbl{grid-column:1/-1;font-size:10.5px;color:var(--sub);font-weight:800;margin:2px 2px -2px}
 
+  /* 分析タブ */
+  .seg{display:flex;gap:6px;margin:6px 0 2px}
+  .mbars{display:flex;gap:6px;align-items:flex-end;height:104px;margin:8px 0 2px}
+  .mcol{flex:1;height:100%;display:flex;flex-direction:column;align-items:center}
+  .mpair{height:calc(100% - 15px);width:100%;display:flex;align-items:flex-end;justify-content:center;gap:3px}
+  .mbar{width:10px;border-radius:3px 3px 0 0;background:#cfd8d4}
+  .mlbl{font-size:10px;color:var(--sub);font-weight:700;line-height:15px}
+  .ins{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;padding:8px 0;border-top:1px solid var(--line);line-height:1.5}
+  .ins.first{border-top:none;padding-top:2px}
+  .ins .ii{flex:0 0 auto;font-size:14px;line-height:1.35}
+  .ins.warn{color:#a8543c}
+  .ins.good{color:#3f7a52}
+  .crow{margin:11px 0}
+  .crow .chd{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12.5px}
+  .crow .cn{color:var(--ink);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crow .cv{flex:0 0 auto;font-weight:800}
+  .crow .track{display:block;height:8px;background:#eef1ef;border-radius:6px;overflow:hidden;margin:4px 0 3px}
+  .crow .fill{display:block;height:100%;border-radius:6px}
+  .crow .csub{font-size:10.5px;color:var(--sub)}
+  .dif{display:inline-block;margin-left:6px;font-size:10px;font-weight:800;border-radius:999px;padding:1px 6px}
+  .dif.up{background:#fbeae4;color:#b35c42}
+  .dif.dn{background:#e8f2ea;color:#3f7a52}
+  .dif.eq{background:#eef1ef;color:var(--sub)}
   .hidden{display:none !important}
 </style>
 </head>
@@ -280,6 +303,7 @@ const defaultState = ()=>({
 });
 let state = load();
 let view = "home";
+let sumTab = "month";   // まとめ画面のタブ： "month"（今月）／"analysis"（分析）
 
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
@@ -323,7 +347,7 @@ function render(){
   document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on", b.dataset.nav===view));
   const app=$("app");
   if(view==="home") app.innerHTML=renderHome();
-  else if(view==="summary") app.innerHTML=renderSummary();
+  else if(view==="summary") app.innerHTML = sumTab==="analysis" ? renderAnalysis() : renderSummary();
   else if(view==="calendar") app.innerHTML=renderCalendar();
   else if(view==="diary") app.innerHTML=renderDiary();
   else if(view==="health") app.innerHTML=renderHealth();
@@ -445,6 +469,7 @@ function renderSummary(){
     }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の支出はまだありません</div>`;
 
   return `<div class="screen">
+    ${sumTabs()}
     <div class="stitle" style="margin-top:6px">今月のまとめ（${new Date().getMonth()+1}月）</div>
     <div class="sumcards">
       <div class="sc"><div class="l">収入</div><div class="v inc mono">${yen(c.incomeTotal)}</div></div>
@@ -477,6 +502,131 @@ function renderSummary(){
 
 
 
+
+/* =========================================================================
+   分析タブ（詳細分析）
+   -------------------------------------------------------------------------
+   計算はしない。core.js の analyzeMonth() が返したものを描くだけ。
+   ========================================================================= */
+function sumTabs(){
+  const b=(k,label)=>`<button data-act="sum-tab" data-tab="${k}" class="rgbtn${sumTab===k?" on":""}">${label}</button>`;
+  return `<div class="seg">${b("month","今月")}${b("analysis","📈 分析")}</div>`;
+}
+
+/* 使うペース：つかった累計の線と、予算のペース（点線）を重ねる */
+function paceChart(p){
+  if(!p.daily.length || p.spendTotal<=0) return `<div class="muted" style="text-align:center;padding:14px;font-size:12.5px">まだ支出の記録がありません</div>`;
+  const W=320,H=132,padL=6,padR=6,padT=10,padB=16;
+  const last=p.daily[p.daily.length-1];
+  const hi=Math.max(last.cum, p.budget>0?p.budget:0, p.forecast, 1);
+  const col=(p.over!==null&&p.over>0)?"#c2694f":"#6f9c78";
+  const x=d=>padL+(W-padL-padR)*((d-1)/Math.max(1,p.days-1));
+  const y=v=>H-padB-(H-padT-padB)*(v/hi);
+  const pts=p.daily.map(d=>`${x(d.day).toFixed(1)},${y(d.cum).toFixed(1)}`).join(" ");
+  const budgetLine=p.budget>0
+    ? `<line x1="${x(1).toFixed(1)}" y1="${y(p.budgetPerDay).toFixed(1)}" x2="${x(p.days).toFixed(1)}" y2="${y(p.budget).toFixed(1)}" stroke="#9fb0ab" stroke-width="1.5" stroke-dasharray="4 4"></line>` : "";
+  const foreLine=(p.isCurrent&&p.elapsed<p.days)
+    ? `<line x1="${x(p.elapsed).toFixed(1)}" y1="${y(last.cum).toFixed(1)}" x2="${x(p.days).toFixed(1)}" y2="${y(p.forecast).toFixed(1)}" stroke="${col}" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.55"></line>` : "";
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    ${budgetLine}${foreLine}
+    <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+    <circle cx="${x(last.day).toFixed(1)}" cy="${y(last.cum).toFixed(1)}" r="3" fill="${col}"></circle>
+  </svg>
+  <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--sub);margin-top:2px">
+    <span>1日</span><span>― つかった累計　┄ 予算のペース</span><span>${p.days}日</span>
+  </div>`;
+}
+
+/* 月ごとの推移：収入（緑）と支出（赤）を並べた棒 */
+function trendChart(trend){
+  const max=Math.max(1,...trend.map(m=>Math.max(m.income,m.spend)));
+  const h=v=>v>0?Math.max(4,Math.round(v/max*100)):0;
+  const cols=trend.map(m=>`<div class="mcol"><div class="mpair">
+      <span class="mbar" style="height:${h(m.income)}%;background:#6f9c78"></span>
+      <span class="mbar" style="height:${h(m.spend)}%;background:#c2694f"></span>
+    </div><span class="mlbl">${m.label}</span></div>`).join("");
+  return `<div class="mbars">${cols}</div>
+  <div style="display:flex;gap:12px;justify-content:center;font-size:10.5px;color:var(--sub)">
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#6f9c78"></span> 収入</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#c2694f"></span> 支出</span>
+  </div>`;
+}
+
+const CAT_COLOR={food:"#8fbf7f",eatout:"#d9a54f",daily:"#4fa8d8",rent:"#7f9cc0",power:"#e0c060",gas:"#d98a5f",water:"#5fb0d0",comm:"#9a8fd0",insure:"#78b89a",transit:"#b08fd6",car:"#8a9a70",medical:"#c2694f",clothes:"#c98fb0",social:"#6fa88a",hobby:"#e6b0a6",pet:"#b89a70",pension:"#d0b060",tax:"#a0a0a8",subs:"#8fb0c0",other:"#9fb0ab"};
+function diffTag(diff, hadPrev){
+  if(!hadPrev) return `<span class="dif eq">はじめて</span>`;
+  if(diff>0) return `<span class="dif up">+${yen(diff)}</span>`;
+  if(diff<0) return `<span class="dif dn">−${yen(-diff)}</span>`;
+  return `<span class="dif eq">±0</span>`;
+}
+
+function renderAnalysis(){
+  const a=Core.analyzeMonth(state.settings, state.tx, curYM(), {today:todayISO()});
+  const p=a.pace;
+  const mon=Number(curYM().slice(5,7));
+
+  const insHtml = a.insights.length
+    ? a.insights.map((s,i)=>{ const icon=s.level==="warn"?"⚠️":s.level==="good"?"🌱":"💡";
+        return `<div class="ins ${s.level}${i===0?" first":""}"><span class="ii">${icon}</span><span>${escapeHtml(s.text)}</span></div>`;
+      }).join("")
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">記録がたまると、ここに気づきが出ます</div>`;
+
+  const catRows = a.cats.filter(c=>c.now>0).slice(0,8);
+  const catMax = catRows.length ? catRows[0].now : 1;
+  const catHtml = catRows.length ? catRows.map(c=>{
+      const w=Math.max(3,Math.round(c.now/catMax*100));
+      const avgTxt = c.avg!==null && c.avg>0 ? ` ・ ${Core.COMPARE_MONTHS}か月平均 ${yen(c.avg)}` : "";
+      return `<div class="crow">
+        <div class="chd"><span class="cn">${c.emoji} ${escapeHtml(c.name)}</span>
+          <span class="cv mono">${yen(c.now)}${diffTag(c.diff, c.prev>0)}</span></div>
+        <span class="track"><span class="fill" style="width:${w}%;background:${CAT_COLOR[c.key]||"#9fb0ab"}"></span></span>
+        <div class="csub">支出の ${c.share}% ・ 先月 ${yen(c.prev)}${avgTxt}</div>
+      </div>`;
+    }).join("")
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の支出はまだありません</div>`;
+
+  const wkMax=Math.max(1,...a.week.map(w=>w.amount));
+  const wkHtml=a.week.map(w=>`<div class="brow"><span class="bt">${w.name}曜</span>
+      <span class="track"><span class="fill" style="width:${w.amount>0?Math.max(3,Math.round(w.amount/wkMax*100)):0}%;background:#8fb0c0"></span></span>
+      <span class="bv mono">${w.amount>0?yen(w.amount):"—"}</span></div>`).join("");
+
+  const forecastCard = p.hasIncome
+    ? `<div class="sc"><div class="l">月末の予測</div><div class="v mono ${p.over>0?"exp":"net"}">${yen(p.forecast)}</div></div>`
+    : `<div class="sc"><div class="l">月末の予測</div><div class="v mono">${yen(p.forecast)}</div></div>`;
+
+  return `<div class="screen">
+    ${sumTabs()}
+    <div class="stitle" style="margin-top:6px">${mon}月の分析（${p.elapsed}日目 / ${p.days}日）</div>
+    <div class="barlist" style="margin-top:0">${insHtml}</div>
+
+    <div class="stitle">つかうペース</div>
+    <div class="sumcards">
+      <div class="sc"><div class="l">これまで</div><div class="v exp mono">${yen(p.spendTotal)}</div></div>
+      <div class="sc"><div class="l">1日あたり</div><div class="v mono">${yen(p.perDay)}</div></div>
+      ${forecastCard}
+    </div>
+    <div class="barlist">
+      ${paceChart(p)}
+      <div class="calcnote" style="margin:10px 0 0">${p.hasIncome
+        ? `つかってよい額 ${yen(p.budget)}（収入 ${yen(a.month.incomeTotal)} － 先取り ${yen(a.month.setAside)}）。1日あたり ${yen(p.budgetPerDay)} のペースです。`
+        : `給料を記録すると、予算のペース（点線）が出ます。`}<br>
+        記録があった日 ${p.spendDays}日 ／ つかわなかった日 ${p.noSpendDays}日</div>
+    </div>
+
+    <div class="stitle">${a.trend.length}か月の推移</div>
+    <div class="barlist" style="margin-top:0">
+      ${trendChart(a.trend)}
+      <div class="calcnote" style="margin:10px 0 0">先取り（予定額）は今の設定の金額なので、過去の月には当てはめていません。ここは収入と支出だけを並べています。</div>
+    </div>
+
+    <div class="stitle">先月とくらべる</div>
+    <div class="barlist" style="margin-top:0">${catHtml}</div>
+
+    <div class="stitle">曜日のくせ</div>
+    <div class="barlist" style="margin-top:0">${wkHtml}</div>
+    <div style="height:6px"></div>
+  </div>`;
+}
 
 /* ---------- カレンダーページ ---------- */
 let calYM=curYM();          // 表示中の年月 "YYYY-MM"
@@ -1368,6 +1518,7 @@ function handleAct(a,e){
   if(a==="edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=(el&&el.dataset.date)||null; diaryPhotoPending=undefined; render(); return; }
   if(a==="add-diary-photo"){ const el=$("diaryPhotoInput"); if(el){ el.value=""; el.click(); } return; }
   if(a==="rm-diary-photo"){ diaryPhotoPending=null; render(); return; }
+  if(a==="sum-tab"){ const el=e&&e.target&&e.target.closest("[data-tab]"); sumTab=(el&&el.dataset.tab)||"month"; render(); return; }
   if(a==="health-range"){ const el=e&&e.target&&e.target.closest("[data-range]"); healthRange=(el&&el.dataset.range)||"month"; render(); return; }
 }
 $("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
@@ -1429,7 +1580,7 @@ if ("serviceWorker" in navigator) {
 /* --- SW-REGISTRATION-END --- */
 
 /* テスト用フック（本番挙動には影響しない） */
-window.__kakeibo={ get state(){return state;}, Core, compute, buildSnapshot, save, render, load:()=>{state=load();}, setView:v=>{view=v;render();} };
+window.__kakeibo={ get state(){return state;}, Core, compute, buildSnapshot, save, render, load:()=>{state=load();}, setView:v=>{view=v;render();}, setTab:t=>{sumTab=t;render();} };
 </script>
 </body>
 </html>

@@ -1130,6 +1130,243 @@
     return { income: income, base: base, over: over, parts: parts };
   }
 
+  /* =======================================================================
+     詳細分析（まとめ画面の「分析」タブ）
+     -----------------------------------------------------------------------
+     ここでも金額の式は書かない。月の合計は必ず computeMonth() から取る。
+     すべて純粋関数：UIに依存せず、時計も読まない。
+     「今日」は引数で受け取る（テストで固定できるようにするため）。
+     ======================================================================= */
+
+  const TREND_MONTHS = 6;     // 推移グラフに出す月数
+  const COMPARE_MONTHS = 3;   // 平均を出すのに使う「過去」の月数（当月は含めない）
+  const WEEKDAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
+
+  /* 金額の表し方（画面と同じ「¥1,234」）。気づきの文章づくりに使う。 */
+  function fmtYen(v) {
+    return "¥" + Math.round(Number(v) || 0).toLocaleString("en-US");
+  }
+
+  /* "YYYY-MM" を delta か月ずらす */
+  function shiftYm(ym, delta) {
+    const y = Number(String(ym).slice(0, 4));
+    const m = Number(String(ym).slice(5, 7));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return String(ym);
+    const t = y * 12 + (m - 1) + (Number(delta) || 0);
+    const ny = Math.floor(t / 12);
+    const nm = t - ny * 12 + 1;
+    return String(ny).padStart(4, "0") + "-" + String(nm).padStart(2, "0");
+  }
+
+  /* 直近 n か月を古い順に返す（最後が ym） */
+  function recentMonths(ym, n) {
+    const count = Math.max(1, Math.min(24, Math.floor(Number(n) || 1)));
+    const out = [];
+    for (let i = count - 1; i >= 0; i--) out.push(shiftYm(ym, -i));
+    return out;
+  }
+
+  /* その月の日数（月末日） */
+  function daysInMonth(ym) {
+    const y = Number(String(ym).slice(0, 4));
+    const m = Number(String(ym).slice(5, 7));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return 30;
+    return new Date(Date.UTC(y, m, 0)).getUTCDate();
+  }
+
+  /* ---------- 月ごとの推移 ---------- */
+  /* 金額は computeMonth() の結果だけを読む（式をここで書き直さない）。
+     先取り（予定額）は「今の設定」なので過去の月には当てはめない。
+     そのため推移で見せるのは 収入・支出・その差だけにする。 */
+  function monthlyTrend(settings, txs, ym, n) {
+    return recentMonths(ym, n || TREND_MONTHS).map(function (m) {
+      const c = computeMonth(settings, txs, m);
+      return {
+        ym: m,
+        label: String(Number(m.slice(5, 7))) + "月",
+        income: c.incomeTotal,
+        spend: c.spendTotal,
+        net: c.incomeTotal - c.spendTotal,
+        hasRecord: c.incomeTotal > 0 || c.spendTotal > 0,
+      };
+    });
+  }
+
+  /* ---------- カテゴリ別の支出 ---------- */
+  function categorySpend(txs, ym) {
+    const out = {};
+    (Array.isArray(txs) ? txs : []).forEach(function (t) {
+      if (!t || t.type !== "expense" || monthOf(t.date) !== ym) return;
+      out[t.cat] = (out[t.cat] || 0) + num(t.amount);
+    });
+    return out;
+  }
+
+  /* 当月・前月・過去n か月の平均をカテゴリごとに並べる。
+     平均は「記録のあった月」だけで割る（使いはじめの月に薄まらないように）。 */
+  function categoryCompare(txs, ym, n) {
+    const back = Math.max(1, Math.floor(Number(n) || COMPARE_MONTHS));
+    const pastYms = recentMonths(shiftYm(ym, -1), back);      // 当月は含めない
+    const now = categorySpend(txs, ym);
+    const prev = categorySpend(txs, shiftYm(ym, -1));
+    const past = pastYms.map(function (m) { return categorySpend(txs, m); });
+    const activeMonths = past.filter(function (map) {
+      return Object.keys(map).some(function (k) { return map[k] > 0; });
+    }).length;
+
+    const keys = {};
+    [now, prev].concat(past).forEach(function (map) {
+      Object.keys(map).forEach(function (k) { if (map[k] > 0) keys[k] = true; });
+    });
+    const nowTotal = Object.keys(now).reduce(function (a, k) { return a + now[k]; }, 0);
+
+    return Object.keys(keys).map(function (k) {
+      const cat = catOf("expense", k);
+      const sumPast = past.reduce(function (a, map) { return a + (map[k] || 0); }, 0);
+      return {
+        key: k,
+        name: cat.n,
+        emoji: cat.e,
+        now: now[k] || 0,
+        prev: prev[k] || 0,
+        avg: activeMonths > 0 ? Math.round(sumPast / activeMonths) : null,
+        diff: (now[k] || 0) - (prev[k] || 0),
+        share: nowTotal > 0 ? Math.round(((now[k] || 0) / nowTotal) * 100) : 0,
+      };
+    }).sort(function (a, b) { return b.now - a.now || b.prev - a.prev; });
+  }
+
+  /* ---------- 曜日ぐせ ---------- */
+  /* 日付はUTC固定で読む。端末のタイムゾーンで曜日がずれないようにするため。 */
+  function weekdaySpend(txs, ym) {
+    const rows = WEEKDAY_NAMES.map(function (n, i) {
+      return { dow: i, name: n, amount: 0, count: 0 };
+    });
+    (Array.isArray(txs) ? txs : []).forEach(function (t) {
+      if (!t || t.type !== "expense" || monthOf(t.date) !== ym) return;
+      if (!validateDateString(t.date)) return;
+      const d = new Date(t.date + "T00:00:00Z");
+      const row = rows[d.getUTCDay()];
+      row.amount += num(t.amount);
+      row.count += 1;
+    });
+    return rows;
+  }
+
+  /* ---------- 使うペース ---------- */
+  /* today は "YYYY-MM-DD"。当月なら経過日数までで見る。
+     過去の月（today が別の月）は、その月をまるごと見る。 */
+  function spendPace(settings, txs, ym, today) {
+    const c = computeMonth(settings, txs, ym);
+    const days = daysInMonth(ym);
+    const isCurrent = validateDateString(today) && monthOf(today) === ym;
+    const elapsed = isCurrent ? Math.min(days, Number(String(today).slice(8, 10))) : days;
+
+    const perDayAmount = [];
+    for (let i = 0; i <= days; i++) perDayAmount.push(0);
+    (Array.isArray(txs) ? txs : []).forEach(function (t) {
+      if (!t || t.type !== "expense" || monthOf(t.date) !== ym) return;
+      if (!validateDateString(t.date)) return;
+      const d = Number(String(t.date).slice(8, 10));
+      if (d >= 1 && d <= days) perDayAmount[d] += num(t.amount);
+    });
+
+    const daily = [];
+    let cum = 0, noSpend = 0, spendDays = 0;
+    for (let d = 1; d <= elapsed; d++) {
+      cum += perDayAmount[d];
+      daily.push({ day: d, amount: perDayAmount[d], cum: cum });
+      if (perDayAmount[d] > 0) spendDays += 1; else noSpend += 1;
+    }
+
+    /* つかってよい額 ＝ 収入 － 先取り（予定額）。ホームの式と同じ形。 */
+    const budget = c.incomeTotal - c.setAside;
+    const perDay = elapsed > 0 ? Math.round(c.spendTotal / elapsed) : 0;
+    const forecast = elapsed > 0 ? Math.round((c.spendTotal / elapsed) * days) : 0;
+
+    return {
+      ym: ym,
+      days: days,
+      elapsed: elapsed,
+      isCurrent: isCurrent,
+      daily: daily,
+      spendTotal: c.spendTotal,
+      hasIncome: c.hasIncome,
+      budget: budget,
+      budgetPerDay: budget > 0 ? Math.round(budget / days) : 0,
+      perDay: perDay,
+      forecast: forecast,
+      /* 予測が予算をいくら超えそうか（マイナスなら のこりそうな額）。収入未記録なら null */
+      over: c.hasIncome ? forecast - budget : null,
+      spendDays: spendDays,
+      noSpendDays: noSpend,
+    };
+  }
+
+  /* ---------- 気づき（ことばにする） ---------- */
+  /* level: "good" ほめる ／ "warn" 気をつける ／ "info" ただの事実 */
+  function analysisInsights(a) {
+    const out = [];
+    const pace = a.pace, cats = a.cats || [];
+
+    if (!pace.hasIncome) {
+      out.push({ level: "info", key: "no-income",
+        text: "給料をまだ記録していません。記録すると、使いすぎのペースが分かります" });
+    } else if (pace.spendTotal > 0 && pace.budget > 0 && pace.isCurrent) {
+      if (pace.over > 0) {
+        out.push({ level: "warn", key: "pace",
+          text: "このペースだと月末に " + fmtYen(pace.forecast) + "。つかってよい "
+            + fmtYen(pace.budget) + " を " + fmtYen(pace.over) + " こえそうです" });
+      } else {
+        out.push({ level: "good", key: "pace",
+          text: "このペースなら月末に " + fmtYen(pace.forecast) + "。"
+            + fmtYen(-pace.over) + " のこりそうです" });
+      }
+    }
+
+    const spent = cats.filter(function (c) { return c.now > 0; });
+    const up = cats.slice().sort(function (x, y) { return y.diff - x.diff; })[0];
+    if (up && up.diff > 0 && up.prev > 0) {
+      out.push({ level: "warn", key: "up",
+        text: up.emoji + " " + up.name + " が先月より " + fmtYen(up.diff) + " ふえています" });
+    }
+    if (spent.length) {
+      out.push({ level: "info", key: "top",
+        text: "いちばん多いのは " + spent[0].emoji + " " + spent[0].name + " の "
+          + fmtYen(spent[0].now) + "（支出の " + spent[0].share + "%）" });
+    }
+    const down = cats.slice().sort(function (x, y) { return x.diff - y.diff; })[0];
+    if (down && down.diff < 0 && down.prev > 0) {
+      out.push({ level: "good", key: "down",
+        text: down.emoji + " " + down.name + " は先月より " + fmtYen(-down.diff) + " へっています" });
+    }
+    if (pace.noSpendDays > 0 && pace.spendTotal > 0) {
+      out.push({ level: "good", key: "no-spend",
+        text: "今月は " + pace.noSpendDays + "日、1円もつかいませんでした" });
+    }
+    const busiest = (a.week || []).slice().sort(function (x, y) { return y.amount - x.amount; })[0];
+    if (busiest && busiest.amount > 0) {
+      out.push({ level: "info", key: "weekday",
+        text: "よくつかうのは " + busiest.name + "曜（合計 " + fmtYen(busiest.amount) + "）" });
+    }
+    return out.slice(0, 5);
+  }
+
+  /* ---------- 分析ぜんぶ（画面はこれだけを読む） ---------- */
+  function analyzeMonth(settings, txs, ym, opts) {
+    const o = opts || {};
+    const out = {
+      ym: ym,
+      month: computeMonth(settings, txs, ym),
+      trend: monthlyTrend(settings, txs, ym, o.trendMonths || TREND_MONTHS),
+      cats: categoryCompare(txs, ym, o.compareMonths || COMPARE_MONTHS),
+      week: weekdaySpend(txs, ym),
+      pace: spendPace(settings, txs, ym, o.today || null),
+    };
+    out.insights = analysisInsights(out);
+    return out;
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -1238,6 +1475,20 @@
     dayDetail: dayDetail,
     monthMarks: monthMarks,
     budgetBreakdown: budgetBreakdown,
+    fmtYen: fmtYen,
+    shiftYm: shiftYm,
+    recentMonths: recentMonths,
+    daysInMonth: daysInMonth,
+    monthlyTrend: monthlyTrend,
+    categorySpend: categorySpend,
+    categoryCompare: categoryCompare,
+    weekdaySpend: weekdaySpend,
+    spendPace: spendPace,
+    analysisInsights: analysisInsights,
+    analyzeMonth: analyzeMonth,
+    TREND_MONTHS: TREND_MONTHS,
+    COMPARE_MONTHS: COMPARE_MONTHS,
+    WEEKDAY_NAMES: WEEKDAY_NAMES,
     BACKUP_VERSION: BACKUP_VERSION,
     MEMO_MAX: MEMO_MAX,
     AMOUNT_MAX: AMOUNT_MAX,
