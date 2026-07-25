@@ -377,9 +377,16 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 const pad=n=>String(n).padStart(2,"0");
 function todayISO(d=new Date()){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function ymOf(iso){ return iso.slice(0,7); }
-function curYM(){ return todayISO().slice(0,7); }
+/* 月の区切りの起点日（設定。既定は1日＝暦の月）。計算のしかたは core.js が唯一の正。 */
+function cycleStart(){ return Core.normalizeCycleStart(state.settings && state.settings.cycleStart); }
+/* 今いる区切りのキー。起点が1日なら、これまでどおり今月の "YYYY-MM"。 */
+function curYM(){ return Core.cycleOf(todayISO(), cycleStart()); }
 function yen(v){ const n=Math.round(Number(v)||0); return "¥"+n.toLocaleString("en-US"); }
-function daysLeftInMonth(){ const d=new Date(); const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); return last-d.getDate(); }
+/* 今の区切りが終わるまで、あと何日か */
+function daysLeftInCycle(){
+  const r=Core.cycleRange(curYM(), cycleStart());
+  return Math.max(0, Core.daysApart(todayISO(), r.to));
+}
 function weekRange(){ const d=new Date(); const day=(d.getDay()+6)%7; /*Mon=0*/ const mon=new Date(d); mon.setDate(d.getDate()-day);
   const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {from:todayISO(mon),to:todayISO(sun)}; }
 
@@ -478,7 +485,8 @@ function renderHome(){
   const d=new Date();
   const WD=["日","月","火","水","木","金","土"];
   const dateBig=`${d.getMonth()+1}月${d.getDate()}日<span class="wd">（${WD[d.getDay()]}）</span>`;
-  const monthLabel=`今月ののこり ${daysLeftInMonth()}日`;
+  const period=Core.cycleLabel(curYM(), cycleStart());
+  const monthLabel=`今月ののこり ${daysLeftInCycle()}日${period?`　（${period}）`:""}`;
 
   let heroN, heroCls="", ok="", note;
   if(c.hasIncome){
@@ -555,7 +563,7 @@ function donutChart(bd){
 /* 先月の「🔁 毎月固定」を今月へまとめて入れるカード。
    入れるものが無いときは、何も出さない（済んだら消える）。 */
 function carryCard(){
-  const plan=Core.recurringCarryPlan(state.tx, curYM());
+  const plan=Core.recurringCarryPlan(state.tx, curYM(), cycleStart());
   if(!plan.toAdd.length) return "";
   const names=plan.toAdd.slice(0,4).map(i=>`${i.emoji} ${escapeHtml(i.name)} ${yen(i.amount)}`).join(" ・ ");
   const more=plan.toAdd.length>4?` ほか${plan.toAdd.length-4}件`:"";
@@ -569,7 +577,7 @@ function carryCard(){
 
 /* まとめて入れる。1件でも保存に失敗したら、1件も増やさずに戻す。 */
 function carryRecurring(){
-  const plan=Core.recurringCarryPlan(state.tx, curYM());
+  const plan=Core.recurringCarryPlan(state.tx, curYM(), cycleStart());
   if(!plan.toAdd.length){ toast("入れるものはありません"); return; }
   const lines=plan.toAdd.map(i=>`${i.emoji} ${i.name} ${yen(i.amount)}`).join("\n");
   const ok=confirm(
@@ -628,7 +636,7 @@ function renderSummary(){
   return `<div class="screen">
     ${sumTabs()}
     ${carryCard()}
-    <div class="stitle" style="margin-top:6px">今月のまとめ（${new Date().getMonth()+1}月）</div>
+    <div class="stitle" style="margin-top:6px">今月のまとめ（${Number(curYM().slice(5,7))}月${Core.cycleLabel(curYM(), cycleStart())?`・${Core.cycleLabel(curYM(), cycleStart())}`:""}）</div>
     <div class="sumcards">
       <div class="sc"><div class="l">収入</div><div class="v inc mono">${yen(c.incomeTotal)}</div></div>
       <div class="sc"><div class="l">支出</div><div class="v exp mono">${yen(c.spendTotal)}</div></div>
@@ -757,6 +765,7 @@ function renderAnalysis(){
   return `<div class="screen">
     ${sumTabs()}
     <div class="stitle" style="margin-top:6px">${mon}月の分析（${p.elapsed}日目 / ${p.days}日）</div>
+    ${p.periodLabel?`<div class="calcnote" style="margin:-4px 0 10px">この「${mon}月」は ${p.periodLabel} の分です</div>`:""}
     <div class="barlist" style="margin-top:0">${insHtml}</div>
 
     <div class="stitle">つかうペース</div>
@@ -1008,6 +1017,26 @@ function saveHealth(){
   render(); toast("記録しました ✓");
 }
 
+/* 起点日の選択肢。1日は「これまでどおり」と分かるように書く。 */
+function cycleOptions(cur){
+  const now=Core.normalizeCycleStart(cur);
+  let out="";
+  for(let d=Core.CYCLE_START_MIN; d<=Core.CYCLE_START_MAX; d++){
+    const label = d===1 ? "1日（暦の月・これまでどおり）" : `${d}日`;
+    out += `<option value="${d}"${d===now?" selected":""}>${label}</option>`;
+  }
+  return out;
+}
+/* いま選んでいる区切りが、実際に何日から何日までになるかを見せる */
+function cycleHelp(cur){
+  const d=Core.normalizeCycleStart(cur);
+  if(d===1) return "1日から月末までを1か月として数えます";
+  const r=Core.cycleRange(curYM(), d);
+  const jp=iso=>`${Number(iso.slice(5,7))}月${Number(iso.slice(8,10))}日`;
+  const tail = d>28 ? "　※その日が無い月は、月末に合わせます" : "";
+  return `いまの区切りは ${jp(r.from)}〜${jp(r.to)}${tail}`;
+}
+
 function renderSettings(){
   const s=state.settings;
   const u=Core.storageUsage(state);
@@ -1025,6 +1054,16 @@ function renderSettings(){
     <div class="field"><label>NISA 積立（月・予定額）</label><div class="row"><span class="yen">¥</span>
       <input class="mono" id="f-nisa" inputmode="numeric" value="${s.nisaMonthly||""}" placeholder="0"></div>
       <div class="fhelp">こちらも「使えるお金」から先に取り分けます</div></div>
+
+    <div class="stitle">月の区切り</div>
+    <div class="calcnote" style="margin:0 0 10px">
+      給料日から次の給料日までを「1か月」として数えられます。<br>
+      たとえば <b>20日</b> にすると、7月20日〜8月19日 が「7月分」になります。<br>
+      1日のままなら、これまでどおり<b>1日〜月末</b>です。
+    </div>
+    <div class="field"><label>1か月の始まりの日</label>
+      <select id="f-cycle">${cycleOptions(s.cycleStart)}</select>
+      <div class="fhelp">${cycleHelp(s.cycleStart)}</div></div>
 
     <div class="stitle">夢・目標</div>
     <div class="field"><label>目標の名前</label>
@@ -1551,6 +1590,7 @@ function saveSettings(){
   s.savingsTarget=num(g("f-save"));
   s.nisaMonthly=num(g("f-nisa")); s.goalName=(g("f-gname")||"").slice(0,24);
   s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));
+  s.cycleStart=Core.normalizeCycleStart(g("f-cycle"));
   /* normalizeSettings が新しい設定オブジェクトを返すので、旧フィールドはここで消える */
   state.settings = Core.normalizeSettings(s);
 

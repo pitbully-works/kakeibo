@@ -59,7 +59,7 @@ test("ホーム画面のPWAで開いているときは、別画面で開く（�
 });
 
 test("入口を足しても、ホームの金額は変わらない（計算に触っていない）", () => {
-  const c = Core.computeMonth(STATE, YM);
+  const c = Core.computeMonth(STATE.settings, STATE.tx, YM);
   const h = screen("home");
   const yen = "¥" + Math.round(c.available).toLocaleString("en-US");
   assert.ok(h.includes(yen), "ホームの「つかえるお金」が変わっている");

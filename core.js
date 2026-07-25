@@ -90,6 +90,82 @@
   function sum(list, f) {
     return list.reduce(function (a, t) { return a + num(f ? f(t) : t); }, 0);
   }
+  function pad2(n) { return String(n).padStart(2, "0"); }
+
+  /* =======================================================================
+     月の区切り（給料日起点）
+     -----------------------------------------------------------------------
+     起点日を 20 にすると、7/20〜8/19 がひと区切りになる。
+     呼び名は「始まりの月」に合わせるので、この区切りのキーは "2026-07"。
+     つまり ym（"YYYY-MM"）の意味は今までどおり保たれ、
+     変わるのは「どの記録がその ym に入るか」だけ。
+
+     起点日が 1 のときは、暦の月（1日〜月末）とまったく同じ結果になる。
+     これまでの保存データは cycleStart を持たないので、必ず 1 として扱われる。
+
+     31日のように無い月がある起点日は、その月の末日へ寄せる。
+     （例：起点31 なら 1/31〜2/27、2/28〜3/30。すき間も重なりも出ない）
+     ======================================================================= */
+
+  const CYCLE_START_MIN = 1;
+  const CYCLE_START_MAX = 31;
+
+  function normalizeCycleStart(v) {
+    const n = Math.floor(Number(v));
+    if (!Number.isFinite(n)) return 1;
+    return Math.min(CYCLE_START_MAX, Math.max(CYCLE_START_MIN, n));
+  }
+
+  /* その年月に実際にある起点日（無い日は末日へ寄せる） */
+  function cycleStartDay(ym, startDay) {
+    return Math.min(normalizeCycleStart(startDay), daysInMonth(ym));
+  }
+
+  /* 区切りの範囲。to は次の区切りの前日。 */
+  function cycleRange(ym, startDay) {
+    const from = ym + "-" + pad2(cycleStartDay(ym, startDay));
+    const nextYm = shiftYm(ym, 1);
+    const to = shiftDate(nextYm + "-" + pad2(cycleStartDay(nextYm, startDay)), -1);
+    return { from: from, to: to, days: daysApart(from, to) + 1 };
+  }
+
+  /* その日付が入る区切りのキー（始まりの月の "YYYY-MM"） */
+  function cycleOf(iso, startDay) {
+    const s = normalizeCycleStart(startDay);
+    if (s === 1 || !validateDateString(iso)) return monthOf(iso);
+    const ym = monthOf(iso);
+    return Number(String(iso).slice(8, 10)) >= cycleStartDay(ym, s) ? ym : shiftYm(ym, -1);
+  }
+
+  /* 区切りの中で何日目か（1始まり）。範囲の外なら 0。 */
+  function cycleDayIndex(iso, ym, startDay) {
+    if (!validateDateString(iso)) return 0;
+    const r = cycleRange(ym, startDay);
+    if (iso < r.from || iso > r.to) return 0;
+    return daysApart(r.from, iso) + 1;
+  }
+
+  /* 「毎月◯日」を、その区切りの中の日付に置きかえる。
+     起点より前の日は次の月の側にある（起点20なら 1日 は翌月1日）。
+     無い日（2月31日など）はその月の末日へ寄せる。 */
+  function dateInCycle(ym, startDay, dayOfMonth) {
+    const s = cycleStartDay(ym, startDay);
+    const d = Math.min(31, Math.max(1, Math.floor(Number(dayOfMonth)) || 1));
+    const target = d >= s ? ym : shiftYm(ym, 1);
+    let iso = target + "-" + pad2(Math.min(d, daysInMonth(target)));
+    const r = cycleRange(ym, startDay);
+    if (iso < r.from) iso = r.from;
+    if (iso > r.to) iso = r.to;
+    return iso;
+  }
+
+  /* 画面に出す期間の文字（例 "7/20〜8/19"）。起点が1日なら空文字。 */
+  function cycleLabel(ym, startDay) {
+    if (normalizeCycleStart(startDay) === 1) return "";
+    const r = cycleRange(ym, startDay);
+    const f = function (iso) { return Number(iso.slice(5, 7)) + "/" + Number(iso.slice(8, 10)); };
+    return f(r.from) + "〜" + f(r.to);
+  }
 
   /* ---------- 設定の正規化 ---------- */
   /* 設定に持つのは「先取り（予定額）」と「夢・目標」だけ。
@@ -105,6 +181,7 @@
       goalTarget: num(s.goalTarget),
       goalCurrent: num(s.goalCurrent),
       currency: s.currency || "JPY",
+      cycleStart: normalizeCycleStart(s.cycleStart),
     };
   }
 
@@ -119,7 +196,7 @@
   function computeMonth(settings, txs, ym) {
     const s = normalizeSettings(settings);
     const all = Array.isArray(txs) ? txs : [];
-    const month = all.filter(function (t) { return monthOf(t.date) === ym; });
+    const month = all.filter(function (t) { return cycleOf(t.date, s.cycleStart) === ym; });
 
     /* --- 収入：給与は「記録」だけが入力口（設定に手取りは無い） --- */
     const salaryRecs = month.filter(function (t) {
@@ -167,6 +244,12 @@
       ym: ym,
       currency: s.currency,
       settings: s,
+      /* 月の区切り（起点が1日なら、暦の月そのもの） */
+      cycleStart: s.cycleStart,
+      periodFrom: cycleRange(ym, s.cycleStart).from,
+      periodTo: cycleRange(ym, s.cycleStart).to,
+      periodDays: cycleRange(ym, s.cycleStart).days,
+      periodLabel: cycleLabel(ym, s.cycleStart),
       /* 収入 */
       incomeRegular: incomeRegular,
       incomeRegularRecorded: incomeRegularRecorded,
@@ -1229,10 +1312,10 @@
   }
 
   /* ---------- カテゴリ別の支出 ---------- */
-  function categorySpend(txs, ym) {
+  function categorySpend(txs, ym, startDay) {
     const out = {};
     (Array.isArray(txs) ? txs : []).forEach(function (t) {
-      if (!t || t.type !== "expense" || monthOf(t.date) !== ym) return;
+      if (!t || t.type !== "expense" || cycleOf(t.date, startDay) !== ym) return;
       out[t.cat] = (out[t.cat] || 0) + num(t.amount);
     });
     return out;
@@ -1240,12 +1323,12 @@
 
   /* 当月・前月・過去n か月の平均をカテゴリごとに並べる。
      平均は「記録のあった月」だけで割る（使いはじめの月に薄まらないように）。 */
-  function categoryCompare(txs, ym, n) {
+  function categoryCompare(txs, ym, n, startDay) {
     const back = Math.max(1, Math.floor(Number(n) || COMPARE_MONTHS));
     const pastYms = recentMonths(shiftYm(ym, -1), back);      // 当月は含めない
-    const now = categorySpend(txs, ym);
-    const prev = categorySpend(txs, shiftYm(ym, -1));
-    const past = pastYms.map(function (m) { return categorySpend(txs, m); });
+    const now = categorySpend(txs, ym, startDay);
+    const prev = categorySpend(txs, shiftYm(ym, -1), startDay);
+    const past = pastYms.map(function (m) { return categorySpend(txs, m, startDay); });
     const activeMonths = past.filter(function (map) {
       return Object.keys(map).some(function (k) { return map[k] > 0; });
     }).length;
@@ -1274,12 +1357,12 @@
 
   /* ---------- 曜日ぐせ ---------- */
   /* 日付はUTC固定で読む。端末のタイムゾーンで曜日がずれないようにするため。 */
-  function weekdaySpend(txs, ym) {
+  function weekdaySpend(txs, ym, startDay) {
     const rows = WEEKDAY_NAMES.map(function (n, i) {
       return { dow: i, name: n, amount: 0, count: 0 };
     });
     (Array.isArray(txs) ? txs : []).forEach(function (t) {
-      if (!t || t.type !== "expense" || monthOf(t.date) !== ym) return;
+      if (!t || t.type !== "expense" || cycleOf(t.date, startDay) !== ym) return;
       if (!validateDateString(t.date)) return;
       const d = new Date(t.date + "T00:00:00Z");
       const row = rows[d.getUTCDay()];
@@ -1294,16 +1377,17 @@
      過去の月（today が別の月）は、その月をまるごと見る。 */
   function spendPace(settings, txs, ym, today) {
     const c = computeMonth(settings, txs, ym);
-    const days = daysInMonth(ym);
-    const isCurrent = validateDateString(today) && monthOf(today) === ym;
-    const elapsed = isCurrent ? Math.min(days, Number(String(today).slice(8, 10))) : days;
+    const startDay = c.cycleStart;
+    /* 日にちは「区切りの何日目か」で数える。起点が1日なら、そのまま暦の日と同じ。 */
+    const days = c.periodDays;
+    const isCurrent = validateDateString(today) && cycleOf(today, startDay) === ym;
+    const elapsed = isCurrent ? Math.min(days, cycleDayIndex(today, ym, startDay)) : days;
 
     const perDayAmount = [];
     for (let i = 0; i <= days; i++) perDayAmount.push(0);
     (Array.isArray(txs) ? txs : []).forEach(function (t) {
-      if (!t || t.type !== "expense" || monthOf(t.date) !== ym) return;
-      if (!validateDateString(t.date)) return;
-      const d = Number(String(t.date).slice(8, 10));
+      if (!t || t.type !== "expense" || cycleOf(t.date, startDay) !== ym) return;
+      const d = cycleDayIndex(t.date, ym, startDay);
       if (d >= 1 && d <= days) perDayAmount[d] += num(t.amount);
     });
 
@@ -1311,9 +1395,8 @@
     const perDayRecurring = [];
     for (let i = 0; i <= days; i++) perDayRecurring.push(0);
     (Array.isArray(txs) ? txs : []).forEach(function (t) {
-      if (!isRecurring(t) || monthOf(t.date) !== ym) return;
-      if (!validateDateString(t.date)) return;
-      const d = Number(String(t.date).slice(8, 10));
+      if (!isRecurring(t) || cycleOf(t.date, startDay) !== ym) return;
+      const d = cycleDayIndex(t.date, ym, startDay);
       if (d >= 1 && d <= days) perDayRecurring[d] += num(t.amount);
     });
 
@@ -1344,6 +1427,9 @@
       days: days,
       elapsed: elapsed,
       isCurrent: isCurrent,
+      periodFrom: c.periodFrom,
+      periodTo: c.periodTo,
+      periodLabel: c.periodLabel,
       daily: daily,
       spendTotal: c.spendTotal,       // 当月ぜんぶ（未来の日付の記録も含む）
       spentSoFar: spentSoFar,         // 経過日数までに記録した分
@@ -1418,12 +1504,13 @@
   /* ---------- 分析ぜんぶ（画面はこれだけを読む） ---------- */
   function analyzeMonth(settings, txs, ym, opts) {
     const o = opts || {};
+    const startDay = normalizeSettings(settings).cycleStart;
     const out = {
       ym: ym,
       month: computeMonth(settings, txs, ym),
       trend: monthlyTrend(settings, txs, ym, o.trendMonths || TREND_MONTHS),
-      cats: categoryCompare(txs, ym, o.compareMonths || COMPARE_MONTHS),
-      week: weekdaySpend(txs, ym),
+      cats: categoryCompare(txs, ym, o.compareMonths || COMPARE_MONTHS, startDay),
+      week: weekdaySpend(txs, ym, startDay),
       pace: spendPace(settings, txs, ym, o.today || null),
     };
     out.insights = analysisInsights(out);
@@ -1441,31 +1528,30 @@
        金額がちがっても入れない。電気代のように額が変わるものを
        2件に増やすより、1件を直してもらうほうが安全なため。
      ======================================================================= */
-  function recurringCarryPlan(txs, ym) {
+  function recurringCarryPlan(txs, ym, startDay) {
     const all = Array.isArray(txs) ? txs : [];
     const prevYm = shiftYm(ym, -1);
-    const days = daysInMonth(ym);
 
     const prev = all.filter(function (t) {
-      return isRecurring(t) && monthOf(t.date) === prevYm;
+      return isRecurring(t) && cycleOf(t.date, startDay) === prevYm;
     });
     /* すでに今月に入っている🔁のカテゴリ */
     const done = {};
     all.forEach(function (t) {
-      if (isRecurring(t) && monthOf(t.date) === ym) done[t.cat] = true;
+      if (isRecurring(t) && cycleOf(t.date, startDay) === ym) done[t.cat] = true;
     });
 
     const items = prev.map(function (t) {
       const cat = catOf("expense", t.cat);
-      /* 同じ日にそろえる。31日→30日の月のように、無い日は月末へ丸める。 */
-      const day = Math.min(days, Math.max(1, Number(String(t.date).slice(8, 10)) || 1));
+      /* 「毎月◯日」をそろえる。無い日は月末へ丸め、区切りからはみ出す日は端へ寄せる。 */
+      const date = dateInCycle(ym, startDay, Number(String(t.date).slice(8, 10)));
       return {
         cat: t.cat,
         name: cat.n,
         emoji: cat.e,
         amount: num(t.amount),
         memo: String(t.memo || "").slice(0, MEMO_MAX),
-        date: ym + "-" + String(day).padStart(2, "0"),
+        date: date,
         already: done[t.cat] === true,
       };
     }).sort(function (a, b) { return b.amount - a.amount; });
@@ -1512,10 +1598,10 @@
   }
 
   /* 先月までに通常給与を記録した「日」。無ければ null（はじめての人は催促しない）。 */
-  function salaryDayHint(txs, ym) {
+  function salaryDayHint(txs, ym, startDay) {
     const past = (Array.isArray(txs) ? txs : []).filter(function (t) {
       return t && t.type === "income" && t.cat === REGULAR_INCOME_CAT
-        && validateDateString(t.date) && monthOf(t.date) < ym;
+        && validateDateString(t.date) && cycleOf(t.date, startDay) < ym;
     }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     return past.length ? Number(past[0].date.slice(8, 10)) : null;
   }
@@ -1545,12 +1631,12 @@
     const st = state || {};
     if (!validateDateString(today)) return [];
     const txs = Array.isArray(st.tx) ? st.tx : [];
-    const ym = monthOf(today);
-    const day = Number(today.slice(8, 10));
+    const startDay = normalizeSettings(st.settings).cycleStart;
+    const ym = cycleOf(today, startDay);
     const out = [];
 
     /* 1. 先月の「毎月固定」がまだ入っていない（金額に効くので最優先） */
-    const plan = recurringCarryPlan(txs, ym);
+    const plan = recurringCarryPlan(txs, ym, startDay);
     if (plan.toAdd.length > 0) {
       out.push({
         key: "carry", icon: "🔁", act: "carry",
@@ -1563,8 +1649,8 @@
           はじめて使う人（履歴が無い人）には催促しない。 */
     const c = computeMonth(st.settings, txs, ym);
     if (!c.incomeRegularRecorded) {
-      const hint = salaryDayHint(txs, ym);
-      if (hint !== null && day >= hint) {
+      const hint = salaryDayHint(txs, ym, startDay);
+      if (hint !== null && today >= dateInCycle(ym, startDay, hint)) {
         out.push({
           key: "salary", icon: "💴", act: "salary",
           text: "今月の給料が、まだ記録されていません",
@@ -1624,6 +1710,10 @@
       country_code: "JP",
       base_currency: c.currency,
       year_month: ym,
+      /* 月の区切り。起点が1日なら period_from/to はその月の1日と末日になる。 */
+      cycle_start_day: c.cycleStart,
+      period_from: c.periodFrom,
+      period_to: c.periodTo,
 
       /* 収入：通常／臨時／当月実収入合計を分けて出力（すべて記録の実績） */
       income_regular: c.incomeRegular,
@@ -1678,6 +1768,15 @@
     catOf: catOf,
     num: num,
     monthOf: monthOf,
+    normalizeCycleStart: normalizeCycleStart,
+    cycleStartDay: cycleStartDay,
+    cycleRange: cycleRange,
+    cycleOf: cycleOf,
+    cycleDayIndex: cycleDayIndex,
+    dateInCycle: dateInCycle,
+    cycleLabel: cycleLabel,
+    CYCLE_START_MIN: CYCLE_START_MIN,
+    CYCLE_START_MAX: CYCLE_START_MAX,
     normalizeSettings: normalizeSettings,
     computeMonth: computeMonth,
     weekSpent: weekSpent,
