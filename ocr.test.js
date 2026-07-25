@@ -201,3 +201,30 @@ test("読めた結果が無ければ null（手入力にまかせる）", () => 
   assert.equal(Core.pickBestAmount([{ amount: null, confidence: 90 }]), null);
   assert.equal(Core.pickBestAmount(null), null);
 });
+
+/* ---------- Ver.2 追加カテゴリ ---------- */
+test("追加した支出カテゴリが使える", () => {
+  for (const [k, n] of [["clothes","衣服"],["social","交際費"],["hobby","趣味"],["health","健康"],["pet","ペット"],["pension","私的年金"]]) {
+    const c = Core.catOf("expense", k);
+    assert.equal(c.k, k, k + " が無い");
+    assert.equal(c.n, n, k + " の名前が違う: " + c.n);
+  }
+});
+
+test("追加カテゴリの記録が正しく計算に入る", () => {
+  const tx = [
+    { id:"a", type:"income", amount:290000, cat:"salary", date:"2026-07-25" },
+    { id:"b", type:"expense", amount:8000, cat:"clothes", date:"2026-07-03" },
+    { id:"c", type:"expense", amount:5000, cat:"pet", date:"2026-07-04" },
+  ];
+  const c = Core.computeMonth({ savingsTarget:0, nisaMonthly:0 }, tx, "2026-07");
+  assert.equal(c.spendTotal, 13000, "追加カテゴリの支出が集計されていない");
+});
+
+test("追加カテゴリはバックアップ復元でも保持される", () => {
+  const r = Core.normalizeBackup({ settings:{}, tx:[
+    { type:"expense", amount:8000, cat:"clothes", date:"2026-07-03" },
+    { type:"expense", amount:3000, cat:"pension", date:"2026-07-10" },
+  ]});
+  assert.deepEqual(r.tx.map(t=>t.cat), ["clothes","pension"], "追加カテゴリが「その他」に落ちている");
+});
