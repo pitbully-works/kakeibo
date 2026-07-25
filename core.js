@@ -865,6 +865,7 @@
       exportedAt: new Date().toISOString(),
       settings: normalizeSettings(st.settings),
       tx: (Array.isArray(st.tx) ? st.tx : []).map(normalizeTransaction).filter(Boolean),
+      health: normalizeHealth(st.health),
     };
   }
 
@@ -953,9 +954,69 @@
     return {
       settings: normalizeSettings(settings),
       tx: tx,
+      health: normalizeHealth(data.health),   // 旧バックアップに health が無ければ空
       dropped: dropped,
       version: Number(data.version) || 0,   // 旧形式は version が無い＝0
     };
+  }
+
+  /* =======================================================================
+     健康記録（体重・血圧。将来 体温なども同じ形で足せる）
+     -----------------------------------------------------------------------
+     入れ物は日付キーの1日1件。同じ日に記録し直せば上書き。
+     { "2026-07-25": { weight:62.5, bpHigh:120, bpLow:78 } }
+     ======================================================================= */
+  const HEALTH_FIELDS = [
+    { k: "weight", n: "体重",   unit: "kg",   min: 0,   max: 500, decimals: 1 },
+    { k: "bpHigh", n: "血圧(上)", unit: "mmHg", min: 0,   max: 300, decimals: 0 },
+    { k: "bpLow",  n: "血圧(下)", unit: "mmHg", min: 0,   max: 300, decimals: 0 },
+    /* 将来ここに { k:"temp", n:"体温", unit:"℃", min:30, max:45, decimals:1 } などを足せる */
+  ];
+
+  /* 1件を安全な形に整える。数値でない・範囲外は捨てる（その項目だけ無視）。
+     体温などを足しても、この関数は HEALTH_FIELDS を見るだけで動く。 */
+  function normalizeHealthEntry(entry) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+    const out = {};
+    HEALTH_FIELDS.forEach(function (f) {
+      const raw = entry[f.k];
+      if (raw === "" || raw === null || raw === undefined) return;  // 未入力はその項目を入れない
+      let v = Number(raw);
+      if (!Number.isFinite(v)) return;                 // 数値でなければその項目は入れない
+      if (v < f.min || v > f.max) return;              // 範囲外は捨てる
+      const p = Math.pow(10, f.decimals);
+      out[f.k] = Math.round(v * p) / p;                // 小数の桁をそろえる
+    });
+    return Object.keys(out).length ? out : null;       // 中身が空なら記録しない
+  }
+
+  /* 健康記録ぜんぶを安全な形に整える（読み込み時に使う）。
+     日付キーが妥当で中身が有効なものだけ残す。 */
+  function normalizeHealth(health) {
+    const out = {};
+    if (!health || typeof health !== "object" || Array.isArray(health)) return out;
+    Object.keys(health).forEach(function (date) {
+      if (!validateDateString(date)) return;
+      const e = normalizeHealthEntry(health[date]);
+      if (e) out[date] = e;
+    });
+    return out;
+  }
+
+  /* グラフ用：ある項目（weight など）の推移を日付順で返す。
+     from/to は "YYYY-MM-DD"（省略可）。 */
+  function healthSeries(health, field, from, to) {
+    const h = health || {};
+    const lo = from && validateDateString(from) ? from : null;
+    const hi = to && validateDateString(to) ? to : null;
+    return Object.keys(h)
+      .filter(function (d) {
+        if (lo && d < lo) return false;
+        if (hi && d > hi) return false;
+        return h[d] && Number.isFinite(h[d][field]);
+      })
+      .sort()
+      .map(function (d) { return { date: d, value: h[d][field] }; });
   }
 
   /* ---------- ライフプラン連携スナップショット ---------- */
@@ -1055,6 +1116,10 @@
     validateDateString: validateDateString,
     normalizeTransaction: normalizeTransaction,
     normalizeBackup: normalizeBackup,
+    HEALTH_FIELDS: HEALTH_FIELDS,
+    normalizeHealthEntry: normalizeHealthEntry,
+    normalizeHealth: normalizeHealth,
+    healthSeries: healthSeries,
     BACKUP_VERSION: BACKUP_VERSION,
     MEMO_MAX: MEMO_MAX,
     AMOUNT_MAX: AMOUNT_MAX,

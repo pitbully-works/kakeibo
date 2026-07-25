@@ -272,3 +272,72 @@ test("復元後、ホームとまとめの金額が一致する", () => {
   const c = Core.computeMonth(r.settings, r.tx, "2026-07");
   assert.equal(c.available, c.incomeTotal - c.spendTotal - c.setAside, "ホームとまとめの定義がずれている");
 });
+
+/* ---------- 固定費区分の廃止（Ver.2）: 旧データの互換 ---------- */
+test("旧固定費カテゴリの記録は、通常の支出として残る", () => {
+  const oldBackup = {
+    settings: { savingsTarget: 40000, nisaMonthly: 33000 },
+    tx: [
+      { id:"1", type:"expense", amount:60000, cat:"rent",  date:"2026-07-01" },
+      { id:"2", type:"expense", amount:8000,  cat:"power", date:"2026-07-02" },
+      { id:"3", type:"expense", amount:3000,  cat:"gas",   date:"2026-07-02" },
+      { id:"4", type:"expense", amount:2000,  cat:"water", date:"2026-07-02" },
+      { id:"5", type:"expense", amount:5000,  cat:"comm",  date:"2026-07-03" },
+      { id:"6", type:"expense", amount:4000,  cat:"insure",date:"2026-07-04" },
+      { id:"7", type:"expense", amount:1000,  cat:"subs",  date:"2026-07-05" },
+      { id:"8", type:"expense", amount:500,   cat:"fixother", date:"2026-07-06" },
+    ],
+  };
+  const r = Core.normalizeBackup(oldBackup);
+  assert.equal(r.tx.length, 8, "旧固定費の記録が捨てられている");
+  // すべて元のカテゴリのまま（「その他」に落ちていない）
+  assert.deepEqual(r.tx.map(t=>t.cat), ["rent","power","gas","water","comm","insure","subs","fixother"],
+    "旧固定費カテゴリが保持されていない");
+});
+
+test("電気・ガス・水道は個別カテゴリのまま保持される", () => {
+  const r = Core.normalizeBackup({ settings:{}, tx:[
+    { type:"expense", amount:8000, cat:"power", date:"2026-07-01" },
+    { type:"expense", amount:3000, cat:"gas",   date:"2026-07-01" },
+    { type:"expense", amount:2000, cat:"water", date:"2026-07-01" },
+  ]});
+  const c = Core.computeMonth({savingsTarget:0,nisaMonthly:0}, r.tx, "2026-07");
+  assert.equal(c.byCat.power, 8000, "電気が個別に残っていない");
+  assert.equal(c.byCat.gas, 3000, "ガスが個別に残っていない");
+  assert.equal(c.byCat.water, 2000, "水道が個別に残っていない");
+});
+
+test("旧固定費データを含む月の計算が、区分廃止でも変わらない", () => {
+  const tx = [
+    { id:"s", type:"income",  amount:290000, cat:"salary", date:"2026-07-25" },
+    { id:"r", type:"expense", amount:60000,  cat:"rent",   date:"2026-07-01" },  // 旧固定費
+    { id:"p", type:"expense", amount:8000,   cat:"power",  date:"2026-07-02" },  // 旧固定費
+    { id:"f", type:"expense", amount:20000,  cat:"food",   date:"2026-07-05" },  // 旧変動費
+  ];
+  const c = Core.computeMonth({ savingsTarget:40000, nisaMonthly:33000 }, tx, "2026-07");
+  assert.equal(c.spendTotal, 88000, "支出合計が合わない");
+  assert.equal(c.available, 290000 - 88000 - 73000, "残額計算が変わっている");
+  // 二重計上が無いこと：byCat の合計 = spendTotal
+  const sum = Object.values(c.byCat).reduce((a,b)=>a+b,0);
+  assert.equal(sum, c.spendTotal, "内訳の合計と支出合計が食い違う（二重計上の疑い）");
+});
+
+test("固定費・変動費に分ける情報は、もう計算結果に無い", () => {
+  const c = Core.computeMonth({savingsTarget:0,nisaMonthly:0},
+    [{id:"r",type:"expense",amount:1000,cat:"rent",date:"2026-07-01"}], "2026-07");
+  assert.equal("fixedSpend" in c, false, "固定費合計が残っている");
+  assert.equal("variableSpend" in c, false, "変動費合計が残っている");
+  assert.equal("fixedDetail" in c, false, "固定費内訳が残っている");
+});
+
+test("core に固定費の区分ロジックが残っていない", () => {
+  assert.equal(typeof Core.isFixedCat, "undefined", "isFixedCat が残っている");
+  assert.equal("FIXED_ITEMS" in Core, false, "FIXED_ITEMS が残っている");
+  assert.equal("FIXED_KEYS" in Core, false, "FIXED_KEYS が残っている");
+  assert.ok(Array.isArray(Core.EXP_CATS), "統合カテゴリ EXP_CATS が無い");
+  // 旧固定費キーが統合カテゴリに含まれている
+  const keys = Core.EXP_CATS.map(c=>c.k);
+  for (const k of ["rent","power","gas","water","comm","insure"]) {
+    assert.ok(keys.includes(k), k + " が支出カテゴリから消えている");
+  }
+});
