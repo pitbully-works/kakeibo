@@ -136,6 +136,22 @@
   .nav button.on{color:var(--green-d)}
   .rgbtn{flex:1;padding:7px 0;border:1px solid var(--line2);border-radius:9px;background:#fff;color:var(--sub);font-weight:700;font-size:12.5px}
   .rgbtn.on{background:var(--green-d);color:#fff;border-color:var(--green-d)}
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin:6px 0 10px}
+  .cal-title{font-weight:800;font-size:16px}
+  .cal-nav{width:40px;height:36px;border:1px solid var(--line2);border-radius:9px;background:#fff;font-size:20px;color:var(--ink)}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+  .cal-dowrow{margin-bottom:4px}
+  .cal-dow{text-align:center;font-size:11px;font-weight:700;padding:2px 0}
+  .cal-cell{aspect-ratio:1;border-radius:8px;background:#fff;border:1px solid var(--line2);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:4px;gap:2px}
+  .cal-cell.empty{background:transparent;border:none}
+  .cal-cell.today{border-color:var(--green-d);border-width:2px}
+  .cal-cell.sel{background:var(--green-d)}
+  .cal-cell.sel .cal-num{color:#fff}
+  .cal-num{font-size:13px;font-weight:700}
+  .cal-dots{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:90%}
+  .cd{display:inline-block;width:5px;height:5px;border-radius:50%}
+  .cal-legend{display:flex;gap:12px;justify-content:center;font-size:11px;color:var(--sub);margin:10px 0 4px}
+  .cal-legend span{display:inline-flex;align-items:center;gap:3px}
 
   /* sheet (record / edit) */
   .scrim{position:fixed;inset:0;background:rgba(15,25,23,.4);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s}
@@ -227,6 +243,7 @@
 <nav class="nav" id="nav">
   <button data-nav="home" class="on"><span class="ni">🏠</span>ホーム</button>
   <button data-nav="summary"><span class="ni">📊</span>まとめ</button>
+  <button data-nav="calendar"><span class="ni">📅</span>カレンダー</button>
   <button data-nav="diary"><span class="ni">📖</span>日記</button>
   <button data-nav="health"><span class="ni">❤️</span>健康</button>
   <button data-nav="settings"><span class="ni">⚙️</span>せってい</button>
@@ -307,6 +324,7 @@ function render(){
   const app=$("app");
   if(view==="home") app.innerHTML=renderHome();
   else if(view==="summary") app.innerHTML=renderSummary();
+  else if(view==="calendar") app.innerHTML=renderCalendar();
   else if(view==="diary") app.innerHTML=renderDiary();
   else if(view==="health") app.innerHTML=renderHealth();
   else if(view==="settings") app.innerHTML=renderSettings();
@@ -427,6 +445,73 @@ function renderSummary(){
 }
 
 
+
+
+/* ---------- カレンダーページ ---------- */
+let calYM=curYM();          // 表示中の年月 "YYYY-MM"
+let calSelected=null;       // 選択中の日付 "YYYY-MM-DD"
+function calShift(delta){
+  const [y,m]=calYM.split("-").map(Number);
+  const d=new Date(y, m-1+delta, 1);
+  calYM=`${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+  calSelected=null;
+}
+function renderCalendar(){
+  const [y,m]=calYM.split("-").map(Number);
+  const first=new Date(y,m-1,1);
+  const startDow=first.getDay();               // 0=日
+  const days=new Date(y,m,0).getDate();         // 月末日
+  const marks=Core.monthMarks(state, calYM);
+  const cells=[];
+  for(let i=0;i<startDow;i++) cells.push("");
+  for(let d=1;d<=days;d++) cells.push(d);
+  const dow=["日","月","火","水","木","金","土"];
+  const head=dow.map((w,i)=>`<div class="cal-dow" style="color:${i===0?'#c2694f':i===6?'#4f8ac2':'var(--sub)'}">${w}</div>`).join("");
+  const body=cells.map(d=>{
+    if(d==="") return `<div class="cal-cell empty"></div>`;
+    const date=`${calYM}-${pad(d)}`;
+    const mk=marks[date]||{};
+    const dots=[mk.expense?'<span class="cd" style="background:#c2694f"></span>':'',
+                mk.income?'<span class="cd" style="background:#6f9c78"></span>':'',
+                mk.diary?'<span class="cd" style="background:#d0a050"></span>':'',
+                mk.health?'<span class="cd" style="background:#4f8ac2"></span>':''].join("");
+    const isSel=date===calSelected;
+    const isToday=date===todayISO();
+    return `<div class="cal-cell${isSel?' sel':''}${isToday?' today':''}" data-act="cal-day" data-date="${date}">
+      <span class="cal-num">${d}</span><span class="cal-dots">${dots}</span></div>`;
+  }).join("");
+  let detail="";
+  if(calSelected){
+    const dd=Core.dayDetail(state, calSelected);
+    const md=calSelected.slice(5).replace("-","/");
+    const rows=[];
+    dd.income.forEach(t=>{ const c=catOf("income",t.cat);
+      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||c.n)}</span><b class="mono inc">+${yen(t.amount)}</b></div>`); });
+    dd.expense.forEach(t=>{ const c=catOf("expense",t.cat);
+      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||c.n)}</span><b class="mono">${yen(t.amount)}</b></div>`); });
+    if(dd.diary) rows.push(`<div class="krow" data-act="cal-edit-diary" data-date="${calSelected}" style="cursor:pointer;align-items:flex-start"><span>📖 ${escapeHtml((dd.diary.text||"（写真のみ）").slice(0,40))}</span>${dd.diary.photo?'<span>🖼</span>':''}</div>`);
+    if(dd.health){ const h=dd.health; const parts=[];
+      if(h.weight!=null) parts.push(`体重 ${h.weight}kg`);
+      if(h.bpHigh!=null||h.bpLow!=null) parts.push(`血圧 ${h.bpHigh||"-"}/${h.bpLow||"-"}`);
+      rows.push(`<div class="krow" data-act="cal-edit-health" data-date="${calSelected}" style="cursor:pointer"><span>❤️ ${parts.join("・")}</span></div>`); }
+    detail=`<div class="stitle">${md} の記録</div><div class="barlist">
+      ${rows.length?rows.join(""):`<div class="muted" style="text-align:center;padding:10px;font-size:12.5px">この日の記録はありません</div>`}
+      <div style="height:1px;background:var(--line2);margin:8px 0 4px"></div>
+      <div class="krow" style="font-weight:800"><span>収入 ${yen(dd.incomeTotal)} ／ 支出 ${yen(dd.expenseTotal)}</span><b></b></div>
+    </div>`;
+  }
+  return `<div class="screen">
+    <div class="cal-head">
+      <button class="cal-nav" data-act="cal-prev">‹</button>
+      <div class="cal-title">${y}年 ${m}月</div>
+      <button class="cal-nav" data-act="cal-next">›</button>
+    </div>
+    <div class="cal-grid cal-dowrow">${head}</div>
+    <div class="cal-grid">${body}</div>
+    <div class="cal-legend"><span><span class="cd" style="background:#c2694f"></span>支出</span><span><span class="cd" style="background:#6f9c78"></span>収入</span><span><span class="cd" style="background:#d0a050"></span>日記</span><span><span class="cd" style="background:#4f8ac2"></span>健康</span></div>
+    ${detail}
+  </div>`;
+}
 
 /* ---------- 日記ページ ---------- */
 let diaryEditDate=null;   // 編集中の日付（null＝今日を新規）
@@ -1241,6 +1326,12 @@ function handleAct(a,e){
   if(a==="purge-photos") return purgePhotos();
   if(a==="import-backup") return pickBackup();
   if(a==="save-health") return saveHealth();
+  if(a==="cal-prev"){ calShift(-1); render(); return; }
+  if(a==="cal-next"){ calShift(1); render(); return; }
+  if(a==="cal-day"){ const el=e&&e.target&&e.target.closest("[data-date]"); const d=el&&el.dataset.date; calSelected=(calSelected===d?null:d); render(); return; }
+  if(a==="cal-edit-tx"){ const el=e&&e.target&&e.target.closest("[data-id]"); const id=el&&el.dataset.id; if(id) openRecord(id); return; }
+  if(a==="cal-edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=el&&el.dataset.date; diaryPhotoPending=undefined; view="diary"; render(); return; }
+  if(a==="cal-edit-health"){ view="health"; render(); return; }
   if(a==="save-diary") return saveDiary();
   if(a==="new-diary"){ diaryEditDate=null; diaryPhotoPending=undefined; render(); return; }
   if(a==="edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=(el&&el.dataset.date)||null; diaryPhotoPending=undefined; render(); return; }

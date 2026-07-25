@@ -1073,6 +1073,43 @@
     });
   }
 
+
+  /* =======================================================================
+     カレンダー用：ある1日の全データ（支出・収入・日記・健康）をまとめる
+     ======================================================================= */
+  function dayDetail(state, date) {
+    const st = state || {};
+    const txs = (Array.isArray(st.tx) ? st.tx : []).filter(function (t) { return t && t.date === date; });
+    const expense = txs.filter(function (t) { return t.type === "expense"; });
+    const income = txs.filter(function (t) { return t.type === "income"; });
+    const sum = function (a) { return a.reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0); };
+    const dEntry = (st.diary || {})[date] || null;
+    const hEntry = (st.health || {})[date] || null;
+    return {
+      date: date,
+      expense: expense, income: income,
+      expenseTotal: sum(expense), incomeTotal: sum(income),
+      diary: dEntry ? { text: dEntry.text || (typeof dEntry === "string" ? dEntry : ""), photo: (dEntry && dEntry.photo) || null } : null,
+      health: hEntry || null,
+      hasAny: !!(txs.length || dEntry || hEntry),
+    };
+  }
+
+  /* その月のうち、何か記録がある日付の集合を返す（カレンダーの印つけ用） */
+  function monthMarks(state, ym) {
+    const st = state || {};
+    const marks = {};
+    (Array.isArray(st.tx) ? st.tx : []).forEach(function (t) {
+      if (t && typeof t.date === "string" && t.date.slice(0, 7) === ym) {
+        marks[t.date] = marks[t.date] || {};
+        marks[t.date][t.type === "income" ? "income" : "expense"] = true;
+      }
+    });
+    Object.keys(st.diary || {}).forEach(function (d) { if (d.slice(0, 7) === ym) { marks[d] = marks[d] || {}; marks[d].diary = true; } });
+    Object.keys(st.health || {}).forEach(function (d) { if (d.slice(0, 7) === ym) { marks[d] = marks[d] || {}; marks[d].health = true; } });
+    return marks;
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -1178,6 +1215,8 @@
     normalizeDiary: normalizeDiary,
     normalizeDiaryEntry: normalizeDiaryEntry,
     diaryList: diaryList,
+    dayDetail: dayDetail,
+    monthMarks: monthMarks,
     BACKUP_VERSION: BACKUP_VERSION,
     MEMO_MAX: MEMO_MAX,
     AMOUNT_MAX: AMOUNT_MAX,
