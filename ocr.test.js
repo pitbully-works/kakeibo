@@ -228,3 +228,17 @@ test("追加カテゴリはバックアップ復元でも保持される", () =>
   ]});
   assert.deepEqual(r.tx.map(t=>t.cat), ["clothes","pension"], "追加カテゴリが「その他」に落ちている");
 });
+
+/* ---------- カテゴリ名の整理（Ver.2） ---------- */
+test("旧固定費の見出し文言が消えている", () => {
+  assert.equal(Core.catOf("expense", "fixother").n, "その他", "「（旧固定費）」が残っている");
+  // データキーは別のまま（統合していない＝過去データは区別できる）
+  assert.notEqual("fixother", "other");
+});
+
+test("fixother のデータは引き続き支出として集計される", () => {
+  const c = Core.computeMonth({ savingsTarget:0, nisaMonthly:0 },
+    [{ id:"x", type:"expense", amount:35000, cat:"fixother", date:"2026-07-01" }], "2026-07");
+  assert.equal(c.spendTotal, 35000, "旧固定費データが集計から漏れている");
+  assert.equal(c.byCat.fixother, 35000);
+});
