@@ -50,7 +50,11 @@
     { k: "transit", e: "🚃", n: "交通" },
     { k: "hobby",   e: "🎨", n: "趣味" },
     { k: "medical", e: "🏥", n: "医療" },
-    { k: "social",  e: "🎁", n: "交際" },
+    { k: "social",  e: "🤝", n: "交際費" },
+    { k: "clothes", e: "👕", n: "衣服" },
+    { k: "health",  e: "❤️", n: "健康" },
+    { k: "pet",     e: "🐶", n: "ペット" },
+    { k: "pension", e: "💰", n: "私的年金" },
     { k: "other",   e: "🐷", n: "その他" },
   ];
 
