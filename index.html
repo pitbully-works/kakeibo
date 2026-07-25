@@ -381,10 +381,13 @@ function renderSummary(){
   }
   // カテゴリ内訳バー
   const cats=Object.entries(c.byCat).sort((a,b)=>b[1]-a[1]);
-  const maxCat=cats.length?cats[0][1]:1;
+  /* 棒の基準は「収入」。収入に対して各カテゴリが何%かを見せる。
+     収入がまだ無い月は、支出のいちばん大きい項目を基準にして形だけ見せる。 */
+  const barBase = c.incomeTotal>0 ? c.incomeTotal : (cats.length?cats[0][1]:1);
   const PIE={food:"#8fbf7f",eatout:"#d9a54f",daily:"#4fa8d8",rent:"#7f9cc0",power:"#e0c060",gas:"#d98a5f",water:"#5fb0d0",comm:"#9a8fd0",insure:"#78b89a",transit:"#b08fd6",car:"#8a9a70",medical:"#c2694f",clothes:"#c98fb0",social:"#6fa88a",hobby:"#e6b0a6",pet:"#b89a70",pension:"#d0b060",tax:"#a0a0a8",subs:"#8fb0c0",other:"#9fb0ab"};
   const bars = cats.length? cats.map(([k,v])=>{ const cat=catOf("expense",k);
-      return `<div class="brow"><span class="bt">${cat.e} ${cat.n}</span><span class="track"><span class="fill" style="width:${Math.max(4,Math.round(v/maxCat*100))}%;background:${PIE[k]||"#9fb0ab"}"></span></span><span class="bv mono">${yen(v)}</span></div>`;
+      const pct = Math.round(v/barBase*100);
+      return `<div class="brow"><span class="bt">${cat.e} ${cat.n}</span><span class="track"><span class="fill" style="width:${Math.max(3,Math.min(100,pct))}%;background:${PIE[k]||"#9fb0ab"}"></span></span><span class="bv mono">${yen(v)}<span style="color:var(--sub);font-weight:600;font-size:11px"> ${pct}%</span></span></div>`;
     }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の支出はまだありません</div>`;
 
   return `<div class="screen">
@@ -404,10 +407,9 @@ function renderSummary(){
       <div class="krow"><span>臨時収入</span><b class="mono">${yen(c.incomeExtra)}</b></div>
     </div>
     <div class="barlist">
-      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:4px">
-        <span>今週つかった（記録した支出）</span><span class="mono" style="font-weight:800;color:var(--ink)">${yen(c.weekSpent)}</span></div>
-      <div style="height:1px;background:var(--line2);margin:8px 0 4px"></div>
-      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">支出の内わけ（今月）　合計 ${yen(c.spendTotal)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:6px">
+        <span>支出の内わけ（今月）${c.incomeTotal>0?"　棒は収入に対する割合":""}</span>
+        <span class="mono" style="font-weight:800;color:var(--ink)">${yen(c.spendTotal)}</span></div>
       ${bars}
     </div>
     <div class="stitle">きろく</div>
