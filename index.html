@@ -443,6 +443,43 @@ function donutChart(bd){
     </div>
   </div>`;
 }
+/* 先月の「🔁 毎月固定」を今月へまとめて入れるカード。
+   入れるものが無いときは、何も出さない（済んだら消える）。 */
+function carryCard(){
+  const plan=Core.recurringCarryPlan(state.tx, curYM());
+  if(!plan.toAdd.length) return "";
+  const names=plan.toAdd.slice(0,4).map(i=>`${i.emoji} ${escapeHtml(i.name)} ${yen(i.amount)}`).join(" ・ ");
+  const more=plan.toAdd.length>4?` ほか${plan.toAdd.length-4}件`:"";
+  return `<div class="barlist" style="margin-top:10px">
+    <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:4px">🔁 先月の毎月固定が ${plan.toAdd.length}件 あります</div>
+    <div style="font-size:11.5px;color:var(--sub);margin-bottom:10px">${names}${more}　合計 <b class="mono" style="color:var(--ink)">${yen(plan.total)}</b>${plan.skipped>0?`<br>今月すでに入っている ${plan.skipped}件 は、はぶきます`:""}</div>
+    <button class="btn-main" data-act="carry-recurring">今月にまとめて入れる</button>
+    <div style="font-size:10.5px;color:var(--sub);margin-top:6px">金額は先月と同じで入ります。ちがうときは、入れたあとで直してください。</div>
+  </div>`;
+}
+
+/* まとめて入れる。1件でも保存に失敗したら、1件も増やさずに戻す。 */
+function carryRecurring(){
+  const plan=Core.recurringCarryPlan(state.tx, curYM());
+  if(!plan.toAdd.length){ toast("入れるものはありません"); return; }
+  const lines=plan.toAdd.map(i=>`${i.emoji} ${i.name} ${yen(i.amount)}`).join("\n");
+  const ok=confirm(
+    `先月（${plan.from.replace("-","年")}月）の毎月固定を、今月へ入れます。\n\n${lines}\n\n合計 ${yen(plan.total)}\n\n` +
+    "金額は先月と同じです。ちがうときは、入れたあとで直してください。\n\n続けますか？"
+  );
+  if(!ok) return;                                   // キャンセル：何も変えない
+  const before = JSON.parse(JSON.stringify(state.tx));   // 失敗したら戻せるように退避
+  plan.toAdd.forEach(i=>{
+    state.tx.push({id:uid(),type:"expense",amount:i.amount,cat:i.cat,date:i.date,memo:i.memo,photo:null,recurring:true});
+  });
+  if(!save()){
+    state.tx = before;            // 途中まで増えた状態を残さない
+    toast("入れられませんでした（空き容量をご確認ください）");
+    return;
+  }
+  render(); toast(`${plan.toAdd.length}件を今月に入れました ✓`);
+}
+
 function renderSummary(){
   const c=compute();
   /* ホームと同じ定義。のこり ＝ 収入 － 支出 － 先取り ＝ c.available */
@@ -481,6 +518,7 @@ function renderSummary(){
 
   return `<div class="screen">
     ${sumTabs()}
+    ${carryCard()}
     <div class="stitle" style="margin-top:6px">今月のまとめ（${new Date().getMonth()+1}月）</div>
     <div class="sumcards">
       <div class="sc"><div class="l">収入</div><div class="v inc mono">${yen(c.incomeTotal)}</div></div>
@@ -1546,6 +1584,7 @@ function handleAct(a,e){
   if(a==="add-diary-photo"){ const el=$("diaryPhotoInput"); if(el){ el.value=""; el.click(); } return; }
   if(a==="rm-diary-photo"){ diaryPhotoPending=null; render(); return; }
   if(a==="toggle-recurring"){ if(sheetState){ readSheetInputs(); sheetState.recurring=!sheetState.recurring; renderSheet(); } return; }
+  if(a==="carry-recurring") return carryRecurring();
   if(a==="sum-tab"){ const el=e&&e.target&&e.target.closest("[data-tab]"); sumTab=(el&&el.dataset.tab)||"month"; render(); return; }
   if(a==="health-range"){ const el=e&&e.target&&e.target.closest("[data-range]"); healthRange=(el&&el.dataset.range)||"month"; render(); return; }
 }

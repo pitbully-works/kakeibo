@@ -318,3 +318,134 @@ test("スナップショットの版数が 2.2 になっている（fixed_cost �
   assert.equal(snap.schema_version, "2.2");
   assert.equal(snap.fixed_cost + snap.variable_spend, snap.spend_total, "内わけの合計が全体と合わない");
 });
+
+/* =========================================================================
+   6. 先月の🔁を今月へまとめて入れる
+   ========================================================================= */
+const CARRY = [
+  SALARY,
+  tx("cr", 60000, "rent", "2026-06-27", true),
+  tx("cp", 12000, "power", "2026-06-15", true),
+  tx("cf", 8000, "food", "2026-06-03"),              // 印なし＝写さない
+  { id: "ci", type: "income", amount: 5000, cat: "gift", date: "2026-06-10", recurring: true },
+  tx("co", 3000, "hobby", "2026-05-20", true),       // 先々月＝写さない
+];
+
+test("先月の🔁だけを写す（印なし・収入・先々月は入らない）", () => {
+  const plan = Core.recurringCarryPlan(CARRY, YM);
+  assert.equal(plan.from, "2026-06");
+  assert.deepEqual(plan.toAdd.map((i) => i.cat), ["rent", "power"]);
+  assert.equal(plan.total, 72000);
+});
+
+test("日付は先月と同じ日にそろえる", () => {
+  const plan = Core.recurringCarryPlan(CARRY, YM);
+  assert.equal(plan.toAdd.filter((i) => i.cat === "rent")[0].date, "2026-07-27");
+  assert.equal(plan.toAdd.filter((i) => i.cat === "power")[0].date, "2026-07-15");
+});
+
+test("その月に無い日は、月末へ丸める（1/31 → 2/28）", () => {
+  const plan = Core.recurringCarryPlan([tx("x", 60000, "rent", "2026-01-31", true)], "2026-02");
+  assert.equal(plan.toAdd[0].date, "2026-02-28");
+});
+
+test("メモは写すが、写真は写さない", () => {
+  const src = [{ id: "m", type: "expense", amount: 60000, cat: "rent", date: "2026-06-01",
+                 recurring: true, memo: "アパート", photo: "data:image/png;base64,AAAA" }];
+  const item = Core.recurringCarryPlan(src, YM).toAdd[0];
+  assert.equal(item.memo, "アパート");
+  assert.equal("photo" in item, false, "写真まで写している");
+});
+
+test("今月すでに同じカテゴリの🔁があれば、二重に入れない", () => {
+  const already = CARRY.concat([tx("dup", 61000, "rent", "2026-07-01", true)]);
+  const plan = Core.recurringCarryPlan(already, YM);
+  assert.deepEqual(plan.toAdd.map((i) => i.cat), ["power"], "家賃を二重に入れようとしている");
+  assert.equal(plan.skipped, 1);
+  assert.equal(plan.items.filter((i) => i.cat === "rent")[0].already, true);
+});
+
+test("金額がちがっても、同じカテゴリなら入れない（直してもらう）", () => {
+  const already = [tx("a", 60000, "rent", "2026-06-01", true), tx("b", 65000, "rent", "2026-07-01", true)];
+  assert.equal(Core.recurringCarryPlan(already, YM).toAdd.length, 0);
+});
+
+test("先月に🔁が無ければ、入れるものは0件", () => {
+  assert.equal(Core.recurringCarryPlan([SALARY, tx("f", 8000, "food", "2026-06-03")], YM).toAdd.length, 0);
+});
+
+/* ---------- 画面 ---------- */
+const LIVE_YM = new Date().toISOString().slice(0, 7);
+const prevYm = Core.shiftYm(LIVE_YM, -1);
+const P = (n) => `${prevYm}-${String(n).padStart(2, "0")}`;
+const liveState = (extra) => ({
+  settings: S,
+  tx: [
+    { id: "L1", type: "expense", amount: 60000, cat: "rent", date: P(5), recurring: true },
+    { id: "L2", type: "expense", amount: 12000, cat: "power", date: P(6), recurring: true },
+    { id: "L3", type: "expense", amount: 8000, cat: "food", date: P(7) },
+  ].concat(extra || []),
+  health: {}, diary: {},
+});
+const openSummary = (app) => { app.run(`confirm=()=>true; __kakeibo.setView("summary"); __kakeibo.setTab("month");`); };
+
+test("まとめ画面に「まとめて入れる」カードが出る", () => {
+  const app = bootApp({ state: liveState() });
+  openSummary(app);
+  const html = app.el("app").innerHTML;
+  assert.match(html, /先月の毎月固定が 2件/);
+  assert.match(html, /data-act="carry-recurring"/);
+});
+
+test("押すと、今月に🔁付きで記録が増える", () => {
+  const app = bootApp({ state: liveState() });
+  openSummary(app);
+  app.run(`carryRecurring()`);
+  const saved = JSON.parse(app.saved()).tx;
+  const added = saved.filter((t) => t.date.slice(0, 7) === LIVE_YM);
+  assert.equal(added.length, 2);
+  assert.deepEqual(added.map((t) => t.cat).sort(), ["power", "rent"]);
+  assert.ok(added.every((t) => t.recurring === true), "🔁の印が付いていない");
+  assert.ok(added.every((t) => t.type === "expense"), "支出になっていない");
+});
+
+test("入れたあとは、カードが消える（二重に押せない）", () => {
+  const app = bootApp({ state: liveState() });
+  openSummary(app);
+  app.run(`carryRecurring()`);
+  assert.equal(/data-act="carry-recurring"/.test(app.el("app").innerHTML), false, "カードが残っている");
+});
+
+test("2回続けて押しても、記録は増えない", () => {
+  const app = bootApp({ state: liveState() });
+  openSummary(app);
+  app.run(`carryRecurring(); carryRecurring();`);
+  const added = JSON.parse(app.saved()).tx.filter((t) => t.date.slice(0, 7) === LIVE_YM);
+  assert.equal(added.length, 2, "二重に入っている: " + added.length);
+});
+
+test("キャンセルしたら、1件も増えない", () => {
+  const app = bootApp({ state: liveState() });
+  app.run(`confirm=()=>false; __kakeibo.setView("summary"); __kakeibo.setTab("month"); carryRecurring();`);
+  const added = JSON.parse(app.saved() || '{"tx":[]}').tx.filter((t) => t.date.slice(0, 7) === LIVE_YM);
+  assert.equal(added.length, 0);
+});
+
+test("保存に失敗したら、1件も増やさずに元へ戻す", () => {
+  const app = bootApp({ state: liveState(), storageFull: true });
+  openSummary(app);
+  app.run(`carryRecurring()`);
+  const tx = app.run(`__kakeibo.state.tx`);
+  assert.equal(tx.filter((t) => t.date.slice(0, 7) === LIVE_YM).length, 0, "増えたまま残っている");
+  assert.match(app.toastText(), /入れられませんでした/);
+});
+
+test("入れた分は、ちゃんと支出として計算に入る", () => {
+  const app = bootApp({ state: liveState() });
+  openSummary(app);
+  app.run(`carryRecurring()`);
+  const tx = app.run(`__kakeibo.state.tx`);
+  const c = Core.computeMonth(S, tx, LIVE_YM);
+  assert.equal(c.spendTotal, 72000);
+  assert.equal(c.recurringSpend, 72000);
+});

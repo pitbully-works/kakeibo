@@ -1424,6 +1424,57 @@
     return out;
   }
 
+  /* =======================================================================
+     先月の「🔁 毎月固定」を今月へ写す（下ごしらえ）
+     -----------------------------------------------------------------------
+     家賃や保険のように毎月まったく同じものを、打ち直さずに済ませるため。
+     ここは純粋関数で「何を入れるか」を決めるだけ。実際の追加は画面側が行う。
+
+     二重計上を防ぐ決めごと：
+       今月にすでに同じカテゴリの🔁がある項目は入れない（already の印を付ける）。
+       金額がちがっても入れない。電気代のように額が変わるものを
+       2件に増やすより、1件を直してもらうほうが安全なため。
+     ======================================================================= */
+  function recurringCarryPlan(txs, ym) {
+    const all = Array.isArray(txs) ? txs : [];
+    const prevYm = shiftYm(ym, -1);
+    const days = daysInMonth(ym);
+
+    const prev = all.filter(function (t) {
+      return isRecurring(t) && monthOf(t.date) === prevYm;
+    });
+    /* すでに今月に入っている🔁のカテゴリ */
+    const done = {};
+    all.forEach(function (t) {
+      if (isRecurring(t) && monthOf(t.date) === ym) done[t.cat] = true;
+    });
+
+    const items = prev.map(function (t) {
+      const cat = catOf("expense", t.cat);
+      /* 同じ日にそろえる。31日→30日の月のように、無い日は月末へ丸める。 */
+      const day = Math.min(days, Math.max(1, Number(String(t.date).slice(8, 10)) || 1));
+      return {
+        cat: t.cat,
+        name: cat.n,
+        emoji: cat.e,
+        amount: num(t.amount),
+        memo: String(t.memo || "").slice(0, MEMO_MAX),
+        date: ym + "-" + String(day).padStart(2, "0"),
+        already: done[t.cat] === true,
+      };
+    }).sort(function (a, b) { return b.amount - a.amount; });
+
+    const toAdd = items.filter(function (i) { return !i.already; });
+    return {
+      ym: ym,
+      from: prevYm,
+      items: items,
+      toAdd: toAdd,
+      skipped: items.length - toAdd.length,
+      total: sum(toAdd, function (i) { return i.amount; }),
+    };
+  }
+
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
@@ -1482,6 +1533,7 @@
     EXP_CATS: EXP_CATS,
     VAR_CATS: EXP_CATS,   // 旧名の互換（中身は全支出カテゴリ）
     EXP_PICK_CATS: EXP_PICK_CATS,
+    recurringCarryPlan: recurringCarryPlan,
     isRecurring: isRecurring,
     INC_CATS: INC_CATS,
     REGULAR_INCOME_CAT: REGULAR_INCOME_CAT,
