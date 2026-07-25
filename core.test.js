@@ -40,8 +40,9 @@ test("支出（固定費のみ）→ 使える額は119,000（NISA33,000が反�
 
 test("変動支出20,000を追加 → 使える額は99,000", () => {
   const c = Core.computeMonth(BASE, [SALARY, ...FIXED98, exp(20000, "food")], YM);
-  assert.equal(c.variableSpend, 20000);
-  assert.equal(c.fixedSpend, 98000);
+  // 固定費98,000（家賃・光熱など）＋食費20,000＝118,000。区分は無く合算される。
+  assert.equal(c.spendTotal, 118000);
+  assert.equal(c.available, 290000 - 118000 - 73000);  // = 99,000
   assert.equal(c.available, 99000);
 });
 
@@ -56,7 +57,7 @@ test("正式な計算式が恒等式として成立する", () => {
   const txs = [SALARY, ...FIXED98, exp(20000, "food"), exp(3000, "eatout"), inc(50000, "bonus")];
   const c = Core.computeMonth(BASE, txs, YM);
   assert.equal(c.available, c.incomeTotal - c.spendTotal - c.savingsPlanned - c.nisaPlanned);
-  assert.equal(c.spendTotal, c.fixedSpend + c.variableSpend);
+  assert.equal(c.spendTotal, /*removed*/0 + c.spendTotal);
   assert.equal(c.incomeTotal, c.incomeRegular + c.incomeExtra);
 });
 
@@ -78,8 +79,8 @@ test("連携JSONの金額が画面の値と一致する", () => {
   assert.equal(j.income_extra, c.incomeExtra);
   assert.equal(j.income_actual_total, c.incomeTotal);
   assert.equal(j.income_net, c.incomeTotal);
-  assert.equal(j.fixed_cost, c.fixedSpend);
-  assert.equal(j.variable_spend, c.variableSpend);
+  assert.equal(j.fixed_cost, /*removed*/0);
+  assert.equal(j.variable_spend, c.spendTotal);
   assert.equal(j.spend_total, c.spendTotal);
   assert.equal(j.planned_set_aside, c.setAside);
   assert.equal(j.available_to_spend, c.available);
@@ -105,23 +106,35 @@ test("旧データに固定費の予定額が残っていても、支出には�
   assert.equal(c.available, 290000 - 12000 - 73000);
 });
 
-test("同じ固定費項目を複数回記録したら、そのまま合算される", () => {
-  const c = Core.computeMonth(BASE, [SALARY, exp(7000, "water", 3), exp(1000, "water", 20)], YM);
-  assert.equal(c.fixedSpend, 8000);
-  assert.equal(c.fixedDetail.find((d) => d.key === "water").amount, 8000);
+test("同じカテゴリを複数回記録したら、そのまま合算される", () => {
+  const c = Core.computeMonth({ savingsTarget:0, nisaMonthly:0 }, [
+    { id:"a", type:"expense", amount:5000, cat:"rent", date:"2026-07-01" },
+    { id:"b", type:"expense", amount:3000, cat:"rent", date:"2026-07-15" },
+  ], "2026-07");
+  assert.equal(c.byCat.rent, 8000);
+  assert.equal(c.spendTotal, 8000);
 });
 
-test("固定費と変動費は表示上だけ分かれ、合計は一致する", () => {
-  const c = Core.computeMonth(BASE, [SALARY, exp(60000, "rent"), exp(20000, "food")], YM);
-  assert.equal(c.fixedSpend, 60000);
-  assert.equal(c.variableSpend, 20000);
-  assert.equal(c.spendTotal, 80000);
+test("支出はすべて合算される（固定費／変動費の区分は無い）", () => {
+  const tx = [
+    { id:"a", type:"income", amount:290000, cat:"salary", date:"2026-07-25" },
+    { id:"r", type:"expense", amount:60000, cat:"rent", date:"2026-07-01" },
+    { id:"p", type:"expense", amount:8000, cat:"power", date:"2026-07-02" },
+    { id:"f", type:"expense", amount:20000, cat:"food", date:"2026-07-05" },
+  ];
+  const c = Core.computeMonth({ savingsTarget:40000, nisaMonthly:33000 }, tx, "2026-07");
+  assert.equal(c.spendTotal, 88000, "支出合計が合わない");
+  assert.equal(c.available, 290000 - 88000 - 73000);
+  assert.equal(c.byCat.rent, 60000);
+  assert.equal(c.byCat.power, 8000);
+  assert.equal(c.byCat.food, 20000);
 });
 
-test("記録していない固定費は内わけに出てこない", () => {
-  const c = Core.computeMonth(BASE, [SALARY, exp(60000, "rent")], YM);
-  assert.equal(c.fixedDetail.length, 1);
-  assert.equal(c.fixedDetail[0].key, "rent");
+test("記録していないカテゴリは内わけに出てこない", () => {
+  const c = Core.computeMonth({ savingsTarget:0, nisaMonthly:0 },
+    [{ id:"f", type:"expense", amount:1000, cat:"food", date:"2026-07-01" }], "2026-07");
+  assert.equal(c.byCat.food, 1000);
+  assert.equal("rent" in c.byCat, false, "記録の無いカテゴリが出ている");
 });
 
 /* ---------- 4. 給与の入力口もひとつだけ ---------- */
@@ -180,12 +193,12 @@ test("貯金・NISAは予定額だと分かる構造で出力される", () => {
   }
 });
 
-test("固定費は記録した項目だけがJSONに出る（予定額のキーは無い）", () => {
-  const j = Core.buildSnapshot(BASE, [SALARY, exp(15000, "power")], YM);
-  assert.equal(j.fixed_cost, 15000);
-  assert.deepEqual(j.fixed_cost_items, [{ key: "power", name: "電気", amount: 15000 }]);
-  assert.equal("fixed_cost_planned" in j, false);
-  assert.equal("fixed_cost_actual" in j, false);
+test("連携JSONは支出合計を持ち、固定費の予定額キーは持たない", () => {
+  const snap = Core.buildSnapshot({ savingsTarget:40000, nisaMonthly:33000 },
+    [{ id:"r", type:"expense", amount:60000, cat:"rent", date:"2026-07-01" }], "2026-07");
+  assert.equal(snap.spend_total, 60000);
+  assert.equal(snap.fixed_cost, 0, "固定費の区分が残っている");
+  assert.ok(Array.isArray(snap.by_category), "カテゴリ別内訳が無い");
 });
 
 /* ---------- 月の切り分け・堅牢性 ---------- */

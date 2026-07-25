@@ -11,7 +11,7 @@
    ただひとつの原則：**入力口はひとつだけ**
      お金の出入りは、すべて「記録」から入れる。設定には持たない。
        ・収入 … 通常給与／臨時・賞与／贈与／その他臨時
-       ・支出 … 固定費（家賃・電気・ガス…）も変動費（食費・外食…）も同じ記録
+       ・支出 … すべて同じ「支出」の記録（固定費／変動費の区分は無い）
      同じ金額を2か所に書ける作りにしない。だから二重計上が起きない。
 
      設定に残すのは「まだ出ていないお金」だけ：
@@ -28,37 +28,34 @@
 
   /* ---------- 分類の定義 ---------- */
 
-  /* 固定費として扱う支出カテゴリ。金額はすべて記録から集計する
-     （設定に予定額は持たない。まとめ画面の内わけ表示のためだけの区分） */
-  const FIXED_ITEMS = [
-    { k: "rent",     e: "🏠", n: "家賃・住居" },
+  /* 支出カテゴリ（固定費／変動費の区分は廃止。すべて通常の支出）。
+     電気・ガス・水道は分析で個別に見たいので3つのまま維持する。
+     旧固定費のキー（rent/power/gas/water/comm/subs/insure/fixother）は
+     そのまま残すので、保存済みデータは移行なしでそのまま表示・集計できる。 */
+  const EXP_CATS = [
+    { k: "food",     e: "🥕", n: "食費" },
+    { k: "daily",    e: "🧴", n: "日用品" },
+    { k: "eatout",   e: "🍜", n: "外食" },
+    { k: "rent",     e: "🏠", n: "住居" },
     { k: "power",    e: "💡", n: "電気" },
     { k: "gas",      e: "🔥", n: "ガス" },
     { k: "water",    e: "🚰", n: "水道" },
     { k: "comm",     e: "📱", n: "通信" },
-    { k: "subs",     e: "🔁", n: "サブスク" },
     { k: "insure",   e: "🛟", n: "保険" },
-    { k: "fixother", e: "📦", n: "その他固定費" },
-  ];
-  const FIXED_KEYS = FIXED_ITEMS.map(function (i) { return i.k; });
-
-  /* 変動支出のカテゴリ（記録するたびに積み上がる） */
-  const VAR_CATS = [
-    { k: "food",    e: "🥕", n: "食費" },
-    { k: "eatout",  e: "🍜", n: "外食" },
-    { k: "daily",   e: "🧴", n: "日用品" },
-    { k: "transit", e: "🚃", n: "交通" },
-    { k: "hobby",   e: "🎨", n: "趣味" },
-    { k: "medical", e: "🏥", n: "医療" },
-    { k: "social",  e: "🤝", n: "交際費" },
-    { k: "clothes", e: "👕", n: "衣服" },
-    { k: "health",  e: "❤️", n: "健康" },
-    { k: "pet",     e: "🐶", n: "ペット" },
-    { k: "pension", e: "💰", n: "私的年金" },
-    { k: "other",   e: "🐷", n: "その他" },
+    { k: "transit",  e: "🚃", n: "交通" },
+    { k: "car",      e: "🚗", n: "車" },
+    { k: "medical",  e: "🏥", n: "医療・健康" },
+    { k: "clothes",  e: "👕", n: "衣服" },
+    { k: "social",   e: "🤝", n: "交際費" },
+    { k: "hobby",    e: "🎨", n: "趣味" },
+    { k: "pet",      e: "🐶", n: "ペット" },
+    { k: "pension",  e: "💰", n: "私年金" },
+    { k: "tax",      e: "📋", n: "税金" },
+    { k: "subs",     e: "🔁", n: "サブスク" },
+    { k: "fixother", e: "📦", n: "その他（旧固定費）" },
+    { k: "other",    e: "🐷", n: "その他" },
   ];
 
-  /* 収入のカテゴリ。salary だけが「通常給与」で、上乗せしない */
   const REGULAR_INCOME_CAT = "salary";
   const INC_CATS = [
     { k: "salary", e: "💴", n: "通常給与" },
@@ -67,9 +64,8 @@
     { k: "other",  e: "🐷", n: "その他臨時" },
   ];
 
-  const isFixedCat = function (k) { return FIXED_KEYS.indexOf(k) >= 0; };
   const catOf = function (type, k) {
-    const pool = type === "income" ? INC_CATS : VAR_CATS.concat(FIXED_ITEMS);
+    const pool = type === "income" ? INC_CATS : EXP_CATS;
     return pool.filter(function (c) { return c.k === k; })[0] || { k: k, e: "🐷", n: "その他" };
   };
 
@@ -85,7 +81,9 @@
 
   /* ---------- 設定の正規化 ---------- */
   /* 設定に持つのは「先取り（予定額）」と「夢・目標」だけ。
-     旧版の手取り収入(incomeNet)・固定費(fixedCost / fixed)は読み捨てる。 */
+     旧版の手取り収入(incomeNet)・固定費(fixedCost / fixed)は読み捨てる。
+     旧固定費カテゴリ(rent/power/gas/water/comm/subs/insure/fixother)の
+     「記録」はそのまま通常の支出として残る。 */
   function normalizeSettings(raw) {
     const s = raw || {};
     return {
@@ -116,23 +114,9 @@
     const incomeExtra = sum(extraRecs, function (t) { return t.amount; });
     const incomeTotal = incomeRegular + incomeExtra;
 
-    /* --- 支出：すべて「記録」から。予定額は持たない --- */
+    /* --- 支出：すべて「記録」から。固定費／変動費の区分は無い --- */
     const expRecs = month.filter(function (t) { return t.type === "expense"; });
-    const fixedRecs = expRecs.filter(function (t) { return isFixedCat(t.cat); });
-    const varRecs = expRecs.filter(function (t) { return !isFixedCat(t.cat); });
-    const fixedSpend = sum(fixedRecs, function (t) { return t.amount; });
-    const variableSpend = sum(varRecs, function (t) { return t.amount; });
-    const spendTotal = fixedSpend + variableSpend;
-
-    /* 固定費の内わけ（表示用。記録した分だけ） */
-    const fixedDetail = FIXED_ITEMS.map(function (item) {
-      const recs = fixedRecs.filter(function (t) { return t.cat === item.k; });
-      return {
-        key: item.k, name: item.n, emoji: item.e,
-        amount: sum(recs, function (t) { return t.amount; }),
-        recorded: recs.length > 0,
-      };
-    }).filter(function (d) { return d.recorded; });
+    const spendTotal = sum(expRecs, function (t) { return t.amount; });
 
     /* --- 先取り（予定額） --- */
     const savingsPlanned = s.savingsTarget;
@@ -142,9 +126,9 @@
     /* --- 正式な計算式 --- */
     const available = incomeTotal - spendTotal - setAside;
 
-    /* --- 表示用の内訳 --- */
+    /* --- 表示用の内訳（すべての支出カテゴリ） --- */
     const byCat = {};
-    varRecs.forEach(function (t) {
+    expRecs.forEach(function (t) {
       byCat[t.cat] = (byCat[t.cat] || 0) + num(t.amount);
     });
     const goalPct = s.goalTarget > 0
@@ -161,10 +145,7 @@
       incomeExtra: incomeExtra,
       incomeTotal: incomeTotal,
       hasIncome: incomeTotal > 0,
-      /* 支出（すべて記録した実績） */
-      fixedDetail: fixedDetail,
-      fixedSpend: fixedSpend,
-      variableSpend: variableSpend,
+      /* 支出（すべて記録した実績。区分なし） */
       spendTotal: spendTotal,
       /* 先取り（予定額） */
       savingsPlanned: savingsPlanned,
@@ -927,7 +908,7 @@
 
     if (!validateDateString(tx.date)) return null;            // 日付が不正なら捨てる
 
-    const pool = type === "income" ? INC_CATS : VAR_CATS.concat(FIXED_ITEMS);
+    const pool = type === "income" ? INC_CATS : EXP_CATS;
     const cat = pool.some(function (c) { return c.k === tx.cat; })
       ? tx.cat
       : (type === "income" ? "other" : "other");              // 未知のカテゴリは「その他」へ
@@ -1008,13 +989,15 @@
       /* 後方互換。旧 income_net は「当月の実収入合計」を指す */
       income_net: c.incomeTotal,
 
-      /* 支出：すべて記録した実績（予定額は持たない） */
-      fixed_cost: c.fixedSpend,
-      fixed_cost_items: c.fixedDetail.map(function (d) {
-        return { key: d.key, name: d.name, amount: d.amount };
-      }),
-      variable_spend: c.variableSpend,
+      /* 支出：すべて記録した実績。固定費／変動費の区分は無い。
+         後方互換のため fixed_cost/variable_spend のキーは残すが常に spend_total と 0。 */
+      fixed_cost: 0,
+      variable_spend: c.spendTotal,
       spend_total: c.spendTotal,
+      expense_total: c.spendTotal,
+      by_category: Object.keys(c.byCat).map(function (k) {
+        return { key: k, name: catOf("expense", k).n, amount: c.byCat[k] };
+      }),
 
       /* 先取りは「予定額」であることを構造で明示 */
       planned_set_aside: c.setAside,
@@ -1025,12 +1008,10 @@
   }
 
   return {
-    FIXED_ITEMS: FIXED_ITEMS,
-    FIXED_KEYS: FIXED_KEYS,
-    VAR_CATS: VAR_CATS,
+    EXP_CATS: EXP_CATS,
+    VAR_CATS: EXP_CATS,   // 旧名の互換（中身は全支出カテゴリ）
     INC_CATS: INC_CATS,
     REGULAR_INCOME_CAT: REGULAR_INCOME_CAT,
-    isFixedCat: isFixedCat,
     catOf: catOf,
     num: num,
     monthOf: monthOf,

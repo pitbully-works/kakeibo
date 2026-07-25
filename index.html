@@ -245,11 +245,9 @@ const STORE_KEY = "kakeibo:v1:state";
 
 /* ---------- 分類・計算はすべて core.js（唯一の正）から取る ---------- */
 const Core = window.KakeiboCore;
-const FIXED_ITEMS = Core.FIXED_ITEMS;   // 固定費の項目（予定額を設定に持つ）
-const VAR_CATS    = Core.VAR_CATS;      // 変動支出のカテゴリ
+const EXP_CATS = Core.EXP_CATS;         // 支出カテゴリ（固定費／変動費の区分は無い）
 const INC_CATS    = Core.INC_CATS;      // 収入のカテゴリ
 const catOf       = Core.catOf;
-const isFixedCat  = Core.isFixedCat;
 
 /* ---------- 状態 ---------- */
 const defaultState = ()=>({
@@ -261,7 +259,7 @@ let view = "home";
 
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
-    /* normalizeSettings が旧形式（固定費が1つの合計欄）を移行する */
+    /* normalizeSettings が旧形式の設定を安全な形へ移行する */
     return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[] }; } }
   catch(e){ /* ignore */ }
   return defaultState();
@@ -384,15 +382,10 @@ function renderSummary(){
   // カテゴリ内訳バー
   const cats=Object.entries(c.byCat).sort((a,b)=>b[1]-a[1]);
   const maxCat=cats.length?cats[0][1]:1;
-  const PIE={food:"#8fbf7f",eatout:"#d9a54f",daily:"#4fa8d8",transit:"#b08fd6",hobby:"#e6b0a6",medical:"#c2694f",social:"#6fa88a",other:"#9fb0ab"};
+  const PIE={food:"#8fbf7f",eatout:"#d9a54f",daily:"#4fa8d8",rent:"#7f9cc0",power:"#e0c060",gas:"#d98a5f",water:"#5fb0d0",comm:"#9a8fd0",insure:"#78b89a",transit:"#b08fd6",car:"#8a9a70",medical:"#c2694f",clothes:"#c98fb0",social:"#6fa88a",hobby:"#e6b0a6",pet:"#b89a70",pension:"#d0b060",tax:"#a0a0a8",subs:"#8fb0c0",other:"#9fb0ab"};
   const bars = cats.length? cats.map(([k,v])=>{ const cat=catOf("expense",k);
       return `<div class="brow"><span class="bt">${cat.e} ${cat.n}</span><span class="track"><span class="fill" style="width:${Math.max(4,Math.round(v/maxCat*100))}%;background:${PIE[k]||"#9fb0ab"}"></span></span><span class="bv mono">${yen(v)}</span></div>`;
-    }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の変動支出はまだありません</div>`;
-
-  // 固定費：記録した分だけ
-  const fixedRows = c.fixedDetail.length ? c.fixedDetail.map(d=>`<div class="krow">
-      <span>${d.emoji} ${d.name}</span><b class="mono">${yen(d.amount)}</b></div>`).join("")
-    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">固定費の記録はまだありません</div>`;
+    }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の支出はまだありません</div>`;
 
   return `<div class="screen">
     <div class="stitle" style="margin-top:6px">今月のまとめ（${new Date().getMonth()+1}月）</div>
@@ -409,16 +402,12 @@ function renderSummary(){
         <span>収入の内わけ</span><span></span></div>
       <div class="krow"><span>通常収入（記録した給与）${c.incomeRegularRecorded?"":`<span class="tag pl">未記録</span>`}</span><b class="mono">${yen(c.incomeRegular)}</b></div>
       <div class="krow"><span>臨時収入</span><b class="mono">${yen(c.incomeExtra)}</b></div>
-      <div style="height:1px;background:var(--line2);margin:10px 0 6px"></div>
-      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">固定費（記録した分）</div>
-      ${fixedRows}
-      <div class="krow" style="font-weight:800"><span>固定費 合計</span><b class="mono">${yen(c.fixedSpend)}</b></div>
     </div>
     <div class="barlist">
       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:4px">
         <span>今週つかった（記録した支出）</span><span class="mono" style="font-weight:800;color:var(--ink)">${yen(c.weekSpent)}</span></div>
       <div style="height:1px;background:var(--line2);margin:8px 0 4px"></div>
-      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">変動支出の内わけ（今月）　合計 ${yen(c.variableSpend)}</div>
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">支出の内わけ（今月）　合計 ${yen(c.spendTotal)}</div>
       ${bars}
     </div>
     <div class="stitle">きろく</div>
@@ -484,13 +473,12 @@ function openRecord(editId){
 }
 function renderSheet(){
   const st=sheetState;
-  const cats = st.type==="income" ? INC_CATS : VAR_CATS.concat(FIXED_ITEMS);
+  const cats = st.type==="income" ? INC_CATS : EXP_CATS;
   if(st.cat && !cats.find(c=>c.k===st.cat)) st.cat = cats[0].k;
   const btn=c=>`<button class="catbtn ${st.cat===c.k?"on":""}" data-cat="${c.k}"><span class="ce">${c.e}</span>${c.n}</button>`;
   const catHtml = st.type==="income"
     ? INC_CATS.map(btn).join("")
-    : `<div class="catlbl">変動費（記録するたびに積み上がります）</div>${VAR_CATS.map(btn).join("")}
-       <div class="catlbl">固定費</div>${FIXED_ITEMS.map(btn).join("")}`;
+    : `<div class="catlbl">支出のカテゴリ</div>${EXP_CATS.map(btn).join("")}`;
   const catNote = st.type==="income"
     ? (st.cat==="salary"
         ? `<div class="ocrnote">給料の入力口はここだけです。今月の通常収入になります。</div>`

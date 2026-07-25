@@ -204,7 +204,7 @@ test("読めた結果が無ければ null（手入力にまかせる）", () => 
 
 /* ---------- Ver.2 追加カテゴリ ---------- */
 test("追加した支出カテゴリが使える", () => {
-  for (const [k, n] of [["clothes","衣服"],["social","交際費"],["hobby","趣味"],["health","健康"],["pet","ペット"],["pension","私的年金"]]) {
+  for (const [k, n] of [["clothes","衣服"],["social","交際費"],["hobby","趣味"],["medical","医療・健康"],["pet","ペット"],["pension","私年金"],["tax","税金"],["car","車"]]) {
     const c = Core.catOf("expense", k);
     assert.equal(c.k, k, k + " が無い");
     assert.equal(c.n, n, k + " の名前が違う: " + c.n);

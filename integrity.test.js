@@ -31,7 +31,7 @@ test("アプリ本体のJavaScriptが構文エラーなく解析できる（白�
 test("画面側に計算式を書き戻していない（計算は core.js だけ）", () => {
   const src = appScript();
   // 旧実装で使っていた画面ローカルの集計変数が復活していないこと
-  for (const banned of ["const free=", "const net=c.income-", "c.spent", "EXP_CATS", "s.fixedCost", "c.fixedTotal"]) {
+  for (const banned of ["const free=", "const net=c.income-", "c.spent", "s.fixedCost", "c.fixedTotal", "c.fixedSpend", "c.variableSpend"]) {
     assert.equal(src.includes(banned), false, `画面側に「${banned}」が復活している`);
   }
   // ホームとまとめは、どちらも compute() の結果だけを読む
@@ -49,11 +49,11 @@ test("不正確な「先取り貯金は、もう済んでます」表示が残�
   assert.match(html, /先取り貯金・NISA積立の予定額を除いています/);
 });
 
-test("せっていに固定費の入力欄が無い（入力口は記録だけ）", () => {
+test("せっていに支出の入力欄が無い（入力口は記録だけ）", () => {
   const src = appScript();
-  assert.equal(src.includes('id="f-fixed"'), false, "固定費の合計欄が残っている");
-  assert.equal(src.includes("f-fx-"), false, "固定費の予定額欄が復活している");
-  assert.equal(src.includes("s.fixed["), false, "設定の固定費を読む処理が残っている");
+  assert.equal(src.includes('id="f-fixed"'), false, "支出の合計欄が残っている");
+  assert.equal(src.includes("f-fx-"), false, "支出の予定額欄が復活している");
+  assert.equal(src.includes("s.fixed["), false, "設定の支出を読む処理が残っている");
 });
 
 test("せっていに給料の入力欄が無く、入力口がひとつに保たれている", () => {

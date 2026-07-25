@@ -70,7 +70,7 @@ const SETTINGS = { savingsTarget: 40000, nisaMonthly: 33000, currency: "JPY" };
 const yen = (n) => "¥" + Math.round(n).toLocaleString("en-US");
 /* 給与の入力口は「記録」だけ */
 const SALARY = { id: "s", type: "income", amount: 290000, cat: "salary", date: D(25) };
-/* 固定費98,000ぶんの記録 */
+/* 支出98,000ぶんの記録 */
 const FIXED98 = [
   { id: "f1", type: "expense", amount: 60000, cat: "rent", date: D(1) },
   { id: "f2", type: "expense", amount: 12000, cat: "power", date: D(2) },
@@ -137,7 +137,7 @@ test("ホームとまとめに、同じ「のこり」が表示される", () =>
   assert.ok(summary.includes(yen(149000)), "まとめに のこり が出ていない");
 });
 
-test("固定費を記録しても、まとめの支出が二重にならない", () => {
+test("支出を記録しても、まとめの支出が二重にならない", () => {
   const tx = [SALARY, { id: "c", type: "expense", amount: 12000, cat: "power", date: D(10) }];
   const { app, html: out } = bootApp({ settings: SETTINGS, tx });
   const c = Core.computeMonth(SETTINGS, tx, YM);
@@ -157,12 +157,13 @@ test("書き出したJSONが、画面と同じ金額になっている", () => {
   const c = Core.computeMonth(SETTINGS, tx, YM);
   assert.equal(j.available_to_spend, c.available);
   assert.equal(j.income_actual_total, c.incomeTotal);
-  assert.equal(j.variable_spend, c.variableSpend);
-  assert.equal(j.fixed_cost, c.fixedSpend);
+  assert.equal(j.spend_total, c.spendTotal);
+  assert.equal(j.variable_spend, c.spendTotal);   // 互換キー：支出合計と同じ
+  assert.equal(j.fixed_cost, 0);                  // 互換キー：区分廃止で常に0
   assert.equal(j.accounts.find((a) => a.type === "TAX_FREE_INVEST").planned_contribution, 33000);
 });
 
-test("旧保存データ（固定費が合計欄）を読んでも落ちない", () => {
+test("旧保存データ（支出が合計欄）を読んでも落ちない", () => {
   const old = {
     settings: { incomeNet: 290000, fixedCost: 98000, fixed: { rent: 60000 }, savingsTarget: 40000, nisaMonthly: 33000 },
     tx: [SALARY, ...FIXED98],
@@ -174,13 +175,13 @@ test("旧保存データ（固定費が合計欄）を読んでも落ちない",
   assert.ok(out().length > 200);
 });
 
-test("せってい画面に給料・固定費の入力欄が無い（入力口はひとつだけ）", () => {
+test("せってい画面に給料・支出の入力欄が無い（入力口はひとつだけ）", () => {
   const { app, html: out } = bootApp({ settings: SETTINGS, tx: [] });
   app.setView("settings");
   const h = out();
   assert.equal(h.includes('id="f-income"'), false, "設定に手取り収入欄が残っている");
-  assert.equal(h.includes('id="f-fx-'), false, "設定に固定費の予定額欄が残っている");
-  assert.equal(h.includes("家賃・住居"), false, "設定に固定費の項目が残っている");
+  assert.equal(h.includes('id="f-fx-'), false, "設定に支出の予定額欄が残っている");
+  assert.equal(h.includes("家賃・住居"), false, "設定に支出の項目が残っている");
   assert.ok(h.includes('id="f-save"') && h.includes('id="f-nisa"'), "先取りの欄が無い");
 });
 
