@@ -866,6 +866,7 @@
       settings: normalizeSettings(st.settings),
       tx: (Array.isArray(st.tx) ? st.tx : []).map(normalizeTransaction).filter(Boolean),
       health: normalizeHealth(st.health),
+      diary: normalizeDiary(st.diary),
     };
   }
 
@@ -955,6 +956,7 @@
       settings: normalizeSettings(settings),
       tx: tx,
       health: normalizeHealth(data.health),   // 旧バックアップに health が無ければ空
+      diary: normalizeDiary(data.diary),       // 旧バックアップに diary が無ければ空
       dropped: dropped,
       version: Number(data.version) || 0,   // 旧形式は version が無い＝0
     };
@@ -1017,6 +1019,36 @@
       })
       .sort()
       .map(function (d) { return { date: d, value: h[d][field] }; });
+  }
+
+
+  /* =======================================================================
+     日記（日付ごとに1件・後から編集）
+     { "2026-07-25": "今日はよく歩いた" }
+     ======================================================================= */
+  const DIARY_MAX = 2000;   // 1日の本文の上限文字数
+
+  /* 日記ぜんぶを安全な形に整える。日付が妥当で、本文が空でないものだけ残す。 */
+  function normalizeDiary(diary) {
+    const out = {};
+    if (!diary || typeof diary !== "object" || Array.isArray(diary)) return out;
+    Object.keys(diary).forEach(function (date) {
+      if (!validateDateString(date)) return;
+      let text = diary[date];
+      if (typeof text !== "string") return;
+      text = text.slice(0, DIARY_MAX);
+      if (text.trim() === "") return;      // 空の日記は残さない
+      out[date] = text;
+    });
+    return out;
+  }
+
+  /* 一覧用：日付の新しい順に返す。 */
+  function diaryList(diary) {
+    const d = diary || {};
+    return Object.keys(d).sort().reverse().map(function (date) {
+      return { date: date, text: d[date] };
+    });
   }
 
   /* ---------- ライフプラン連携スナップショット ---------- */
@@ -1120,6 +1152,9 @@
     normalizeHealthEntry: normalizeHealthEntry,
     normalizeHealth: normalizeHealth,
     healthSeries: healthSeries,
+    DIARY_MAX: DIARY_MAX,
+    normalizeDiary: normalizeDiary,
+    diaryList: diaryList,
     BACKUP_VERSION: BACKUP_VERSION,
     MEMO_MAX: MEMO_MAX,
     AMOUNT_MAX: AMOUNT_MAX,

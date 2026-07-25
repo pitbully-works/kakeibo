@@ -227,6 +227,7 @@
 <nav class="nav" id="nav">
   <button data-nav="home" class="on"><span class="ni">🏠</span>ホーム</button>
   <button data-nav="summary"><span class="ni">📊</span>まとめ</button>
+  <button data-nav="diary"><span class="ni">📖</span>日記</button>
   <button data-nav="health"><span class="ni">❤️</span>健康</button>
   <button data-nav="settings"><span class="ni">⚙️</span>せってい</button>
 </nav>
@@ -256,7 +257,8 @@ const catOf       = Core.catOf;
 const defaultState = ()=>({
   settings: Core.normalizeSettings({}),
   tx:[],  // {id,type:'expense'|'income',amount,cat,date:'YYYY-MM-DD',memo,photo?}
-  health:{}  // { 'YYYY-MM-DD': {weight,bpHigh,bpLow} } 1日1件・上書き
+  health:{},  // { 'YYYY-MM-DD': {weight,bpHigh,bpLow} } 1日1件・上書き
+  diary:{}   // { 'YYYY-MM-DD': '本文' } 1日1件・編集可
 });
 let state = load();
 let view = "home";
@@ -264,7 +266,7 @@ let view = "home";
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
     /* normalizeSettings が旧形式の設定を安全な形へ移行する */
-    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health) }; } }
+    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary) }; } }
   catch(e){ /* ignore */ }
   return defaultState();
 }
@@ -304,6 +306,7 @@ function render(){
   const app=$("app");
   if(view==="home") app.innerHTML=renderHome();
   else if(view==="summary") app.innerHTML=renderSummary();
+  else if(view==="diary") app.innerHTML=renderDiary();
   else if(view==="health") app.innerHTML=renderHealth();
   else if(view==="settings") app.innerHTML=renderSettings();
   window.scrollTo(0,0);
@@ -422,6 +425,53 @@ function renderSummary(){
   </div>`;
 }
 
+
+
+/* ---------- 日記ページ ---------- */
+let diaryEditDate=null;   // 編集中の日付（null＝今日を新規）
+function renderDiary(){
+  const editing = diaryEditDate || todayISO();
+  const cur = state.diary[editing] || "";
+  const list = Core.diaryList(state.diary);
+  const listHtml = list.length ? list.map(d=>{
+    const md=d.date.slice(5).replace("-","/");
+    const preview=escapeHtml(d.text.length>60?d.text.slice(0,60)+"…":d.text);
+    return `<div class="krow diary-row" data-act="edit-diary" data-date="${d.date}" style="cursor:pointer;align-items:flex-start">
+      <span style="min-width:44px;color:var(--sub);font-weight:700">${md}</span>
+      <span style="flex:1;white-space:pre-wrap;line-height:1.5">${preview}</span></div>`;
+  }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">まだ日記がありません</div>`;
+  return `<div class="screen">
+    <div class="stitle" style="margin-top:6px">日記（${editing.slice(5).replace("-","/")}）</div>
+    <div class="calcnote" style="margin:0 0 10px">1日1件です。過去の日付をタップすると、その日の日記を直せます。</div>
+    <div class="barlist">
+      <div class="field"><label>本文</label>
+        <textarea id="d-text" rows="6" maxlength="${Core.DIARY_MAX}" placeholder="今日のできごと・気づいたこと" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit;padding:10px;border:1px solid var(--line2);border-radius:10px">${escapeHtml(cur)}</textarea>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn-main" data-act="save-diary" style="flex:1">📖 保存する</button>
+        ${diaryEditDate?`<button class="btn-quiet" data-act="new-diary" style="flex:0 0 auto">今日に戻る</button>`:""}
+      </div>
+    </div>
+    <div class="stitle">これまでの日記</div>
+    <div class="barlist">${listHtml}</div>
+  </div>`;
+}
+function saveDiary(){
+  const el=$("d-text"); const text=el?el.value:"";
+  const date=diaryEditDate||todayISO();
+  const before=JSON.parse(JSON.stringify(state.diary));
+  const next=Object.assign({}, state.diary);
+  if(text.trim()===""){ delete next[date]; }   // 空にしたら、その日の日記は消す
+  else { next[date]=text.slice(0,Core.DIARY_MAX); }
+  state.diary=next;
+  if(!save()){
+    state.diary=before;
+    toast("日記を保存できませんでした");
+    return;
+  }
+  diaryEditDate=null;   // 保存したら今日へ戻す
+  render(); toast(text.trim()===""?"日記を消しました":"日記を保存しました ✓");
+}
 
 /* ---------- 健康ページ ---------- */
 let healthRange="month";   // day / week / month
@@ -1099,6 +1149,7 @@ function onBackupPicked(file){
     state.settings = restored.settings;
     state.tx = restored.tx;
     state.health = restored.health || {};
+    state.diary = restored.diary || {};
     if(!save()){
       state = before;                               // 保存できないなら元のまま
       toast("バックアップを復元できませんでした");
@@ -1162,6 +1213,9 @@ function handleAct(a,e){
   if(a==="purge-photos") return purgePhotos();
   if(a==="import-backup") return pickBackup();
   if(a==="save-health") return saveHealth();
+  if(a==="save-diary") return saveDiary();
+  if(a==="new-diary"){ diaryEditDate=null; render(); return; }
+  if(a==="edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=(el&&el.dataset.date)||null; render(); return; }
   if(a==="health-range"){ const el=e&&e.target&&e.target.closest("[data-range]"); healthRange=(el&&el.dataset.range)||"month"; render(); return; }
 }
 $("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
