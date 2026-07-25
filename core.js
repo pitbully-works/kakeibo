@@ -52,9 +52,15 @@
     { k: "pension",  e: "💰", n: "私年金" },
     { k: "tax",      e: "📋", n: "税金" },
     { k: "subs",     e: "🔁", n: "サブスク" },
-    { k: "fixother", e: "📦", n: "その他" },
+    { k: "fixother", e: "📦", n: "その他", hidden: true },
     { k: "other",    e: "🐷", n: "その他" },
   ];
+
+  /* 記録シートの選択ボタンに出すカテゴリ。
+     旧「その他固定費」(fixother) は「その他」が2つ並んで紛らわしいので、選べなくする。
+     EXP_CATS には残すので、過去に fixother で記録したものは、
+     これまでどおり表示・集計され、消えたり「その他」に化けたりしない。 */
+  const EXP_PICK_CATS = EXP_CATS.filter(function (c) { return !c.hidden; });
 
   const REGULAR_INCOME_CAT = "salary";
   const INC_CATS = [
@@ -96,6 +102,13 @@
     };
   }
 
+  /* 「毎月固定」の印がついた支出か。
+     設定に予定額を持つのではなく、記録した1件ごとに印をつける。
+     入力口はひとつだけ、という決めごとはそのまま。 */
+  function isRecurring(t) {
+    return !!(t && t.type === "expense" && t.recurring === true);
+  }
+
   /* ---------- 当月の計算（唯一の正） ---------- */
   function computeMonth(settings, txs, ym) {
     const s = normalizeSettings(settings);
@@ -118,6 +131,11 @@
     const expRecs = month.filter(function (t) { return t.type === "expense"; });
     const spendTotal = sum(expRecs, function (t) { return t.amount; });
 
+    /* 「毎月固定」の印がついた分と、それ以外。どちらも同じように支出として引く。
+       分けているのは、見せ方と、月末の見積もりを暴れさせないためだけ。 */
+    const recurringSpend = sum(expRecs.filter(isRecurring), function (t) { return t.amount; });
+    const spotSpend = spendTotal - recurringSpend;
+
     /* --- 先取り（予定額） --- */
     const savingsPlanned = s.savingsTarget;
     const nisaPlanned = s.nisaMonthly;
@@ -130,6 +148,10 @@
     const byCat = {};
     expRecs.forEach(function (t) {
       byCat[t.cat] = (byCat[t.cat] || 0) + num(t.amount);
+    });
+    const byCatRecurring = {};
+    expRecs.filter(isRecurring).forEach(function (t) {
+      byCatRecurring[t.cat] = (byCatRecurring[t.cat] || 0) + num(t.amount);
     });
     const goalPct = s.goalTarget > 0
       ? Math.min(100, Math.round((s.goalCurrent / s.goalTarget) * 100))
@@ -145,8 +167,10 @@
       incomeExtra: incomeExtra,
       incomeTotal: incomeTotal,
       hasIncome: incomeTotal > 0,
-      /* 支出（すべて記録した実績。区分なし） */
+      /* 支出（すべて記録した実績） */
       spendTotal: spendTotal,
+      recurringSpend: recurringSpend,   // うち「毎月固定」の印がついたもの
+      spotSpend: spotSpend,             // それ以外
       /* 先取り（予定額） */
       savingsPlanned: savingsPlanned,
       nisaPlanned: nisaPlanned,
@@ -155,6 +179,7 @@
       available: available,
       /* 内訳 */
       byCat: byCat,
+      byCatRecurring: byCatRecurring,
       goalPct: goalPct,
       monthTx: month,
     };
@@ -925,7 +950,12 @@
 
     const id = (typeof tx.id === "string" && tx.id) ? tx.id.slice(0, 64) : null;
 
-    return { id: id, type: type, amount: amount, cat: cat, date: tx.date, memo: memo, photo: photo };
+    /* 「毎月固定」の印。支出のときだけ意味がある。 */
+    const recurring = type === "expense" && tx.recurring === true;
+
+    const out = { id: id, type: type, amount: amount, cat: cat, date: tx.date, memo: memo, photo: photo };
+    if (recurring) out.recurring = true;
+    return out;
   }
 
   /* バックアップ全体を安全な形に整える。形が違えば理由つきで投げる。 */
@@ -1271,18 +1301,37 @@
       if (d >= 1 && d <= days) perDayAmount[d] += num(t.amount);
     });
 
+    /* 毎月固定と、それ以外を日ごとに分けて持つ */
+    const perDayRecurring = [];
+    for (let i = 0; i <= days; i++) perDayRecurring.push(0);
+    (Array.isArray(txs) ? txs : []).forEach(function (t) {
+      if (!isRecurring(t) || monthOf(t.date) !== ym) return;
+      if (!validateDateString(t.date)) return;
+      const d = Number(String(t.date).slice(8, 10));
+      if (d >= 1 && d <= days) perDayRecurring[d] += num(t.amount);
+    });
+
     const daily = [];
-    let cum = 0, noSpend = 0, spendDays = 0;
+    let cum = 0, noSpend = 0, spendDays = 0, recurringSoFar = 0;
     for (let d = 1; d <= elapsed; d++) {
       cum += perDayAmount[d];
+      recurringSoFar += perDayRecurring[d];
       daily.push({ day: d, amount: perDayAmount[d], cum: cum });
       if (perDayAmount[d] > 0) spendDays += 1; else noSpend += 1;
     }
+    /* ペースの計算は「経過日数までに記録した分」で見る。
+       月の後ろの方に日付を入れた記録を、まだ使ったことにしないため。 */
+    const spentSoFar = cum;
+    const spotSoFar = spentSoFar - recurringSoFar;
 
     /* つかってよい額 ＝ 収入 － 先取り（予定額）。ホームの式と同じ形。 */
     const budget = c.incomeTotal - c.setAside;
-    const perDay = elapsed > 0 ? Math.round(c.spendTotal / elapsed) : 0;
-    const forecast = elapsed > 0 ? Math.round((c.spendTotal / elapsed) * days) : 0;
+    const perDay = elapsed > 0 ? Math.round(spentSoFar / elapsed) : 0;
+    /* 毎月固定（家賃など）は月に1回まとめて出ていくので、日割りにすると
+       月初だけ予測が跳ね上がる。固定は実績のまま置き、それ以外だけを日割りする。
+       印を1つも付けていない場合は recurringSoFar が0なので、これまでと同じ式になる。 */
+    const forecast = elapsed > 0
+      ? recurringSoFar + Math.round((spotSoFar / elapsed) * days) : 0;
 
     return {
       ym: ym,
@@ -1290,7 +1339,10 @@
       elapsed: elapsed,
       isCurrent: isCurrent,
       daily: daily,
-      spendTotal: c.spendTotal,
+      spendTotal: c.spendTotal,       // 当月ぜんぶ（未来の日付の記録も含む）
+      spentSoFar: spentSoFar,         // 経過日数までに記録した分
+      recurringSoFar: recurringSoFar, // うち「毎月固定」
+      spotSoFar: spotSoFar,           // それ以外
       hasIncome: c.hasIncome,
       budget: budget,
       budgetPerDay: budget > 0 ? Math.round(budget / days) : 0,
@@ -1344,6 +1396,11 @@
       out.push({ level: "good", key: "no-spend",
         text: "今月は " + pace.noSpendDays + "日、1円もつかいませんでした" });
     }
+    if (pace.recurringSoFar > 0 && pace.spentSoFar > 0) {
+      out.push({ level: "info", key: "recurring",
+        text: "毎月かかるお金は " + fmtYen(pace.recurringSoFar)
+          + "（支出の " + Math.round((pace.recurringSoFar / pace.spentSoFar) * 100) + "%）" });
+    }
     const busiest = (a.week || []).slice().sort(function (x, y) { return y.amount - x.amount; })[0];
     if (busiest && busiest.amount > 0) {
       out.push({ level: "info", key: "weekday",
@@ -1384,7 +1441,7 @@
       });
     }
     return {
-      schema_version: "2.1",
+      schema_version: "2.2",
       country_code: "JP",
       base_currency: c.currency,
       year_month: ym,
@@ -1398,10 +1455,15 @@
       /* 後方互換。旧 income_net は「当月の実収入合計」を指す */
       income_net: c.incomeTotal,
 
-      /* 支出：すべて記録した実績。固定費／変動費の区分は無い。
-         後方互換のため fixed_cost/variable_spend のキーは残すが常に spend_total と 0。 */
-      fixed_cost: 0,
-      variable_spend: c.spendTotal,
+      /* 支出：すべて記録した実績。
+         fixed_cost … 「🔁 毎月固定」の印が付いた記録の合計（印が無ければ0）
+         variable_spend … それ以外
+         どちらも足すと spend_total になる。 */
+      fixed_cost: c.recurringSpend,
+      fixed_cost_items: Object.keys(c.byCatRecurring).map(function (k) {
+        return { key: k, name: catOf("expense", k).n, amount: c.byCatRecurring[k] };
+      }),
+      variable_spend: c.spotSpend,
       spend_total: c.spendTotal,
       expense_total: c.spendTotal,
       by_category: Object.keys(c.byCat).map(function (k) {
@@ -1419,6 +1481,8 @@
   return {
     EXP_CATS: EXP_CATS,
     VAR_CATS: EXP_CATS,   // 旧名の互換（中身は全支出カテゴリ）
+    EXP_PICK_CATS: EXP_PICK_CATS,
+    isRecurring: isRecurring,
     INC_CATS: INC_CATS,
     REGULAR_INCOME_CAT: REGULAR_INCOME_CAT,
     catOf: catOf,

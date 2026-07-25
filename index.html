@@ -235,6 +235,16 @@
   .calcnote b{color:var(--ink);font-weight:800}
   .catlbl{grid-column:1/-1;font-size:10.5px;color:var(--sub);font-weight:800;margin:2px 2px -2px}
 
+  /* 毎月固定のスイッチ */
+  .fixtog{display:inline-flex;align-items:center;gap:6px;margin-top:2px;padding:6px 12px;border-radius:999px;
+    border:1px solid var(--line2);background:#fff;color:var(--sub);font-size:12px;font-weight:800}
+  .fixtog .sw{display:inline-block;width:26px;height:15px;border-radius:999px;background:#dfe5e2;position:relative;transition:background .15s}
+  .fixtog .sw i{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff;transition:left .15s}
+  .fixtog.on{border-color:var(--green-d);background:var(--green-l);color:var(--green-d)}
+  .fixtog.on .sw{background:var(--green-d)}
+  .fixtog.on .sw i{left:13px}
+  .fixhint{font-size:10.5px;color:var(--sub);margin-top:4px}
+  .tag.fx{background:var(--green-l);color:var(--green-d)}
   /* 分析タブ */
   .seg{display:flex;gap:6px;margin:6px 0 2px}
   .mbars{display:flex;gap:6px;align-items:flex-end;height:104px;margin:8px 0 2px}
@@ -290,7 +300,8 @@ const STORE_KEY = "kakeibo:v1:state";
 
 /* ---------- 分類・計算はすべて core.js（唯一の正）から取る ---------- */
 const Core = window.KakeiboCore;
-const EXP_CATS = Core.EXP_CATS;         // 支出カテゴリ（固定費／変動費の区分は無い）
+const EXP_CATS = Core.EXP_CATS;         // 表示・集計に使う支出カテゴリ（過去の記録のぶんも含む）
+const EXP_PICK_CATS = Core.EXP_PICK_CATS;  // 記録シートで選べるカテゴリ（重複する「その他」を出さない）
 const INC_CATS    = Core.INC_CATS;      // 収入のカテゴリ
 const catOf       = Core.catOf;
 
@@ -450,7 +461,7 @@ function renderSummary(){
       const rows=items.map(t=>{ const cat=catOf(t.type,t.cat);
         return `<div class="tx" data-edit="${t.id}"><div class="ic">${t.type==="income"?"💴":cat.e}</div>
           <div class="mid"><div class="t1">${escapeHtml(t.memo|| (t.type==="income"?cat.n:cat.n))}</div>
-          <div class="t2">${t.type==="income"?"収入・":""}${cat.n}${t.photo?" ・📷":""}</div></div>
+          <div class="t2">${t.type==="income"?"収入・":""}${cat.n}${t.photo?" ・📷":""}${t.recurring?`<span class="tag fx">🔁 毎月固定</span>`:""}</div></div>
           <div class="amt ${t.type}">${t.type==="income"?"+":""}${yen(t.amount)}</div></div>`;
       }).join("");
       return `<div class="daygroup"><div class="dayhd"><span>${md}</span><span>支出 ${yen(dayTotal)}</span></div>
@@ -493,6 +504,8 @@ function renderSummary(){
       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:6px">
         <span>支出の内わけ（今月）${c.incomeTotal>0?"　棒は収入に対する割合":""}</span>
         <span class="mono" style="font-weight:800;color:var(--ink)">${yen(c.spendTotal)}</span></div>
+      ${c.recurringSpend>0?`<div class="krow"><span>🔁 毎月固定</span><b class="mono">${yen(c.recurringSpend)}</b></div>
+      <div class="krow" style="border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:4px"><span>それ以外</span><b class="mono">${yen(c.spotSpend)}</b></div>`:""}
       ${bars}
     </div>
     <div class="stitle">記録（タップで編集）</div>
@@ -610,7 +623,9 @@ function renderAnalysis(){
       <div class="calcnote" style="margin:10px 0 0">${p.hasIncome
         ? `つかってよい額 ${yen(p.budget)}（収入 ${yen(a.month.incomeTotal)} － 先取り ${yen(a.month.setAside)}）。1日あたり ${yen(p.budgetPerDay)} のペースです。`
         : `給料を記録すると、予算のペース（点線）が出ます。`}<br>
-        記録があった日 ${p.spendDays}日 ／ つかわなかった日 ${p.noSpendDays}日</div>
+        記録があった日 ${p.spendDays}日 ／ つかわなかった日 ${p.noSpendDays}日${p.recurringSoFar>0
+          ? `<br>🔁 毎月固定の ${yen(p.recurringSoFar)} は、日割りせずそのまま数えています。`
+          : ``}</div>
     </div>
 
     <div class="stitle">${a.trend.length}か月の推移</div>
@@ -896,20 +911,20 @@ function renderSettings(){
 let sheetState=null; // {mode:'add'|'edit', id?, type, amount, cat, date, memo, photo}
 function openRecord(editId){
   if(editId){ const t=state.tx.find(x=>x.id===editId); if(!t) return;
-    sheetState={mode:"edit", id:t.id, type:t.type, amount:String(t.amount), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null, shot:"total"};
+    sheetState={mode:"edit", id:t.id, type:t.type, amount:String(t.amount), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null, shot:"total", recurring:t.recurring===true};
   } else {
-    sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total"};
+    sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total", recurring:false};
   }
   renderSheet(); showSheet(true);
 }
 function renderSheet(){
   const st=sheetState;
-  const cats = st.type==="income" ? INC_CATS : EXP_CATS;
+  const cats = st.type==="income" ? INC_CATS : EXP_PICK_CATS;
   if(st.cat && !cats.find(c=>c.k===st.cat)) st.cat = cats[0].k;
   const btn=c=>`<button class="catbtn ${st.cat===c.k?"on":""}" data-cat="${c.k}"><span class="ce">${c.e}</span>${c.n}</button>`;
   const catHtml = st.type==="income"
     ? INC_CATS.map(btn).join("")
-    : `<div class="catlbl">支出のカテゴリ</div>${EXP_CATS.map(btn).join("")}`;
+    : `<div class="catlbl">支出のカテゴリ</div>${EXP_PICK_CATS.map(btn).join("")}`;
   const catNote = st.type==="income"
     ? (st.cat==="salary"
         ? `<div class="ocrnote">給料の入力口はここだけです。今月の通常収入になります。</div>`
@@ -946,7 +961,13 @@ function renderSheet(){
     </div>
     ${st.type==="expense"?photoHtml:""}
     <div class="amtbox"><div class="lab">金額</div>
-      <input class="amtinput mono" id="s-amt" inputmode="numeric" placeholder="0" value="${st.amount||""}"></div>
+      <input class="amtinput mono" id="s-amt" inputmode="numeric" placeholder="0" value="${st.amount||""}">
+      ${st.type==="expense" ? `<button class="fixtog${st.recurring?" on":""}" data-act="toggle-recurring">
+          <span class="sw"><i></i></span>🔁 毎月固定 ${st.recurring?"オン":"オフ"}</button>
+        <div class="fixhint">${st.recurring
+          ? "家賃・光熱費のような、毎月かかるお金として数えます"
+          : "家賃・光熱費など、毎月かかるものはオンにしてください"}</div>` : ""}
+    </div>
     <div class="catgrid">${catHtml}</div>
     ${catNote}
     <div class="row2">
@@ -1317,12 +1338,18 @@ async function saveTx(){
   let photo = st.photo || null;
   if(photo) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);
 
+  /* 「毎月固定」は支出だけの印。収入に切り替えていたら必ず落とす。 */
+  const recurring = st.type==="expense" && st.recurring===true;
+
   const before = JSON.stringify(state.tx);
   if(st.mode==="edit"){
     const t=state.tx.find(x=>x.id===st.id);
-    if(t){ t.type=st.type; t.amount=amount; t.cat=st.cat; t.date=st.date; t.memo=st.memo; t.photo=photo; }
+    if(t){ t.type=st.type; t.amount=amount; t.cat=st.cat; t.date=st.date; t.memo=st.memo; t.photo=photo;
+           if(recurring) t.recurring=true; else delete t.recurring; }
   } else {
-    state.tx.push({id:uid(),type:st.type,amount,cat:st.cat,date:st.date,memo:st.memo,photo:photo});
+    const rec={id:uid(),type:st.type,amount,cat:st.cat,date:st.date,memo:st.memo,photo:photo};
+    if(recurring) rec.recurring=true;   // オフのときはキーごと持たない（保存を軽くする）
+    state.tx.push(rec);
   }
 
   if(save()){
@@ -1518,6 +1545,7 @@ function handleAct(a,e){
   if(a==="edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=(el&&el.dataset.date)||null; diaryPhotoPending=undefined; render(); return; }
   if(a==="add-diary-photo"){ const el=$("diaryPhotoInput"); if(el){ el.value=""; el.click(); } return; }
   if(a==="rm-diary-photo"){ diaryPhotoPending=null; render(); return; }
+  if(a==="toggle-recurring"){ if(sheetState){ readSheetInputs(); sheetState.recurring=!sheetState.recurring; renderSheet(); } return; }
   if(a==="sum-tab"){ const el=e&&e.target&&e.target.closest("[data-tab]"); sumTab=(el&&el.dataset.tab)||"month"; render(); return; }
   if(a==="health-range"){ const el=e&&e.target&&e.target.closest("[data-range]"); healthRange=(el&&el.dataset.range)||"month"; render(); return; }
 }

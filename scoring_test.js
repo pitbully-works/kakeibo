@@ -273,7 +273,8 @@ test("白抜き文字のときだけ反転する", () => {
 
 /* ---------- 6. 既存機能を壊していない ---------- */
 test("記録・保存・写真削除・容量制限が残っている", () => {
-  assert.match(appSrc, /state\.tx\.push\(\{id:uid\(\)/, "記録の追加が消えた");
+  assert.match(appSrc, /const rec=\{id:uid\(\)/, "記録の組み立てが消えた");
+  assert.match(appSrc, /state\.tx\.push\(rec\);/, "記録の追加が消えた");
   assert.match(appSrc, /function save\(\)\{[\s\S]*?return true;[\s\S]*?return false;/, "保存の成否判定が消えた");
   assert.match(appSrc, /resizeDataUrl\(photo, Core\.PHOTO_STORE_MAX/, "保存時の縮小が消えた");
   assert.match(appSrc, /写真は容量オーバーで保存できません/, "容量オーバー時の救済が消えた");
@@ -293,7 +294,7 @@ test("高解像度・加工画像は保存されず、決められた場面で�
   assert.match(appSrc, /releaseOcrImage\(sheetState\);\s*\/\/ 前の写真の高解像度版/, "写真を撮り直したとき");
   const save = appSrc.slice(appSrc.indexOf("async function saveTx()"), appSrc.indexOf("function delTx()"));
   assert.match(save, /releaseOcrImage\(st\);/, "記録を確定したとき");
-  const rec = /state\.tx\.push\(\{([^}]*)\}\)/.exec(appSrc);
+  const rec = /const rec=\{([^}]*)\}/.exec(appSrc);
   assert.equal(rec[1].includes("photoHi"), false, "記録に高解像度画像が入っている");
   assert.equal(rec[1].includes("ocrChoices"), false, "記録に候補が入っている");
 });

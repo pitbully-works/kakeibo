@@ -229,6 +229,7 @@ test("候補が出ても手入力欄は必ず残る", () => {
 
 test("撮り直しと記録処理を壊していない", () => {
   assert.match(appSrc, /data-act="shot-total"/, "撮り直しが消えた");
-  assert.match(appSrc, /state\.tx\.push\(\{id:uid\(\)/, "記録の追加が消えた");
+  assert.match(appSrc, /const rec=\{id:uid\(\)/, "記録の組み立てが消えた");
+  assert.match(appSrc, /state\.tx\.push\(rec\);/, "記録の追加が消えた");
   assert.match(appSrc, /この内容で記録する/, "記録ボタンが消えた");
 });

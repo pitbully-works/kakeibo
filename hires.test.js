@@ -64,7 +64,7 @@ test("解放は保存が成功した後に行う（成否が分かる前に手�
 
 test("保存されるデータ構造に photoHi が現れない", () => {
   // 記録として作られるオブジェクトのキーを確認
-  const rec = /state\.tx\.push\(\{([^}]*)\}\)/.exec(appSrc);
+  const rec = /const rec=\{([^}]*)\}/.exec(appSrc);
   assert.ok(rec, "記録の追加処理が見つからない");
   assert.equal(rec[1].includes("photoHi"), false, "記録に高解像度画像が含まれている");
   assert.ok(rec[1].includes("photo:photo"), "記録に表示用写真が含まれていない");
