@@ -26,6 +26,12 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
+  /* ---------- アプリの版数 ---------- */
+
+  /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
+     （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
+  const APP_VERSION = "1.0.0";
+
   /* ---------- 分類の定義 ---------- */
 
   /* 支出カテゴリ（固定費／変動費の区分は廃止。すべて通常の支出）。
@@ -1738,6 +1744,7 @@
     COMPARE_MONTHS: COMPARE_MONTHS,
     WEEKDAY_NAMES: WEEKDAY_NAMES,
     BACKUP_VERSION: BACKUP_VERSION,
+    APP_VERSION: APP_VERSION,
     MEMO_MAX: MEMO_MAX,
     AMOUNT_MAX: AMOUNT_MAX,
     TX_MAX: TX_MAX,
