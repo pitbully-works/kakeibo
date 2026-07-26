@@ -97,3 +97,32 @@ test("service worker が core.js をキャッシュし、版が上がってい�
   assert.match(sw, /"\.\/core\.js"/);
   assert.match(sw, /kakeibo-v\d+/, "キャッシュ名に版が付いていない");
 });
+
+test("下のタブが、いつも画面のいちばん下に居座る作りになっている", () => {
+  const nav = /\.nav\{[^}]*\}/.exec(html);
+  assert.ok(nav, ".nav の指定が見つからない");
+  const css = nav[0];
+  assert.match(css, /position:fixed/, "画面に固定されていない");
+  assert.match(css, /bottom:0/, "いちばん下に付いていない");
+  assert.match(css, /transform:translateZ\(0\)/, "独立した層になっていない（iOSで途中に取り残される）");
+  /* 半透明＋ぼかしは、iOSでスクロール中に描き直しが追いつかず、画面の途中に残って見える */
+  assert.equal(/backdrop-filter/.test(css), false, "ぼかしが戻っている");
+  assert.equal(/background:rgba/.test(css), false, "背景が透けている");
+});
+
+test("下のタブより手前に出るのは、通知だけ", () => {
+  const z = (re, name) => {
+    const m = re.exec(html);
+    assert.ok(m, name + " の指定が見つからない");
+    return Number(m[1]);
+  };
+  const nav = z(/\.nav\{[^}]*z-index:(\d+)/, ".nav");
+  assert.ok(nav > z(/\.sheet\{[^}]*z-index:(\d+)/, ".sheet"), "記録の画面がタブより手前に出る");
+  assert.ok(nav > z(/\.scrim\{[^}]*z-index:(\d+)/, ".scrim"), "暗幕がタブより手前に出る");
+  assert.ok(z(/\.toast\{[^}]*z-index:(\d+)/, ".toast") > nav, "通知がタブに隠れる");
+});
+
+test("画面の高さは、アドレスバーの伸び縮みに合わせる", () => {
+  assert.match(html, /#app\{[^}]*min-height:100dvh/, "#app が dvh を使っていない");
+  assert.match(html, /\.sheet\{[^}]*max-height:calc\(100dvh/, "記録の画面が dvh を使っていない");
+});
