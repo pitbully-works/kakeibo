@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v17";', to: 'const CACHE = "kakeibo-v16";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v18";', to: 'const CACHE = "kakeibo-v17";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -365,6 +365,19 @@ const MUTATIONS = [
   { name: "AC で履歴まで消す", guards: "ACでも履歴は残す",
     file: "core.js", from: "    if (k === \"AC\") { const keep = { ans: s.ans, deg: s.deg, history: s.history }; return Object.assign(newSci(), keep); }",
     to: "    if (k === \"AC\") return newSci();" },
+
+  /* --- 下のタブを画面の下に固定する --- */
+  { name: "下のタブを半透明のぼかしに戻す", guards: "iOSで途中に取り残されない",
+    file: "index.html", from: "    padding-bottom:env(safe-area-inset-bottom,0px);background:var(--card);",
+    to: "    padding-bottom:env(safe-area-inset-bottom,0px);background:rgba(255,255,255,.94);backdrop-filter:blur(8px);" },
+  { name: "下のタブを独立した層にしない", guards: "iOSで途中に取り残されない",
+    file: "index.html", from: "    transform:translateZ(0);-webkit-backface-visibility:hidden;backface-visibility:hidden;will-change:transform;\n    z-index:100}",
+    to: "    z-index:100}" },
+  { name: "下のタブより記録の画面を手前にする", guards: "タブが隠れない",
+    file: "index.html", from: "    z-index:100}", to: "    z-index:40}" },
+  { name: "画面の高さをアドレスバーに合わせない", guards: "高さの取りかた",
+    file: "index.html", from: "  #app{max-width:520px;margin:0 auto;min-height:100vh;min-height:100dvh;",
+    to: "  #app{max-width:520px;margin:0 auto;min-height:100vh;" },
 ];
 
 /* テストを1回走らせる。

@@ -1,0 +1,128 @@
+/* =========================================================================
+   かけいぼ ― 静的チェック（index.html を読む側のテスト）
+   ブラウザなしでも「白画面」「仕様の逆戻り」を検出するための最低限の砦。
+   実行： node --test
+   ========================================================================= */
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+const sw = fs.readFileSync(path.join(__dirname, "sw.js"), "utf8");
+
+/* index.html の中のアプリ本体スクリプトを取り出す */
+function appScript() {
+  const blocks = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)];
+  assert.ok(blocks.length >= 1, "インラインスクリプトが見つからない");
+  return blocks[blocks.length - 1][1];
+}
+
+test("index.html は core.js を読み込んでいる", () => {
+  assert.match(html, /<script src="\.\/core\.js"><\/script>/);
+});
+
+test("アプリ本体のJavaScriptが構文エラーなく解析できる（白画面の予防）", () => {
+  const src = appScript();
+  assert.doesNotThrow(() => new vm.Script(src, { filename: "index.html:inline" }));
+});
+
+test("画面側に計算式を書き戻していない（計算は core.js だけ）", () => {
+  const src = appScript();
+  // 旧実装で使っていた画面ローカルの集計変数が復活していないこと
+  for (const banned of ["const free=", "const net=c.income-", "c.spent", "s.fixedCost", "c.fixedTotal", "c.fixedSpend", "c.variableSpend"]) {
+    assert.equal(src.includes(banned), false, `画面側に「${banned}」が復活している`);
+  }
+  // ホームとまとめは、どちらも compute() の結果だけを読む
+  assert.match(src, /function compute\(\)\{\s*const c = Core\.computeMonth/);
+});
+
+test("ホームの主役とまとめの「のこり」が同じ値を参照している", () => {
+  const src = appScript();
+  assert.match(src, /heroN=yen\(c\.available\)/, "ホームの主役が c.available でない");
+  assert.match(src, /const net=c\.available/, "まとめの のこり が c.available でない");
+});
+
+test("不正確な「先取り貯金は、もう済んでます」表示が残っていない", () => {
+  assert.equal(html.includes("もう済んでます"), false);
+  assert.match(html, /先取り貯金・NISA積立の予定額を除いています/);
+});
+
+test("せっていに支出の入力欄が無い（入力口は記録だけ）", () => {
+  const src = appScript();
+  assert.equal(src.includes('id="f-fixed"'), false, "支出の合計欄が残っている");
+  assert.equal(src.includes("f-fx-"), false, "支出の予定額欄が復活している");
+  assert.equal(src.includes("s.fixed["), false, "設定の支出を読む処理が残っている");
+});
+
+test("せっていに給料の入力欄が無く、入力口がひとつに保たれている", () => {
+  const src = appScript();
+  assert.equal(src.includes('id="f-income"'), false, "設定に手取り収入欄が復活している");
+  assert.equal(src.includes("s.incomeNet"), false, "設定の手取り収入を読む処理が残っている");
+});
+
+test("スナップショットは core.js に一本化されている", () => {
+  const src = appScript();
+  assert.match(src, /function buildSnapshot\(\)\{\s*return Core\.buildSnapshot/);
+  assert.equal(src.includes("contribution:Number("), false, "予定額と実績を混同するキーが残っている");
+});
+
+test("レシートは枠で指定した範囲だけを読む", () => {
+  const src = appScript();
+  assert.equal(src.includes("function guessAmount"), false, "画面側の旧パーサが残っている");
+  assert.equal(src.includes('data-act="shot-full"'), false, "レシート全体の撮影が残っている");
+  assert.match(src, /data-act="shot-total"/, "アップ撮影のボタンが無い");
+  assert.match(src, /data-act="read-crop"/, "枠で読み取るボタンが無い");
+  assert.match(src, /Core\.cropRect\(crop, nat\)/, "枠の切り出しに core を使っていない");
+  assert.match(src, /Core\.amountDetails\(data\.text\)/, "core の解釈関数を使っていない");
+  assert.match(src, /tessedit_char_whitelist/, "数字だけを読む設定が無い");
+});
+
+test("撮影しただけでは読み取らず、枠を決めてから読む", () => {
+  const src = appScript();
+  assert.equal(/reader\.onload[\s\S]{0,200}runOCR/.test(src), false, "撮影直後に自動で読んでいる");
+  assert.match(src, /reader\.onload[\s\S]{0,900}CROP_DEFAULT/, "撮影後に枠が用意されない");
+  assert.match(src, /function initCrop\(\)/, "枠を動かす処理が無い");
+});
+
+test("まとめのカードが、横1列で はみ出さない作りになっている", () => {
+  // 横並び（flex）に戻すと、金額が長い月に右端のカードが画面外へ切れる
+  assert.match(html, /\.sumcards\{display:grid/, "カードの並びが grid でない");
+  assert.equal(/\.sumcards\{display:flex/.test(html), false, "横1列に戻っている");
+  assert.equal(/\.sc\{flex:1/.test(html), false, "カードが縮まない指定に戻っている");
+});
+
+test("service worker が core.js をキャッシュし、版が上がっている", () => {
+  assert.match(sw, /"\.\/core\.js"/);
+  assert.match(sw, /kakeibo-v\d+/, "キャッシュ名に版が付いていない");
+});
+
+test("下のタブが、いつも画面のいちばん下に居座る作りになっている", () => {
+  const nav = /\.nav\{[^}]*\}/.exec(html);
+  assert.ok(nav, ".nav の指定が見つからない");
+  const css = nav[0];
+  assert.match(css, /position:fixed/, "画面に固定されていない");
+  assert.match(css, /bottom:0/, "いちばん下に付いていない");
+  assert.match(css, /transform:translateZ\(0\)/, "独立した層になっていない（iOSで途中に取り残される）");
+  /* 半透明＋ぼかしは、iOSでスクロール中に描き直しが追いつかず、画面の途中に残って見える */
+  assert.equal(/backdrop-filter/.test(css), false, "ぼかしが戻っている");
+  assert.equal(/background:rgba/.test(css), false, "背景が透けている");
+});
+
+test("下のタブより手前に出るのは、通知だけ", () => {
+  const z = (re, name) => {
+    const m = re.exec(html);
+    assert.ok(m, name + " の指定が見つからない");
+    return Number(m[1]);
+  };
+  const nav = z(/\.nav\{[^}]*z-index:(\d+)/, ".nav");
+  assert.ok(nav > z(/\.sheet\{[^}]*z-index:(\d+)/, ".sheet"), "記録の画面がタブより手前に出る");
+  assert.ok(nav > z(/\.scrim\{[^}]*z-index:(\d+)/, ".scrim"), "暗幕がタブより手前に出る");
+  assert.ok(z(/\.toast\{[^}]*z-index:(\d+)/, ".toast") > nav, "通知がタブに隠れる");
+});
+
+test("画面の高さは、アドレスバーの伸び縮みに合わせる", () => {
+  assert.match(html, /#app\{[^}]*min-height:100dvh/, "#app が dvh を使っていない");
+  assert.match(html, /\.sheet\{[^}]*max-height:calc\(100dvh/, "記録の画面が dvh を使っていない");
+});
