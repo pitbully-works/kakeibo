@@ -1195,6 +1195,131 @@
   }
 
   /* =======================================================================
+     金額の電卓
+     -----------------------------------------------------------------------
+     記録シートの金額欄で使う。円なので、扱うのは整数だけ。
+     押されたキーから「次の状態」を作る純粋関数だけを置き、
+     画面はその状態を映すだけにする（計算式を画面側に書かない）。
+
+     状態： { acc, op, cur, done, expr, error }
+       acc  … 確定している左側の数（まだ無ければ null）
+       op   … 待っている演算子（"" なら無し）
+       cur  … いま打ち込んでいる数の文字列（"" なら未入力）
+       done … 直前に ＝ を押した（次に数字を押したら新しく打ち直す）
+       expr … 画面に小さく出す式（"1,200 ＋" など）
+     ======================================================================= */
+
+  const CALC_DIGITS_MAX = 9;    // 一度に打ち込める桁数
+  const CALC_OPS = ["+", "-", "*", "/"];
+  const CALC_OP_LABEL = { "+": "＋", "-": "－", "*": "×", "/": "÷" };
+
+  function newCalc() {
+    return { acc: null, op: "", cur: "", done: false, expr: "", error: "" };
+  }
+
+  /* 数から電卓の状態を作る（記録を直すとき・レシートから金額を入れたとき） */
+  function calcFrom(value) {
+    const c = newCalc();
+    const digits = String(value == null ? "" : value).replace(/[^\d]/g, "");
+    if (digits !== "") c.cur = String(Number(digits)).slice(0, CALC_DIGITS_MAX);
+    return c;
+  }
+
+  function calcFmt(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toLocaleString("en-US") : String(v);
+  }
+
+  /* ひとつ計算する。0で割ろうとしたときだけ null を返す。 */
+  function calcApply(a, op, b) {
+    if (op === "+") return a + b;
+    if (op === "-") return a - b;
+    if (op === "*") return a * b;
+    if (op === "/") return b === 0 ? null : Math.round(a / b);
+    return b;
+  }
+
+  /* いま打ち込んでいる数（未入力なら acc、それも無ければ 0） */
+  function calcEntry(c) {
+    if (c.cur !== "") return Number(c.cur);
+    if (c.acc !== null) return c.acc;
+    return 0;
+  }
+
+  /* 大きく出す数。まだ何も打っていなければ空文字（プレースホルダの 0 が出る）。 */
+  function calcDisplay(c) {
+    if (!c) return "";
+    if (c.cur !== "") return c.cur;
+    if (c.acc !== null) return String(c.acc);
+    return "";
+  }
+
+  /* 待っている計算まで済ませた、最終的な金額 */
+  function calcValue(c) {
+    if (!c) return 0;
+    if (c.op && c.acc !== null && c.cur !== "") {
+      const r = calcApply(c.acc, c.op, Number(c.cur));
+      return r === null ? c.acc : r;
+    }
+    return calcEntry(c);
+  }
+
+  /* キーを1つ押した結果を返す。元の状態は変えない。
+     key: "0"〜"9" ／ "+" "-" "*" "/" ／ "=" ／ "C" ／ "back" ／ "00" "000" */
+  function calcPress(state, key) {
+    const c = Object.assign(newCalc(), state || {});
+    c.error = "";
+    const k = String(key);
+
+    if (k === "C") return newCalc();
+
+    if (k === "back") {
+      if (c.done) return newCalc();
+      c.cur = c.cur.slice(0, -1);
+      return c;
+    }
+
+    if (/^0+$|^[1-9]\d*$|^\d$/.test(k) && /^\d{1,3}$/.test(k)) {
+      /* 数字（"0" "7" "00" "000"） */
+      if (c.done) { c.acc = null; c.op = ""; c.cur = ""; c.done = false; c.expr = ""; }
+      let next = c.cur === "0" ? k : c.cur + k;
+      if (next.length > 1) next = next.replace(/^0+(?=\d)/, "");
+      c.cur = next.slice(0, CALC_DIGITS_MAX);
+      return c;
+    }
+
+    if (CALC_OPS.indexOf(k) >= 0) {
+      if (c.op && c.acc !== null && c.cur !== "") {
+        const r = calcApply(c.acc, c.op, Number(c.cur));
+        if (r === null) { c.error = "0では割れません"; return c; }
+        c.acc = r;
+      } else {
+        c.acc = calcEntry(c);
+      }
+      c.cur = "";
+      c.op = k;
+      c.done = false;
+      c.expr = calcFmt(c.acc) + " " + CALC_OP_LABEL[k];
+      return c;
+    }
+
+    if (k === "=") {
+      if (!c.op || c.acc === null) return c;          // 計算するものが無い
+      const b = c.cur === "" ? c.acc : Number(c.cur);
+      const r = calcApply(c.acc, c.op, b);
+      if (r === null) { c.error = "0では割れません"; return c; }
+      c.expr = calcFmt(c.acc) + " " + CALC_OP_LABEL[c.op] + " " + calcFmt(b) + " ＝";
+      c.acc = null;
+      c.op = "";
+      c.cur = String(r);
+      c.done = true;
+      return c;
+    }
+
+    return c;                                          // 知らないキーは何もしない
+  }
+
+  /* =======================================================================
      予定（スケジュール）
      -----------------------------------------------------------------------
      日付ごとに何件でも持てる。時刻は任意（"14:00" か 空文字）。
@@ -1917,6 +2042,12 @@
     normalizeDiary: normalizeDiary,
     normalizeDiaryEntry: normalizeDiaryEntry,
     diaryList: diaryList,
+    newCalc: newCalc,
+    calcFrom: calcFrom,
+    calcPress: calcPress,
+    calcDisplay: calcDisplay,
+    calcValue: calcValue,
+    CALC_DIGITS_MAX: CALC_DIGITS_MAX,
     normalizePlans: normalizePlans,
     normalizeTimeString: normalizeTimeString,
     sortPlans: sortPlans,

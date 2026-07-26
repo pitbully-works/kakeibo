@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v14";', to: 'const CACHE = "kakeibo-v13";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v15";', to: 'const CACHE = "kakeibo-v14";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -304,6 +304,27 @@ const MUTATIONS = [
     to: "  save();" },
   { name: "ホームに今日の予定を全部出す", guards: "ホームに出すのは3件まで",
     file: "index.html", from: "  const shown=plans.slice(0, Core.PLAN_SHOW_MAX);", to: "  const shown=plans;" },
+
+  /* --- 金額の電卓 --- */
+  { name: "わり算を切り捨てにする", guards: "わり算は四捨五入して整数",
+    file: "core.js", from: '    if (op === "/") return b === 0 ? null : Math.round(a / b);',
+    to: '    if (op === "/") return b === 0 ? null : Math.floor(a / b);' },
+  { name: "0で割れてしまう", guards: "0では割らない",
+    file: "core.js", from: '    if (op === "/") return b === 0 ? null : Math.round(a / b);',
+    to: '    if (op === "/") return Math.round(a / b);' },
+  { name: "＝を押さないと計算されない", guards: "待っている計算を済ませて記録する",
+    file: "core.js", from: '    if (c.op && c.acc !== null && c.cur !== "") {\n      const r = calcApply(c.acc, c.op, Number(c.cur));\n      return r === null ? c.acc : r;\n    }',
+    to: "" },
+  { name: "打ち込める桁数の上限を外す", guards: "桁数に上限がある",
+    file: "core.js", from: "      c.cur = next.slice(0, CALC_DIGITS_MAX);", to: "      c.cur = next;" },
+  { name: "＝のあとに打ち足せてしまう", guards: "＝のあとは打ち直しになる",
+    file: "core.js", from: '      if (c.done) { c.acc = null; c.op = ""; c.cur = ""; c.done = false; c.expr = ""; }', to: "" },
+  { name: "式を出さない", guards: "打っている式が見える",
+    file: "core.js", from: '      c.expr = calcFmt(c.acc) + " " + CALC_OP_LABEL[k];', to: '      c.expr = "";' },
+  { name: "記録するとき、待っている計算を捨てる", guards: "＝を押し忘れても計算される",
+    file: "index.html", from: '  if(st.calc && st.calc.op) st.amount=String(Core.calcValue(st.calc));', to: "" },
+  { name: "金額欄にキーボードを出す", guards: "アプリの電卓だけで打つ",
+    file: "index.html", from: 'id="s-amt" readonly inputmode="none"', to: 'id="s-amt" inputmode="numeric"' },
 ];
 
 /* テストを1回走らせる。

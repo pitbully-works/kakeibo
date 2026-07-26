@@ -307,6 +307,19 @@
   .about .alink{display:inline-flex;align-items:center;justify-content:center;min-height:40px;
     padding:2px 12px;font-size:11.5px;font-weight:700;color:var(--green-d);text-decoration:none}
   .about .alink:active{opacity:.6}
+  /* 金額の電卓（iPhoneのキーボードは出さず、これだけで打つ） */
+  .amtbox .calcexpr{min-height:16px;text-align:center;font-size:12.5px;font-weight:700;color:var(--sub);letter-spacing:.02em}
+  .amtbox .calcerr{text-align:center;font-size:11.5px;font-weight:800;color:var(--terra);min-height:14px}
+  .calcpad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+  .calcpad button{min-height:52px;border-radius:12px;background:var(--card);border:1px solid var(--line);
+    font-size:19px;font-weight:800;color:var(--ink);transition:transform .1s cubic-bezier(.2,.7,.3,1)}
+  .calcpad button:active{transform:scale(.95)}
+  .calcpad .fn{background:#eef1ef;color:var(--sub);font-size:16px}
+  .calcpad .op{background:var(--green-l);color:var(--green-dd)}
+  .calcpad .op.on{background:var(--green-d);color:#fff}
+  .calcpad .eq{grid-row:span 2;background:var(--green-d);color:#fff}
+  .calcpad .zero{font-size:17px}
+
   /* 予定（スケジュール） */
   .prow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line2)}
   .prow:last-of-type{border-bottom:0}
@@ -1161,10 +1174,27 @@ function openRecord(editId){
   } else {
     sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total", recurring:false};
   }
+  sheetState.calc=Core.calcFrom(sheetState.amount);
   renderSheet(); showSheet(true);
 }
+/* 電卓のキー。押した結果は Core.calcPress が決める（計算式は画面に書かない）。 */
+function calcPad(calc){
+  const k=(key,label,cls)=>`<button class="${cls||""}" data-act="calc" data-key="${key}">${label}</button>`;
+  const op=(key,label)=>k(key,label,`op${calc.op===key?" on":""}`);
+  return `<div class="calcpad">
+    ${k("C","C","fn")}${k("back","⌫","fn")}${op("/","÷")}${op("*","×")}
+    ${k("7","7")}${k("8","8")}${k("9","9")}${op("-","−")}
+    ${k("4","4")}${k("5","5")}${k("6","6")}${op("+","＋")}
+    ${k("1","1")}${k("2","2")}${k("3","3")}${k("=","＝","eq")}
+    ${k("0","0")}${k("00","00","zero")}${k("000","000","zero")}
+  </div>`;
+}
+
 function renderSheet(){
   const st=sheetState;
+  /* 電卓の状態。無ければ、いまの金額から作る（金額を外から入れる所では作り直している）。 */
+  if(!st.calc) st.calc=Core.calcFrom(st.amount);
+  const calc=st.calc;
   const cats = st.type==="income" ? INC_CATS : EXP_PICK_CATS;
   if(st.cat && !cats.find(c=>c.k===st.cat)) st.cat = cats[0].k;
   const btn=c=>`<button class="catbtn ${st.cat===c.k?"on":""}" data-cat="${c.k}"><span class="ce">${c.e}</span>${c.n}</button>`;
@@ -1207,7 +1237,10 @@ function renderSheet(){
     </div>
     ${st.type==="expense"?photoHtml:""}
     <div class="amtbox"><div class="lab">金額</div>
-      <input class="amtinput mono" id="s-amt" inputmode="numeric" placeholder="0" value="${st.amount||""}">
+      <div class="calcexpr mono" id="s-expr">${escapeHtml(calc.expr||"")}</div>
+      <input class="amtinput mono" id="s-amt" readonly inputmode="none" placeholder="0" value="${escapeAttr(Core.calcDisplay(calc))}">
+      <div class="calcerr">${escapeHtml(calc.error||"")}</div>
+      ${calcPad(calc)}
       ${st.type==="expense" ? `<button class="fixtog${st.recurring?" on":""}" data-act="toggle-recurring">
           <span class="sw"><i></i></span>🔁 毎月固定 ${st.recurring?"オン":"オフ"}</button>
         <div class="fixhint">${st.recurring
@@ -1574,6 +1607,8 @@ function initCrop(){
 /* ---------- 保存アクション ---------- */
 async function saveTx(){
   readSheetInputs(); const st=sheetState;
+  /* ＝ を押さずに「記録する」を押しても、待っている計算を済ませてから記録する */
+  if(st.calc && st.calc.op) st.amount=String(Core.calcValue(st.calc));
   const amount=parseInt(String(st.amount).replace(/[^\d]/g,""),10);
   if(!amount||amount<=0){ toast("金額を入れてね"); const ai=$("s-amt"); if(ai) ai.focus(); return; }
 
@@ -1790,6 +1825,7 @@ document.addEventListener("click",e=>{
   const pick=e.target.closest("[data-pick]");
   if(pick&&sheetState){ readSheetInputs();
     sheetState.amount=String(pick.dataset.pick);
+    sheetState.calc=Core.calcFrom(sheetState.amount);
     sheetState.ocrChoices=null;
     sheetState.ocrNote="金額を入れました。内容を確かめて「記録する」を押してください";
     renderSheet(); return; }
@@ -1809,6 +1845,15 @@ function handleAct(a,e){
   if(a==="read-crop"){ readSheetInputs(); return readCrop(); }
   if(a==="manual-amount"){ if(sheetState){ readSheetInputs(); sheetState.ocrChoices=null;
       sheetState.ocrNote="金額を入れてください"; renderSheet(); focusField("s-amt"); } return; }
+  if(a==="calc"){
+    if(!sheetState) return;
+    const el=e&&e.target&&e.target.closest("[data-key]");
+    if(!el) return;
+    readSheetInputs();                       // 日付・メモの打ちかけを失わない
+    sheetState.calc=Core.calcPress(sheetState.calc, el.dataset.key);
+    sheetState.amount=Core.calcDisplay(sheetState.calc);
+    renderSheet(); return;
+  }
   if(a==="save-settings") return saveSettings();
   if(a==="export-snapshot") return exportSnapshot();
   if(a==="export-backup") return exportBackup();
