@@ -1332,6 +1332,7 @@
   const PLAN_TEXT_MAX = 60;      // 予定1件の文字数
   const PLAN_PER_DAY_MAX = 20;   // 1日に入れられる予定の数
   const PLAN_SHOW_MAX = 3;       // ホームに出す「今日の予定」の上限
+  const PLAN_HOME_MAX = 20;      // ホームの「今月の予定」に出す行数の上限
 
   /* "14:00" のような時刻だけを通す。空文字（時刻なし）も正しい値。 */
   function normalizeTimeString(v) {
@@ -1402,6 +1403,24 @@
       dayPlans(st, date).forEach(function (p) { out.push({ date: date, plan: p }); });
     });
     return out.slice(0, max);
+  }
+
+  /* 一覧用：暦の月（1日〜月末）の予定を、日付ごとにまとめて早い順に返す。
+     済んだ予定も残す（画面ではグレーで出す）。
+     月の区切り（給料日起点）は使わない。カレンダー画面と同じ暦の月で見る。 */
+  function monthPlans(state, ym) {
+    const st = state || {};
+    const days = [];
+    let total = 0, done = 0;
+    Object.keys(st.plans || {}).sort().forEach(function (date) {
+      if (!validateDateString(date) || monthOf(date) !== ym) return;
+      const list = dayPlans(st, date);
+      if (!list.length) return;
+      total += list.length;
+      done += list.filter(function (p) { return p.done; }).length;
+      days.push({ date: date, plans: list });
+    });
+    return { ym: ym, days: days, total: total, done: done, left: total - done };
   }
 
 
@@ -2054,6 +2073,8 @@
     dayPlans: dayPlans,
     todayPlans: todayPlans,
     upcomingPlans: upcomingPlans,
+    monthPlans: monthPlans,
+    PLAN_HOME_MAX: PLAN_HOME_MAX,
     PLAN_TEXT_MAX: PLAN_TEXT_MAX,
     PLAN_PER_DAY_MAX: PLAN_PER_DAY_MAX,
     PLAN_SHOW_MAX: PLAN_SHOW_MAX,

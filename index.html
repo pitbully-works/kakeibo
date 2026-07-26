@@ -320,6 +320,13 @@
   .calcpad .eq{grid-row:span 2;background:var(--green-d);color:#fff}
   .calcpad .zero{font-size:17px}
 
+  /* ホームの「今月の予定」 */
+  .mpday{font-size:11.5px;font-weight:800;color:var(--sub);margin:10px 0 2px}
+  .mpday:first-child{margin-top:0}
+  .mpday.today{color:var(--green-d)}
+  .mplink{text-align:left;font:inherit;color:inherit;padding:0;background:none;border:0}
+  .mpmore{display:block;width:100%;text-align:center;font-size:12px;font-weight:700;color:var(--green-d);padding:10px 0 2px}
+
   /* 予定（スケジュール） */
   .prow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line2)}
   .prow:last-of-type{border-bottom:0}
@@ -518,6 +525,42 @@ function aboutCard(){
   </div>`;
 }
 
+/* ホームのいちばん下に出す「今月の予定」。暦の月（1日〜月末）で見る。
+   済んだ予定はグレーで残す。 */
+function monthPlanCard(){
+  const today=todayISO();
+  const ym=today.slice(0,7);
+  const m=Core.monthPlans(state, ym);
+  if(!m.total) return "";
+  const WD=["日","月","火","水","木","金","土"];
+  /* いったん1行ずつに開いてから、出す行数をここで1回だけ決める */
+  const rows=[];
+  for(const d of m.days) for(const p of d.plans) rows.push({date:d.date, plan:p});
+  const shownRows=rows.slice(0, Core.PLAN_HOME_MAX);
+  let html="", lastDate="";
+  for(const r of shownRows){
+    if(r.date!==lastDate){
+      lastDate=r.date;
+      const [yy,mm,dd]=r.date.split("-").map(Number);
+      const wd=WD[new Date(yy,mm-1,dd).getDay()];
+      html+=`<div class="mpday${r.date===today?" today":""}">${mm}/${dd}（${wd}）${r.date===today?" 今日":""}</div>`;
+    }
+    const p=r.plan;
+    html+=`<div class="prow${p.done?" done":""}">
+      <button class="pchk" data-act="plan-toggle" data-date="${r.date}" data-id="${p.id}" aria-label="済みにする">${p.done?"☑":"☐"}</button>
+      <span class="ptime mono">${p.time||"—"}</span>
+      <button class="ptext mplink" data-act="cal-edit-plan" data-date="${r.date}">${escapeHtml(p.text)}</button>
+    </div>`;
+  }
+  const rest=rows.length-shownRows.length;
+  return `<div class="stitle">今月の予定（${Number(ym.slice(5,7))}月）</div>
+    <div class="barlist">
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">${m.total}件　のこり <b style="color:var(--ink)">${m.left}件</b></div>
+      ${html}
+      ${rest>0?`<button class="mpmore" data-nav="calendar">ほか ${rest}件 をカレンダーで見る</button>`:""}
+    </div>`;
+}
+
 function renderHome(){
   const c=compute(), s=state.settings;
   const d=new Date();
@@ -566,6 +609,7 @@ function renderHome(){
     <div class="dreamlbl">― あなたの夢の進み ―</div>
     <div class="dreamstrip">${goalTile}${nisaTile}${saveTile}</div>
     <button class="recordbtn" data-act="open-record">📸 記録する</button>
+    ${monthPlanCard()}
     ${lifePlanCard()}
     <div style="height:10px"></div>
   </div>`;
