@@ -135,8 +135,9 @@
   .nav{position:fixed;left:0;right:0;bottom:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));
     padding-bottom:env(safe-area-inset-bottom,0px);background:rgba(255,255,255,.94);backdrop-filter:blur(8px);
     border-top:1px solid var(--line);display:flex;z-index:55}
-  .nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--sub);font-size:10.5px;font-weight:700}
-  .nav button .ni{font-size:20px;line-height:1}
+  .nav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    color:var(--sub);font-size:9.5px;font-weight:700;letter-spacing:-.02em;padding:0 1px}
+  .nav button .ni{font-size:19px;line-height:1}
   .nav button.on{color:var(--green-d)}
   .rgbtn{flex:1;padding:7px 0;border:1px solid var(--line2);border-radius:9px;background:#fff;color:var(--sub);font-weight:700;font-size:12.5px}
   .rgbtn.on{background:var(--green-d);color:#fff;border-color:var(--green-d)}
@@ -320,6 +321,31 @@
   .calcpad .eq{grid-row:span 2;background:var(--green-d);color:#fff}
   .calcpad .zero{font-size:17px}
 
+  /* 関数電卓 */
+  .scidisp{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 14px 10px;box-shadow:var(--shadow);margin-top:6px}
+  .sciunit{position:absolute;left:12px;top:10px;font-size:11px;font-weight:800;color:var(--green-d);
+    border:1px solid var(--line2);border-radius:8px;padding:4px 10px;min-height:28px}
+  .sciexpr{text-align:right;font-size:14px;font-weight:700;color:var(--sub);min-height:20px;word-break:break-all;line-height:1.5}
+  .scians{text-align:right;font-size:30px;font-weight:800;color:var(--ink);min-height:36px;word-break:break-all;line-height:1.2}
+  .scierr{text-align:right;font-size:11.5px;font-weight:800;color:var(--terra);min-height:14px}
+  .scifn{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:12px}
+  .scifn button{min-height:44px;border-radius:10px;background:var(--green-l);border:1px solid var(--line);
+    font-size:13px;font-weight:800;color:var(--green-dd)}
+  .scipad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+  .scipad button{min-height:52px;border-radius:12px;background:var(--card);border:1px solid var(--line);
+    font-size:19px;font-weight:800;color:var(--ink)}
+  .scifn button:active,.scipad button:active,.scieq:active{transform:scale(.95)}
+  .scipad .fn{background:#eef1ef;color:var(--sub);font-size:16px}
+  .scipad .fn.ac{color:var(--terra)}
+  .scipad .op{background:var(--green-l);color:var(--green-dd)}
+  .scieq{margin-top:8px}
+  .sciuse{margin-top:10px;background:var(--gold)}
+  .shrow{display:flex;align-items:baseline;gap:10px;width:100%;padding:9px 0;border-bottom:1px solid var(--line2);text-align:left}
+  .shrow:last-of-type{border-bottom:0}
+  .shrow .se{flex:1;min-width:0;font-size:12px;color:var(--sub);word-break:break-all}
+  .shrow .sv{flex:none;font-size:14px;font-weight:800;color:var(--ink)}
+
   /* ホームの「今月の予定」 */
   .mpday{font-size:11.5px;font-weight:800;color:var(--sub);margin:10px 0 2px}
   .mpday:first-child{margin-top:0}
@@ -349,6 +375,7 @@
   <button data-nav="calendar"><span class="ni">📅</span>カレンダー</button>
   <button data-nav="diary"><span class="ni">📖</span>日記</button>
   <button data-nav="health"><span class="ni">❤️</span>健康</button>
+  <button data-nav="calc"><span class="ni">🧮</span>電卓</button>
   <button data-nav="settings"><span class="ni">⚙️</span>せってい</button>
 </nav>
 <div class="scrim" id="scrim"></div>
@@ -381,7 +408,8 @@ const defaultState = ()=>({
   tx:[],  // {id,type:'expense'|'income',amount,cat,date:'YYYY-MM-DD',memo,photo?}
   health:{},  // { 'YYYY-MM-DD': {weight,bpHigh,bpLow} } 1日1件・上書き
   diary:{},  // { 'YYYY-MM-DD': '本文' } 1日1件・編集可
-  plans:{}   // { 'YYYY-MM-DD': [{id,time,text,done}] } 予定。1日に何件でも
+  plans:{},  // { 'YYYY-MM-DD': [{id,time,text,done}] } 予定。1日に何件でも
+  calcHistory:[]  // 関数電卓の履歴 [{expr,value}]。式そのものは持ち歩かない
 });
 let state = load();
 let view = "home";
@@ -390,7 +418,7 @@ let sumTab = "month";   // まとめ画面のタブ： "month"（今月）／"an
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
     /* normalizeSettings が旧形式の設定を安全な形へ移行する */
-    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans) }; } }
+    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans), calcHistory:Core.normalizeSciHistory(s.calcHistory) }; } }
   catch(e){ /* ignore */ }
   return defaultState();
 }
@@ -440,6 +468,7 @@ function render(){
   else if(view==="calendar") app.innerHTML=renderCalendar();
   else if(view==="diary") app.innerHTML=renderDiary();
   else if(view==="health") app.innerHTML=renderHealth();
+  else if(view==="calc") app.innerHTML=renderSci();
   else if(view==="settings") app.innerHTML=renderSettings();
   window.scrollTo(0,0);
 }
@@ -1150,6 +1179,61 @@ function cycleHelp(cur){
   const jp=iso=>`${Number(iso.slice(5,7))}月${Number(iso.slice(8,10))}日`;
   const tail = d>28 ? "　※その日が無い月は、月末に合わせます" : "";
   return `いまの区切りは ${jp(r.from)}〜${jp(r.to)}${tail}`;
+}
+
+/* ---------- 関数電卓 ---------- */
+
+/* 画面だけの状態。履歴は端末に残す（state.calcHistory）。 */
+let sciState=null;
+function sci(){
+  if(!sciState){ sciState=Core.newSci(); sciState.history=(state.calcHistory||[]).slice(); }
+  return sciState;
+}
+
+function renderSci(){
+  const s=sci();
+  const amount=Core.sciAmount(s);
+  const k=(key,label,cls)=>`<button class="${cls||""}" data-act="sci" data-key="${escapeAttr(key)}">${label}</button>`;
+  const hist = s.history.length
+    ? s.history.map((h,i)=>`<button class="shrow" data-act="sci-use" data-i="${i}">
+        <span class="se mono">${escapeHtml(h.expr)}</span>
+        <span class="sv mono">${escapeHtml(Core.sciFormat(h.value))}</span>
+      </button>`).join("")
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:12px">まだ計算していません</div>`;
+
+  return `<div class="screen">
+    <div class="scidisp">
+      <button class="sciunit" data-act="sci" data-key="deg">${s.deg?"Deg":"Rad"}</button>
+      <div class="sciexpr mono">${escapeHtml(Core.sciExpr(s))||"&nbsp;"}</div>
+      <div class="scians mono">${s.result!==null?escapeHtml(Core.sciFormat(s.result)):"&nbsp;"}</div>
+      <div class="scierr">${escapeHtml(s.error||"")}</div>
+    </div>
+
+    <div class="scifn">
+      ${k("sin","sin")}${k("cos","cos")}${k("tan","tan")}${k("log","log")}${k("ln","ln")}
+      ${k("√","√")}${k("^","x^y")}${k("π","π")}${k("e","e")}${k("Ans","Ans")}
+    </div>
+
+    <div class="scipad">
+      ${k("AC","AC","fn ac")}${k("DEL","⌫","fn")}${k("(","(","fn")}${k(")",")","fn")}
+      ${k("7","7")}${k("8","8")}${k("9","9")}${k("/","÷","op")}
+      ${k("4","4")}${k("5","5")}${k("6","6")}${k("*","×","op")}
+      ${k("1","1")}${k("2","2")}${k("3","3")}${k("-","−","op")}
+      ${k("0","0")}${k(".",".")}${k("00","00")}${k("+","＋","op")}
+    </div>
+    <button class="btn-main scieq" data-act="sci" data-key="=">＝</button>
+
+    ${amount!==null
+      ? `<button class="btn-main sciuse" data-act="sci-record">${yen(amount)} を家計簿に記録する</button>`
+      : `<div class="calcnote" style="text-align:center;margin-top:10px">＝ を押すと、この答えを家計簿に記録できます（1円以上の整数のとき）</div>`}
+
+    <div class="stitle" style="margin-top:18px">計算の履歴</div>
+    <div class="barlist">
+      ${hist}
+      ${s.history.length?`<button class="mpmore" data-act="sci-clear">履歴を消す</button>`:""}
+    </div>
+    <div style="height:8px"></div>
+  </div>`;
 }
 
 function renderSettings(){
@@ -1896,6 +1980,39 @@ function handleAct(a,e){
     readSheetInputs();                       // 日付・メモの打ちかけを失わない
     sheetState.calc=Core.calcPress(sheetState.calc, el.dataset.key);
     sheetState.amount=Core.calcDisplay(sheetState.calc);
+    renderSheet(); return;
+  }
+  if(a==="sci"){
+    const el=e&&e.target&&e.target.closest("[data-key]"); if(!el) return;
+    const before=sci();
+    sciState=Core.sciPress(before, el.dataset.key);
+    /* 履歴が増えたときだけ端末に残す */
+    if(sciState.history.length!==before.history.length){
+      state.calcHistory=sciState.history.slice();
+      if(!save()){ state.calcHistory=before.history.slice(); toast("履歴を保存できませんでした"); }
+    }
+    render(); return;
+  }
+  if(a==="sci-use"){
+    const el=e&&e.target&&e.target.closest("[data-i]"); if(!el) return;
+    const h=sci().history[Number(el.dataset.i)];
+    if(!h) return;
+    sciState=Object.assign({}, sci(), { tokens:String(h.expr).split(""), result:null, error:"" });
+    render(); return;
+  }
+  if(a==="sci-clear"){
+    const before=sci();
+    sciState=Core.sciClearHistory(before);
+    state.calcHistory=[];
+    if(!save()){ state.calcHistory=before.history.slice(); sciState=before; toast("消せませんでした"); }
+    render(); return;
+  }
+  if(a==="sci-record"){
+    const amount=Core.sciAmount(sci());
+    if(amount===null){ toast("先に ＝ を押してください"); return; }
+    openRecord(null);
+    sheetState.amount=String(amount);
+    sheetState.calc=Core.calcFrom(amount);
     renderSheet(); return;
   }
   if(a==="save-settings") return saveSettings();

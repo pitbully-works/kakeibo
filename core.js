@@ -1320,6 +1320,279 @@
   }
 
   /* =======================================================================
+     関数電卓
+     -----------------------------------------------------------------------
+     押したキーを「字」の並び（tokens）としてためて、＝ のときだけ計算する。
+     eval は使わない。字を式に組み直して、逆ポーランド記法へ並べ替えてから解く。
+
+     状態： { tokens, result, expr, error, ans, deg, history }
+       tokens … 押した順の字の並び（"1" "+" "sin(" など）
+       result … ＝ を押した答え（まだなら null）
+       deg    … 三角関数を度で計算する（false なら弧度）
+     ======================================================================= */
+
+  const SCI_TOKENS_MAX = 120;      // 1つの式に入れられる字数
+  const SCI_HISTORY_MAX = 30;      // 残しておく計算の数
+  const SCI_DIGITS = 10;           // 答えの有効桁数
+
+  /* 関数のキー。押すと、開きかっこも一緒に置いたことになる。 */
+  const SCI_FUNCS = { sin: "sin", cos: "cos", tan: "tan", log: "log", ln: "ln", "√": "sqrt" };
+  const SCI_CONSTS = { "π": Math.PI, "e": Math.E };
+  const SCI_OPS = {
+    "+": { prec: 1, right: false },
+    "-": { prec: 1, right: false },
+    "*": { prec: 2, right: false },
+    "/": { prec: 2, right: false },
+    "^": { prec: 4, right: true },
+  };
+  const SCI_UNARY_PREC = 3;        // −2^2 は −(2^2) になる
+
+  function newSci() {
+    return { tokens: [], result: null, error: "", ans: 0, deg: true, history: [] };
+  }
+
+  function isSciDigit(t) { return /^[0-9.]$/.test(t); }
+
+  /* 画面に出す式の文字列。関数のうしろには開きかっこを見せる。 */
+  function sciExpr(sci) {
+    return ((sci && sci.tokens) || []).map(function (t) {
+      return SCI_FUNCS[t] ? t + "(" : t;
+    }).join("");
+  }
+
+  /* 答えの見せかた。長すぎる小数は丸め、末尾の0は落とす。 */
+  function sciFormat(n) {
+    if (!Number.isFinite(n)) return "";
+    if (Number.isInteger(n) && Math.abs(n) < 1e15) return String(n);
+    const r = Number(n.toPrecision(SCI_DIGITS));
+    if (Math.abs(r) >= 1e15 || (r !== 0 && Math.abs(r) < 1e-9)) return r.toExponential(6);
+    return String(r);
+  }
+
+  /* 字の並びを、数・関数・記号の並びへ組み直す。掛ける記号の省略もここで補う。 */
+  function sciTokenize(tokens, ans) {
+    const out = [];
+    let num = "";
+    const pushNum = function () {
+      if (num === "") return true;
+      if ((num.match(/\./g) || []).length > 1) return false;
+      if (num === ".") return false;
+      out.push({ t: "num", v: Number(num) });
+      num = "";
+      return true;
+    };
+    /* 直前が「値」なら、次に値や関数が来たとき掛け算を補う */
+    const needsTimes = function (next) {
+      const last = out[out.length - 1];
+      if (!last) return false;
+      const lastIsValue = last.t === "num" || last.t === "rparen";
+      const nextIsValue = next === "num" || next === "func" || next === "lparen";
+      return lastIsValue && nextIsValue;
+    };
+
+    for (const tk of tokens) {
+      if (isSciDigit(tk)) {
+        if (num === "" && needsTimes("num")) out.push({ t: "op", v: "*" });
+        num += tk;
+        continue;
+      }
+      if (!pushNum()) return null;
+
+      if (SCI_FUNCS[tk]) {
+        if (needsTimes("func")) out.push({ t: "op", v: "*" });
+        out.push({ t: "func", v: SCI_FUNCS[tk] });
+        out.push({ t: "lparen" });
+      } else if (Object.prototype.hasOwnProperty.call(SCI_CONSTS, tk)) {
+        if (needsTimes("num")) out.push({ t: "op", v: "*" });
+        out.push({ t: "num", v: SCI_CONSTS[tk] });
+      } else if (tk === "Ans") {
+        if (needsTimes("num")) out.push({ t: "op", v: "*" });
+        out.push({ t: "num", v: Number(ans) || 0 });
+      } else if (tk === "(") {
+        if (needsTimes("lparen")) out.push({ t: "op", v: "*" });
+        out.push({ t: "lparen" });
+      } else if (tk === ")") {
+        out.push({ t: "rparen" });
+      } else if (SCI_OPS[tk]) {
+        out.push({ t: "op", v: tk });
+      } else {
+        return null;
+      }
+    }
+    return pushNum() ? out : null;
+  }
+
+  /* 逆ポーランド記法へ並べ替える（操車場アルゴリズム） */
+  function sciToRpn(list) {
+    const out = [], stack = [];
+    let prev = null;
+    for (const tk of list) {
+      if (tk.t === "num") { out.push(tk); }
+      else if (tk.t === "func") { stack.push(tk); }
+      else if (tk.t === "op") {
+        /* 式の頭・記号の直後・( の直後の「−」は、符号のマイナス */
+        const unary = (tk.v === "-" || tk.v === "+")
+          && (prev === null || prev.t === "op" || prev.t === "lparen" || prev.t === "unary");
+        if (unary) {
+          stack.push({ t: "unary", v: tk.v });
+          prev = { t: "unary" };
+          continue;
+        }
+        while (stack.length) {
+          const top = stack[stack.length - 1];
+          const topPrec = top.t === "unary" ? SCI_UNARY_PREC : (top.t === "func" ? 9 : (SCI_OPS[top.v] || {}).prec);
+          if (top.t === "lparen" || topPrec === undefined) break;
+          const me = SCI_OPS[tk.v];
+          if (topPrec > me.prec || (topPrec === me.prec && !me.right)) out.push(stack.pop());
+          else break;
+        }
+        stack.push(tk);
+      }
+      else if (tk.t === "lparen") { stack.push(tk); }
+      else if (tk.t === "rparen") {
+        let found = false;
+        while (stack.length) {
+          const top = stack.pop();
+          if (top.t === "lparen") { found = true; break; }
+          out.push(top);
+        }
+        if (!found) return null;
+        if (stack.length && stack[stack.length - 1].t === "func") out.push(stack.pop());
+      }
+      prev = tk;
+    }
+    while (stack.length) {
+      const top = stack.pop();
+      if (top.t === "lparen") return null;
+      out.push(top);
+    }
+    return out;
+  }
+
+  function sciCallFunc(name, x, deg) {
+    const a = deg ? (x * Math.PI) / 180 : x;
+    if (name === "sin") return Math.sin(a);
+    if (name === "cos") return Math.cos(a);
+    if (name === "tan") return Math.tan(a);
+    if (name === "log") return x > 0 ? Math.log10(x) : NaN;
+    if (name === "ln") return x > 0 ? Math.log(x) : NaN;
+    if (name === "sqrt") return x >= 0 ? Math.sqrt(x) : NaN;
+    return NaN;
+  }
+
+  function sciRunRpn(rpn, deg) {
+    const st = [];
+    for (const tk of rpn) {
+      if (tk.t === "num") { st.push(tk.v); continue; }
+      if (tk.t === "unary") {
+        if (!st.length) return null;
+        st.push(tk.v === "-" ? -st.pop() : st.pop());
+        continue;
+      }
+      if (tk.t === "func") {
+        if (!st.length) return null;
+        st.push(sciCallFunc(tk.v, st.pop(), deg));
+        continue;
+      }
+      if (tk.t === "op") {
+        if (st.length < 2) return null;
+        const b = st.pop(), a = st.pop();
+        if (tk.v === "+") st.push(a + b);
+        else if (tk.v === "-") st.push(a - b);
+        else if (tk.v === "*") st.push(a * b);
+        else if (tk.v === "/") { if (b === 0) return { divZero: true }; st.push(a / b); }
+        else if (tk.v === "^") st.push(Math.pow(a, b));
+        continue;
+      }
+      return null;
+    }
+    return st.length === 1 ? { value: st[0] } : null;
+  }
+
+  /* 式をひとつ解く。答えか、理由つきの失敗を返す。 */
+  function sciEvaluate(tokens, opts) {
+    const o = opts || {};
+    if (!Array.isArray(tokens) || !tokens.length) return { ok: false, error: "" };
+    const list = sciTokenize(tokens, o.ans || 0);
+    if (!list) return { ok: false, error: "式が正しくありません" };
+    const rpn = sciToRpn(list);
+    if (!rpn) return { ok: false, error: "かっこが合っていません" };
+    const r = sciRunRpn(rpn, o.deg !== false);
+    if (!r) return { ok: false, error: "式が正しくありません" };
+    if (r.divZero) return { ok: false, error: "0では割れません" };
+    if (!Number.isFinite(r.value)) return { ok: false, error: "計算できません" };
+    return { ok: true, value: r.value };
+  }
+
+  /* キーを1つ押した結果を返す。元の状態は変えない。 */
+  function sciPress(state, key) {
+    const s = Object.assign(newSci(), state || {});
+    s.tokens = (s.tokens || []).slice();
+    s.history = (s.history || []).slice();
+    s.error = "";
+    const k = String(key);
+
+    if (k === "AC") { const keep = { ans: s.ans, deg: s.deg, history: s.history }; return Object.assign(newSci(), keep); }
+    if (k === "deg") { s.deg = !s.deg; return s; }
+
+    if (k === "DEL") {
+      if (s.result !== null) { s.result = null; return s; }
+      s.tokens.pop();
+      return s;
+    }
+
+    if (k === "=") {
+      const r = sciEvaluate(s.tokens, { ans: s.ans, deg: s.deg });
+      if (!r.ok) { s.error = r.error; return s; }
+      s.result = r.value;
+      s.ans = r.value;
+      s.history = [{ expr: sciExpr(s), value: r.value }].concat(s.history).slice(0, SCI_HISTORY_MAX);
+      return s;
+    }
+
+    /* 答えを出したあとに数字や関数を押したら、新しい式として打ち直す */
+    const isValueKey = isSciDigit(k) || SCI_FUNCS[k] || Object.prototype.hasOwnProperty.call(SCI_CONSTS, k) || k === "(" || k === "Ans";
+    if (s.result !== null) {
+      if (isValueKey) { s.tokens = []; }
+      else { s.tokens = String(sciFormat(s.result)).split(""); }
+      s.result = null;
+    }
+
+    if (s.tokens.length >= SCI_TOKENS_MAX) { s.error = "式が長すぎます"; return s; }
+    if (!isSciDigit(k) && !SCI_FUNCS[k] && !SCI_OPS[k] && k !== "(" && k !== ")"
+        && !Object.prototype.hasOwnProperty.call(SCI_CONSTS, k) && k !== "Ans") return s;
+    s.tokens.push(k);
+    return s;
+  }
+
+  /* 端末に保存してある履歴を、安全な形に整えて読み込む */
+  function normalizeSciHistory(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.map(function (h) {
+      if (!h || typeof h !== "object") return null;
+      const expr = String(h.expr == null ? "" : h.expr).slice(0, SCI_TOKENS_MAX * 4);
+      const value = Number(h.value);
+      if (expr === "" || !Number.isFinite(value)) return null;
+      return { expr: expr, value: value };
+    }).filter(Boolean).slice(0, SCI_HISTORY_MAX);
+  }
+
+  /* 履歴を消す */
+  function sciClearHistory(state) {
+    const s = Object.assign(newSci(), state || {});
+    s.history = [];
+    return s;
+  }
+
+  /* 家計簿に渡せる金額かどうか（0より大きい整数だけ） */
+  function sciAmount(sci) {
+    const v = sci && sci.result;
+    if (v === null || v === undefined || !Number.isFinite(v)) return null;
+    const n = Math.round(v);
+    return n > 0 && Math.abs(v - n) < 1e-9 ? n : null;
+  }
+
+  /* =======================================================================
      予定（スケジュール）
      -----------------------------------------------------------------------
      日付ごとに何件でも持てる。時刻は任意（"14:00" か 空文字）。
@@ -2061,6 +2334,16 @@
     normalizeDiary: normalizeDiary,
     normalizeDiaryEntry: normalizeDiaryEntry,
     diaryList: diaryList,
+    newSci: newSci,
+    sciPress: sciPress,
+    sciExpr: sciExpr,
+    sciFormat: sciFormat,
+    sciEvaluate: sciEvaluate,
+    sciClearHistory: sciClearHistory,
+    normalizeSciHistory: normalizeSciHistory,
+    sciAmount: sciAmount,
+    SCI_TOKENS_MAX: SCI_TOKENS_MAX,
+    SCI_HISTORY_MAX: SCI_HISTORY_MAX,
     newCalc: newCalc,
     calcFrom: calcFrom,
     calcPress: calcPress,
