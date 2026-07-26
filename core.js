@@ -981,6 +981,7 @@
       tx: (Array.isArray(st.tx) ? st.tx : []).map(normalizeTransaction).filter(Boolean),
       health: normalizeHealth(st.health),
       diary: normalizeDiary(st.diary),
+      plans: normalizePlans(st.plans),
     };
   }
 
@@ -1076,6 +1077,7 @@
       tx: tx,
       health: normalizeHealth(data.health),   // 旧バックアップに health が無ければ空
       diary: normalizeDiary(data.diary),       // 旧バックアップに diary が無ければ空
+      plans: normalizePlans(data.plans),       // 旧バックアップに plans が無ければ空
       dropped: dropped,
       version: Number(data.version) || 0,   // 旧形式は version が無い＝0
     };
@@ -1192,6 +1194,92 @@
     });
   }
 
+  /* =======================================================================
+     予定（スケジュール）
+     -----------------------------------------------------------------------
+     日付ごとに何件でも持てる。時刻は任意（"14:00" か 空文字）。
+     { "2026-08-03": [ { id, time, text, done } ] }
+
+     日記が「あったこと」、予定が「これからのこと」。
+     お金の計算にはいっさい関わらない（computeMonth は tx しか見ない）。
+     ======================================================================= */
+
+  const PLAN_TEXT_MAX = 60;      // 予定1件の文字数
+  const PLAN_PER_DAY_MAX = 20;   // 1日に入れられる予定の数
+  const PLAN_SHOW_MAX = 3;       // ホームに出す「今日の予定」の上限
+
+  /* "14:00" のような時刻だけを通す。空文字（時刻なし）も正しい値。 */
+  function normalizeTimeString(v) {
+    const s = String(v == null ? "" : v).trim();
+    if (s === "") return "";
+    const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+    if (!m) return "";
+    const h = Number(m[1]), mi = Number(m[2]);
+    if (h < 0 || h > 23 || mi < 0 || mi > 59) return "";
+    return String(h).padStart(2, "0") + ":" + String(mi).padStart(2, "0");
+  }
+
+  /* 予定1件を安全な形に整える。中身が無いものは残さない。 */
+  function normalizePlanEntry(raw, i) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const text = String(raw.text == null ? "" : raw.text).slice(0, PLAN_TEXT_MAX);
+    if (text.trim() === "") return null;
+    return {
+      id: String(raw.id || ("p" + i + "-" + Math.random().toString(36).slice(2, 8))),
+      time: normalizeTimeString(raw.time),
+      text: text,
+      done: raw.done === true,
+    };
+  }
+
+  /* 時刻の早い順。時刻を入れていないものは、その日の最後に置く。 */
+  function sortPlans(list) {
+    return (Array.isArray(list) ? list.slice() : []).sort(function (a, b) {
+      const at = a.time || "99:99", bt = b.time || "99:99";
+      if (at !== bt) return at < bt ? -1 : 1;
+      return 0;
+    });
+  }
+
+  function normalizePlans(plans) {
+    const out = {};
+    if (!plans || typeof plans !== "object" || Array.isArray(plans)) return out;
+    Object.keys(plans).forEach(function (date) {
+      if (!validateDateString(date)) return;
+      const list = (Array.isArray(plans[date]) ? plans[date] : [])
+        .slice(0, PLAN_PER_DAY_MAX)
+        .map(normalizePlanEntry)
+        .filter(Boolean);
+      if (list.length) out[date] = sortPlans(list);
+    });
+    return out;
+  }
+
+  /* その日の予定（時刻の早い順） */
+  function dayPlans(state, date) {
+    const st = state || {};
+    return sortPlans(((st.plans || {})[date] || []).map(normalizePlanEntry).filter(Boolean));
+  }
+
+  /* 今日の、まだ済んでいない予定 */
+  function todayPlans(state, today) {
+    if (!validateDateString(today)) return [];
+    return dayPlans(state, today).filter(function (p) { return !p.done; });
+  }
+
+  /* 一覧用：今日より後ろの予定を、日付の早い順に返す */
+  function upcomingPlans(state, today, limit) {
+    const st = state || {};
+    const max = Math.max(1, Math.floor(Number(limit) || 20));
+    const out = [];
+    Object.keys(st.plans || {}).sort().forEach(function (date) {
+      if (!validateDateString(date) || date < today) return;
+      dayPlans(st, date).forEach(function (p) { out.push({ date: date, plan: p }); });
+    });
+    return out.slice(0, max);
+  }
+
+
 
   /* =======================================================================
      カレンダー用：ある1日の全データ（支出・収入・日記・健康）をまとめる
@@ -1210,7 +1298,8 @@
       expenseTotal: sum(expense), incomeTotal: sum(income),
       diary: dEntry ? { text: dEntry.text || (typeof dEntry === "string" ? dEntry : ""), photo: (dEntry && dEntry.photo) || null } : null,
       health: hEntry || null,
-      hasAny: !!(txs.length || dEntry || hEntry),
+      plans: dayPlans(st, date),
+      hasAny: !!(txs.length || dEntry || hEntry || dayPlans(st, date).length),
     };
   }
 
@@ -1226,6 +1315,9 @@
     });
     Object.keys(st.diary || {}).forEach(function (d) { if (d.slice(0, 7) === ym) { marks[d] = marks[d] || {}; marks[d].diary = true; } });
     Object.keys(st.health || {}).forEach(function (d) { if (d.slice(0, 7) === ym) { marks[d] = marks[d] || {}; marks[d].health = true; } });
+    Object.keys(st.plans || {}).forEach(function (d) {
+      if (d.slice(0, 7) === ym && dayPlans(st, d).length) { marks[d] = marks[d] || {}; marks[d].plan = true; }
+    });
     return marks;
   }
 
@@ -1825,6 +1917,15 @@
     normalizeDiary: normalizeDiary,
     normalizeDiaryEntry: normalizeDiaryEntry,
     diaryList: diaryList,
+    normalizePlans: normalizePlans,
+    normalizeTimeString: normalizeTimeString,
+    sortPlans: sortPlans,
+    dayPlans: dayPlans,
+    todayPlans: todayPlans,
+    upcomingPlans: upcomingPlans,
+    PLAN_TEXT_MAX: PLAN_TEXT_MAX,
+    PLAN_PER_DAY_MAX: PLAN_PER_DAY_MAX,
+    PLAN_SHOW_MAX: PLAN_SHOW_MAX,
     dayDetail: dayDetail,
     monthMarks: monthMarks,
     budgetBreakdown: budgetBreakdown,

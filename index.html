@@ -307,6 +307,17 @@
   .about .alink{display:inline-flex;align-items:center;justify-content:center;min-height:40px;
     padding:2px 12px;font-size:11.5px;font-weight:700;color:var(--green-d);text-decoration:none}
   .about .alink:active{opacity:.6}
+  /* 予定（スケジュール） */
+  .prow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line2)}
+  .prow:last-of-type{border-bottom:0}
+  .prow.done .ptext{text-decoration:line-through;color:var(--sub)}
+  .pchk{flex:none;font-size:19px;line-height:1;padding:6px 2px;color:var(--green-d);min-width:32px;text-align:left}
+  .ptime{flex:none;min-width:44px;font-size:12px;font-weight:800;color:var(--sub)}
+  .ptext{flex:1;min-width:0;font-size:13.5px;line-height:1.5;word-break:break-word}
+  .pdel{flex:none;padding:6px 4px;font-size:13px;color:var(--sub);min-width:30px}
+  .prowadd{display:flex;gap:8px;align-items:center}
+  .prowadd input[type="time"]{flex:0 0 96px;border:1px solid var(--line2);border-radius:10px;padding:9px 8px;background:var(--card);color:var(--ink);font-weight:700}
+  .prowadd input#p-text{flex:1;min-width:0;border:1px solid var(--line2);border-radius:10px;padding:9px 10px;background:var(--card);color:var(--ink)}
   .hidden{display:none !important}
 </style>
 </head>
@@ -349,7 +360,8 @@ const defaultState = ()=>({
   settings: Core.normalizeSettings({}),
   tx:[],  // {id,type:'expense'|'income',amount,cat,date:'YYYY-MM-DD',memo,photo?}
   health:{},  // { 'YYYY-MM-DD': {weight,bpHigh,bpLow} } 1日1件・上書き
-  diary:{}   // { 'YYYY-MM-DD': '本文' } 1日1件・編集可
+  diary:{},  // { 'YYYY-MM-DD': '本文' } 1日1件・編集可
+  plans:{}   // { 'YYYY-MM-DD': [{id,time,text,done}] } 予定。1日に何件でも
 });
 let state = load();
 let view = "home";
@@ -358,7 +370,7 @@ let sumTab = "month";   // まとめ画面のタブ： "month"（今月）／"an
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
     /* normalizeSettings が旧形式の設定を安全な形へ移行する */
-    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary) }; } }
+    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans) }; } }
   catch(e){ /* ignore */ }
   return defaultState();
 }
@@ -414,14 +426,27 @@ function render(){
 
 /* 今日やることカード。やることが無いときは、何も出さない。 */
 function taskCard(){
-  const tasks=Core.todayTasks(state, todayISO());
-  if(!tasks.length) return "";
-  const rows=tasks.map((t,i)=>`<button class="todo${i===0?" first":""}" data-act="task" data-task="${t.act}">
+  const today=todayISO();
+  const tasks=Core.todayTasks(state, today);
+  /* 今日の予定（まだ済んでいないもの）。タップでその場でチェックできる。 */
+  const plans=Core.todayPlans(state, today);
+  const shown=plans.slice(0, Core.PLAN_SHOW_MAX);
+  if(!tasks.length && !shown.length) return "";
+  const planRows=shown.map((p,i)=>`<button class="todo${i===0?" first":""}" data-act="plan-toggle" data-date="${today}" data-id="${p.id}">
+      <span class="ti">☐</span>
+      <span class="tm"><span class="t1">${p.time?`${p.time}　`:""}${escapeHtml(p.text)}</span><span class="t2">今日の予定</span></span>
+      <span class="tg">✓</span>
+    </button>`).join("");
+  const more = plans.length>shown.length
+    ? `<button class="todo" data-act="task" data-task="diary"><span class="ti">📝</span>
+        <span class="tm"><span class="t1">ほか ${plans.length-shown.length}件 の予定があります</span></span><span class="tg">›</span></button>`
+    : "";
+  const rows=tasks.map((t,i)=>`<button class="todo${(i===0&&!planRows)?" first":""}" data-act="task" data-task="${t.act}">
       <span class="ti">${t.icon}</span>
       <span class="tm"><span class="t1">${escapeHtml(t.text)}</span>${t.sub?`<span class="t2">${escapeHtml(t.sub)}</span>`:""}</span>
       <span class="tg">›</span>
     </button>`).join("");
-  return `<div class="todos"><div class="hd">今日やること</div>${rows}</div>`;
+  return `<div class="todos"><div class="hd">今日やること</div>${planRows}${more}${rows}</div>`;
 }
 
 /* やることをタップしたときの行き先。ここでは記録を書き換えない。 */
@@ -826,7 +851,8 @@ function renderCalendar(){
     const dots=[mk.expense?'<span class="cd" style="background:#c2694f"></span>':'',
                 mk.income?'<span class="cd" style="background:#6f9c78"></span>':'',
                 mk.diary?'<span class="cd" style="background:#d0a050"></span>':'',
-                mk.health?'<span class="cd" style="background:#4f8ac2"></span>':''].join("");
+                mk.health?'<span class="cd" style="background:#4f8ac2"></span>':'',
+                mk.plan?'<span class="cd" style="background:#8a76c4"></span>':''].join("");
     const isSel=date===calSelected;
     const isToday=date===todayISO();
     return `<div class="cal-cell${isSel?' sel':''}${isToday?' today':''}" data-act="cal-day" data-date="${date}">
@@ -841,6 +867,8 @@ function renderCalendar(){
       rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||c.n)}</span><b class="mono inc">+${yen(t.amount)}</b></div>`); });
     dd.expense.forEach(t=>{ const c=catOf("expense",t.cat);
       rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||c.n)}</span><b class="mono">${yen(t.amount)}</b></div>`); });
+    dd.plans.forEach(p=>{
+      rows.push(`<div class="krow" data-act="cal-edit-plan" data-date="${calSelected}" style="cursor:pointer"><span>📝 ${p.time?`<b class="mono">${p.time}</b> `:""}${escapeHtml(p.text)}${p.done?"（済）":""}</span></div>`); });
     if(dd.diary) rows.push(`<div class="krow" data-act="cal-edit-diary" data-date="${calSelected}" style="cursor:pointer;align-items:flex-start"><span>📖 ${escapeHtml((dd.diary.text||"（写真のみ）").slice(0,40))}</span>${dd.diary.photo?'<span>🖼</span>':''}</div>`);
     if(dd.health){ const h=dd.health; const parts=[];
       if(h.weight!=null) parts.push(`体重 ${h.weight}kg`);
@@ -850,7 +878,8 @@ function renderCalendar(){
       ${rows.length?rows.join(""):`<div class="muted" style="text-align:center;padding:10px;font-size:12.5px">この日の記録はありません</div>`}
       <div style="height:1px;background:var(--line2);margin:8px 0 4px"></div>
       <div class="krow" style="font-weight:800"><span>収入 ${yen(dd.incomeTotal)} ／ 支出 ${yen(dd.expenseTotal)}</span><b></b></div>
-    </div>`;
+    </div>
+    <button class="btn-main" data-act="cal-edit-plan" data-date="${calSelected}" style="margin-top:10px">📝 この日の予定を書く</button>`;
   }
   return `<div class="screen">
     <div class="cal-head">
@@ -860,7 +889,7 @@ function renderCalendar(){
     </div>
     <div class="cal-grid cal-dowrow">${head}</div>
     <div class="cal-grid">${body}</div>
-    <div class="cal-legend"><span><span class="cd" style="background:#c2694f"></span>支出</span><span><span class="cd" style="background:#6f9c78"></span>収入</span><span><span class="cd" style="background:#d0a050"></span>日記</span><span><span class="cd" style="background:#4f8ac2"></span>健康</span></div>
+    <div class="cal-legend"><span><span class="cd" style="background:#c2694f"></span>支出</span><span><span class="cd" style="background:#6f9c78"></span>収入</span><span><span class="cd" style="background:#d0a050"></span>日記</span><span><span class="cd" style="background:#4f8ac2"></span>健康</span><span><span class="cd" style="background:#8a76c4"></span>予定</span></div>
     ${detail}
   </div>`;
 }
@@ -868,6 +897,34 @@ function renderCalendar(){
 /* ---------- 日記ページ ---------- */
 let diaryEditDate=null;   // 編集中の日付（null＝今日を新規）
 let diaryPhotoPending=undefined;   // 編集中に選んだ写真（undefined=未変更, null=外した, 文字列=新規）
+/* その日の予定。日記と同じ画面の上に置く（カレンダーから来たときはここが目的地）。 */
+function planSection(date){
+  const list=Core.dayPlans(state, date);
+  const md=date.slice(5).replace("-","/");
+  const rows = list.length ? list.map(p=>`
+    <div class="prow${p.done?" done":""}">
+      <button class="pchk" data-act="plan-toggle" data-date="${date}" data-id="${p.id}" aria-label="済みにする">${p.done?"☑":"☐"}</button>
+      <span class="ptime mono">${p.time||"—"}</span>
+      <span class="ptext">${escapeHtml(p.text)}</span>
+      <button class="pdel" data-act="plan-del" data-date="${date}" data-id="${p.id}" aria-label="消す">✕</button>
+    </div>`).join("")
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">この日の予定はありません</div>`;
+  const full = list.length >= Core.PLAN_PER_DAY_MAX;
+  return `<div class="stitle" style="margin-top:6px">予定（${md}）</div>
+    <div class="barlist">
+      ${rows}
+      <div style="height:1px;background:var(--line2);margin:10px 0 8px"></div>
+      ${full
+        ? `<div class="muted" style="font-size:12px;text-align:center">1日に入れられる予定は ${Core.PLAN_PER_DAY_MAX}件までです</div>`
+        : `<div class="prowadd">
+             <input type="time" id="p-time" class="mono" value="">
+             <input id="p-text" maxlength="${Core.PLAN_TEXT_MAX}" placeholder="予定を書く（例：病院）">
+           </div>
+           <button class="btn-main" data-act="plan-add" data-date="${date}" style="margin-top:8px">＋ 予定を入れる</button>
+           <div style="font-size:10.5px;color:var(--sub);margin-top:6px">時刻は空のままでも入れられます。予定はお金の計算には入りません。</div>`}
+    </div>`;
+}
+
 function renderDiary(){
   const editing = diaryEditDate || todayISO();
   const curEntry = state.diary[editing] || {};
@@ -886,7 +943,8 @@ function renderDiary(){
     ? `<div style="margin-top:8px"><img src="${curPhoto}" style="width:100%;border-radius:10px;display:block"><button class="btn-quiet" data-act="rm-diary-photo" style="margin-top:6px">🗑 写真を外す</button></div>`
     : `<button class="btn-quiet" data-act="add-diary-photo" style="margin-top:8px">📷 写真を追加（撮影・ライブラリ）</button>`;
   return `<div class="screen">
-    <div class="stitle" style="margin-top:6px">日記（${editing.slice(5).replace("-","/")}）</div>
+    ${planSection(editing)}
+    <div class="stitle">日記（${editing.slice(5).replace("-","/")}）</div>
     <div class="calcnote" style="margin:0 0 10px">1日1件です。過去の日付をタップすると、その日の日記を直せます。</div>
     <div class="barlist">
       <div class="field"><label>本文</label>
@@ -1579,6 +1637,40 @@ function delTx(){
   showSheet(false); render(); toast("削除しました");
 }
 
+/* 予定を1件足す。保存に失敗したら、足す前に完全に戻す。 */
+function addPlan(date){
+  if(!date) return;
+  const text=($("p-text")?$("p-text").value:"").trim();
+  if(!text){ toast("予定を書いてください"); focusField("p-text"); return; }
+  const before=JSON.parse(JSON.stringify(state.plans||{}));
+  const list=(state.plans[date]||[]).slice();
+  if(list.length>=Core.PLAN_PER_DAY_MAX){ toast(`1日に入れられるのは ${Core.PLAN_PER_DAY_MAX}件までです`); return; }
+  list.push({ id:uid(), time:Core.normalizeTimeString($("p-time")?$("p-time").value:""),
+              text:text.slice(0,Core.PLAN_TEXT_MAX), done:false });
+  state.plans[date]=Core.sortPlans(list);
+  if(!save()){ state.plans=before; toast("予定を保存できませんでした"); render(); return; }
+  toast("予定を入れました ✓"); render();
+}
+
+/* 予定を1件消す */
+function delPlan(date, id){
+  if(!date||!id||!state.plans[date]) return;
+  const before=JSON.parse(JSON.stringify(state.plans));
+  state.plans[date]=state.plans[date].filter(p=>p.id!==id);
+  if(!state.plans[date].length) delete state.plans[date];
+  if(!save()){ state.plans=before; toast("消せませんでした"); }
+  render();
+}
+
+/* 済み／未済を切り替える */
+function togglePlan(date, id){
+  if(!date||!id||!state.plans[date]) return;
+  const before=JSON.parse(JSON.stringify(state.plans));
+  state.plans[date]=state.plans[date].map(p=> p.id===id ? Object.assign({}, p, {done:!p.done}) : p);
+  if(!save()){ state.plans=before; toast("保存できませんでした"); }
+  render();
+}
+
 function saveSettings(){
   const g=id=>{ const el=$(id); return el?el.value:""; };
   const num=v=>{ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; };
@@ -1730,6 +1822,12 @@ function handleAct(a,e){
   if(a==="cal-edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=el&&el.dataset.date; diaryPhotoPending=undefined; view="diary"; render(); return; }
   if(a==="cal-edit-health"){ view="health"; render(); return; }
   if(a==="save-diary") return saveDiary();
+  if(a==="plan-add"){ const el=e&&e.target&&e.target.closest("[data-date]"); return addPlan(el&&el.dataset.date); }
+  if(a==="plan-del"){ const el=e&&e.target&&e.target.closest("[data-id]"); return delPlan(el&&el.dataset.date, el&&el.dataset.id); }
+  if(a==="plan-toggle"){ const el=e&&e.target&&e.target.closest("[data-id]"); return togglePlan(el&&el.dataset.date, el&&el.dataset.id); }
+  if(a==="cal-edit-plan"){ const el=e&&e.target&&e.target.closest("[data-date]");
+    diaryEditDate=(el&&el.dataset.date)||null; diaryPhotoPending=undefined; view="diary"; render();
+    focusField("p-text"); return; }
   if(a==="new-diary"){ diaryEditDate=null; diaryPhotoPending=undefined; render(); return; }
   if(a==="edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=(el&&el.dataset.date)||null; diaryPhotoPending=undefined; render(); return; }
   if(a==="add-diary-photo"){ const el=$("diaryPhotoInput"); if(el){ el.value=""; el.click(); } return; }
