@@ -19,15 +19,15 @@
    CACHE の名前を変えると、activate で古いキャッシュを丸ごと捨てる。
    アプリを更新したら、この版数を必ず上げること。
    ============================================================================= */
-const CACHE = "kakeibo-v18";
+const CACHE = "kakeibo-v21";
 const INDEX = "./index.html";
 const ASSETS = [
   "./",
   "./index.html",
   "./core.js",
   "./manifest.webmanifest",
-  "./icon-192.png",
-  "./icon-512.png",
+  "./android-chrome-192x192.png",
+  "./android-chrome-512x512.png",
 ];
 
 self.addEventListener("install", (e) => {

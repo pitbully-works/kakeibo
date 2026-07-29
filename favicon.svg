@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="かけいぼ">
+  <rect x="0" y="0" width="512" height="512" rx="113" fill="#566E3A"/>
+  <path d="M 256.0 420.3 C 131.7 400.0, 25.5 275.7, 50.3 101.7 C 88.8 149.1, 190.5 160.4, 256.0 212.4 C 321.5 160.4, 423.2 149.1, 461.7 101.7 C 486.5 275.7, 380.3 400.0, 256.0 420.3 Z" fill="#FBF7EC"/>
+  <path d="M 256.0 212.4 C 249.2 282.5, 249.2 350.3, 256.0 420.3" fill="none" stroke="#566E3A" stroke-width="9" stroke-linecap="round"/>
+</svg>
