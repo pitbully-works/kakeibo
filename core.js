@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.0.0";
+  const APP_VERSION = "1.0.1";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -1140,6 +1140,85 @@
       })
       .sort()
       .map(function (d) { return { date: d, value: h[d][field] }; });
+  }
+
+  /* =======================================================================
+     グラフの目もり（体重・血圧の推移）
+     -----------------------------------------------------------------------
+     折れ線だけでは「いつ・いくつ・どれだけ変わったか」が読めないので、
+     縦の目もり（切りのよい数値）と、最初から最新までの変化量をここで出す。
+     描画そのものは画面側。数の決め方はこのファイルだけを正とする。
+     ======================================================================= */
+  const CHART_TICKS = 4;        // 縦の目もりの本数の目安
+  const CHART_XLABELS = 4;      // 横（日付）のラベルの最大数
+
+  function round6(v) { return Math.round(v * 1e6) / 1e6; }
+
+  /* 目もりの間隔を「1・2・2.5・5・10」の切りのよい数から選ぶ。
+     例：幅1.5を4分割 → 0.5 きざみ／幅35を4分割 → 10 きざみ */
+  function chartNiceStep(span, count) {
+    const c = Math.max(1, Math.round(count) || 1);
+    if (!Number.isFinite(span) || span <= 0) return 1;
+    const rough = span / c;
+    const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    const n = rough / mag;
+    let m = 10;
+    if (n <= 1) m = 1;
+    else if (n <= 2) m = 2;
+    else if (n <= 2.5) m = 2.5;
+    else if (n <= 5) m = 5;
+    return round6(m * mag);
+  }
+
+  /* 値の並びから、上下の端と目もりの位置を決める。
+     端は必ず目もりに合わせるので、軸の数字が半端にならない。 */
+  function chartScale(values, count) {
+    const nums = (values || []).filter(function (v) { return Number.isFinite(v); });
+    if (!nums.length) return null;
+    const want = Math.max(2, Math.min(6, Math.round(count) || CHART_TICKS));
+    let min = Math.min.apply(null, nums);
+    let max = Math.max.apply(null, nums);
+    if (min === max) {                       // 1件だけ・同じ値ばかり：上下に少し余白を作る
+      const pad = Math.max(Math.abs(min) * 0.02, 0.5);
+      min -= pad; max += pad;
+    }
+    const step = chartNiceStep(max - min, want);
+    const lo = round6(Math.floor(round6(min / step)) * step);
+    const hi = round6(Math.ceil(round6(max / step)) * step);
+    const n = Math.min(24, Math.max(1, Math.round((hi - lo) / step)));
+    const ticks = [];
+    for (let i = 0; i <= n; i++) ticks.push(round6(lo + step * i));
+    return { lo: lo, hi: round6(Math.max(hi, ticks[ticks.length - 1])), step: step, ticks: ticks };
+  }
+
+  /* 横軸に日付を出す位置。点が多い月でも文字が重ならないよう間引く。 */
+  function chartLabelIndexes(len, max) {
+    const n = Math.max(0, Math.round(len) || 0);
+    if (!n) return [];
+    const m = Math.max(2, Math.round(max) || CHART_XLABELS);
+    const out = [];
+    if (n <= m) {
+      for (let i = 0; i < n; i++) out.push(i);
+      return out;
+    }
+    for (let i = 0; i < m; i++) {
+      const v = Math.round((i * (n - 1)) / (m - 1));
+      if (out.indexOf(v) === -1) out.push(v);
+    }
+    return out;
+  }
+
+  /* 最初の記録から最新までで、どれだけ変わったか。 */
+  function seriesChange(series) {
+    if (!Array.isArray(series) || !series.length) return null;
+    const a = series[0], b = series[series.length - 1];
+    if (!a || !b || !Number.isFinite(a.value) || !Number.isFinite(b.value)) return null;
+    return {
+      fromDate: a.date, toDate: b.date,
+      first: round6(a.value), last: round6(b.value),
+      diff: round6(b.value - a.value),
+      count: series.length,
+    };
   }
 
 
@@ -2330,6 +2409,12 @@
     normalizeHealthEntry: normalizeHealthEntry,
     normalizeHealth: normalizeHealth,
     healthSeries: healthSeries,
+    chartNiceStep: chartNiceStep,
+    chartScale: chartScale,
+    chartLabelIndexes: chartLabelIndexes,
+    seriesChange: seriesChange,
+    CHART_TICKS: CHART_TICKS,
+    CHART_XLABELS: CHART_XLABELS,
     DIARY_MAX: DIARY_MAX,
     normalizeDiary: normalizeDiary,
     normalizeDiaryEntry: normalizeDiaryEntry,

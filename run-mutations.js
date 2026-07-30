@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v21";', to: 'const CACHE = "kakeibo-v20";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v22";', to: 'const CACHE = "kakeibo-v21";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -378,6 +378,29 @@ const MUTATIONS = [
   { name: "画面の高さをアドレスバーに合わせない", guards: "高さの取りかた",
     file: "index.html", from: "  #app{max-width:520px;margin:0 auto;min-height:100vh;min-height:100dvh;",
     to: "  #app{max-width:520px;margin:0 auto;min-height:100vh;" },
+  /* ---- 推移グラフの目もり・変化量 ---- */
+  { name: "目もりを切りのよい数に合わせない", guards: "軸の数字が半端にならない",
+    file: "core.js", from: "    const lo = round6(Math.floor(round6(min / step)) * step);",
+    to: "    const lo = min;" },
+  { name: "上の端を値より下にする", guards: "線がはみ出さない",
+    file: "core.js", from: "    const hi = round6(Math.ceil(round6(max / step)) * step);",
+    to: "    const hi = max - step;" },
+  { name: "同じ値ばかりのときに余白を作らない", guards: "0で割らない",
+    file: "core.js", from: "      const pad = Math.max(Math.abs(min) * 0.02, 0.5);", to: "      const pad = 0;" },
+  { name: "日付ラベルの最初と最後を落とす", guards: "最初と最後は必ず出す",
+    file: "core.js", from: "      const v = Math.round((i * (n - 1)) / (m - 1));", to: "      const v = i + 1;" },
+  { name: "変化量の丸めをやめる", guards: "小数の誤差を出さない",
+    file: "core.js", from: "      diff: round6(b.value - a.value),", to: "      diff: b.value - a.value," },
+  /* ---- 確定ボタンの見た目 ---- */
+  { name: "確定ボタンの色を消す", guards: "ボタンだと分かる見た目",
+    file: "index.html", from: "    background:var(--green-d);color:#fff;border-radius:15px;padding:16px 14px;",
+    to: "    border-radius:15px;padding:16px 14px;" },
+  { name: "確定ボタンを小さくする", guards: "指で押しやすい大きさ",
+    file: "index.html", from: "    font-size:16px;font-weight:800;line-height:1.35;text-align:center;",
+    to: "    font-size:12px;font-weight:800;line-height:1.35;text-align:center;" },
+  { name: "電卓の ＝ を他のキーと同じ大きさにする", guards: "＝ がいちばん目立つ",
+    file: "index.html", from: "  .scieq{margin-top:10px;min-height:66px;font-size:30px;letter-spacing:.1em;",
+    to: "  .scieq{margin-top:10px;min-height:52px;font-size:19px;letter-spacing:.1em;" },
 ];
 
 /* テストを1回走らせる。
