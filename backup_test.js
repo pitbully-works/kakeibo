@@ -341,3 +341,93 @@ test("core に固定費の区分ロジックが残っていない", () => {
     assert.ok(keys.includes(k), k + " が支出カテゴリから消えている");
   }
 });
+
+/* ---------- 8. 予定（スケジュール）の書き出し・復元 ----------
+   復元処理が settings/tx/health/diary だけを入れて plans を入れ忘れ、
+   「予定がバックアップされない」ように見えていた。その再発を防ぐ。 */
+test("書き出したバックアップに予定が入っている", () => {
+  const b = Core.buildBackup({
+    settings: {}, tx: [],
+    plans: { "2026-08-01": [{ id: "p1", time: "07:00", text: "お姉帰る", done: false }] },
+  });
+  assert.deepEqual(b.plans, { "2026-08-01": [{ id: "p1", time: "07:00", text: "お姉帰る", done: false }] },
+    "書き出しに予定が入っていない");
+});
+
+test("書き出し→読み込みで予定が元通り（済みの印・時刻なしも保つ）", () => {
+  const orig = {
+    settings: {}, tx: [],
+    plans: {
+      "2026-08-01": [
+        { id: "p1", time: "07:00", text: "お姉帰る", done: false },
+        { id: "p2", time: "", text: "買い物", done: true },
+      ],
+      "2026-08-10": [{ id: "p3", time: "14:00", text: "病院", done: false }],
+    },
+  };
+  const r = Core.normalizeBackup(Core.parseBackupJson(JSON.stringify(Core.buildBackup(orig))));
+  assert.deepEqual(r.plans, orig.plans, "予定が変わっている・欠けている");
+});
+
+/* 復元の本番コードを実際に動かす。FileReader と confirm を差し替えて、
+   ファイルを選んだところから保存まで通す。 */
+function restoreInApp(startState, backupText, accept) {
+  const app = bootApp({ state: startState });
+  app.run(`
+    confirm = () => ${accept === false ? "false" : "true"};
+    FileReader = function(){
+      const self = this;
+      this.readAsText = function(f){ self.result = f.__text; if (self.onload) self.onload(); };
+    };
+  `);
+  app.run(`onBackupPicked({ __text: ${JSON.stringify(backupText)} })`);
+  return app;
+}
+
+test("復元すると予定が state と保存データの両方に入る", () => {
+  const backup = JSON.stringify(Core.buildBackup({
+    settings: {}, tx: [],
+    plans: { "2026-08-01": [{ id: "p1", time: "07:00", text: "お姉帰る", done: false }] },
+  }));
+  const app = restoreInApp({ settings: {}, tx: [], plans: {} }, backup);
+  assert.equal(app.run(`state.plans["2026-08-01"][0].text`), "お姉帰る", "state に予定が入っていない");
+  assert.equal(
+    app.run(`JSON.parse(localStorage.getItem("kakeibo:v1:state")).plans["2026-08-01"][0].text`),
+    "お姉帰る", "端末の保存データに予定が入っていない");
+});
+
+test("復元すると、復元前の古い予定は残らない（丸ごと置き換え）", () => {
+  const backup = JSON.stringify(Core.buildBackup({
+    settings: {}, tx: [],
+    plans: { "2026-08-01": [{ id: "p1", time: "07:00", text: "お姉帰る", done: false }] },
+  }));
+  const app = restoreInApp({
+    settings: {}, tx: [],
+    plans: { "2026-09-15": [{ id: "old", time: "", text: "古い予定", done: false }] },
+  }, backup);
+  assert.equal(app.run(`state.plans["2026-09-15"]`), undefined, "古い予定が残っている");
+  assert.equal(app.run(`Object.keys(state.plans).length`), 1);
+});
+
+test("予定の無い旧バックアップを復元しても落ちず、予定は空になる", () => {
+  const old = JSON.stringify({ settings: {}, tx: [] });   // version も plans も無い旧形式
+  const app = restoreInApp({
+    settings: {}, tx: [],
+    plans: { "2026-09-15": [{ id: "old", time: "", text: "古い予定", done: false }] },
+  }, old);
+  assert.equal(app.run(`JSON.stringify(state.plans)`), "{}", "旧形式の復元で予定が空になっていない");
+});
+
+test("復元をキャンセルしたら予定は変わらない", () => {
+  const backup = JSON.stringify(Core.buildBackup({ settings: {}, tx: [], plans: {} }));
+  const app = restoreInApp({
+    settings: {}, tx: [],
+    plans: { "2026-09-15": [{ id: "old", time: "", text: "残す予定", done: false }] },
+  }, backup, false);
+  assert.equal(app.run(`state.plans["2026-09-15"][0].text`), "残す予定", "キャンセルなのに消えた");
+});
+
+test("復元の適用コードに plans の行がある（入れ忘れの再発防止）", () => {
+  const block = appSrc.slice(appSrc.indexOf("function onBackupPicked"), appSrc.indexOf("function downloadText"));
+  assert.match(block, /state\.plans = restored\.plans \|\| \{\};/, "plans を state に入れていない");
+});

@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v22";', to: 'const CACHE = "kakeibo-v21";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v23";', to: 'const CACHE = "kakeibo-v22";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -401,6 +401,10 @@ const MUTATIONS = [
   { name: "電卓の ＝ を他のキーと同じ大きさにする", guards: "＝ がいちばん目立つ",
     file: "index.html", from: "  .scieq{margin-top:10px;min-height:66px;font-size:30px;letter-spacing:.1em;",
     to: "  .scieq{margin-top:10px;min-height:52px;font-size:19px;letter-spacing:.1em;" },
+  /* ---- バックアップに予定を含める ---- */
+  { name: "復元で予定を入れ忘れる", guards: "予定も復元される",
+    file: "index.html", from: "    state.plans = restored.plans || {};   // 予定も復元する（入れ忘れると古い予定が残る）",
+    to: "" },
 ];
 
 /* テストを1回走らせる。

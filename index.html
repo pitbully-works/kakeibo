@@ -1990,6 +1990,7 @@ function onBackupPicked(file){
     state.tx = restored.tx;
     state.health = restored.health || {};
     state.diary = restored.diary || {};
+    state.plans = restored.plans || {};   // 予定も復元する（入れ忘れると古い予定が残る）
     if(!save()){
       state = before;                               // 保存できないなら元のまま
       toast("バックアップを復元できませんでした");
