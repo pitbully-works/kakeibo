@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v26";', to: 'const CACHE = "kakeibo-v25";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v27";', to: 'const CACHE = "kakeibo-v26";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -431,6 +431,15 @@ const MUTATIONS = [
   { name: "棒を下端から立てない", guards: "棒の高さが金額どおり",
     file: "index.html", from: '    ? `<rect x="${(cx-bw/2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,(baseY-y(v))).toFixed(1)}" rx="2.5" fill="${color}"></rect>` : "";',
     to: '    ? `<rect x="${(cx-bw/2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,(baseY-y(v))*0.8).toFixed(1)}" rx="2.5" fill="${color}"></rect>` : "";' },
+  /* ---- カレンダーの日またぎ ---- */
+  { name: "カレンダー描画で日またぎを見ない", guards: "翌日は今月に切り替わる",
+    file: "index.html", from: "function renderCalendar(){\n  calSyncToToday();", to: "function renderCalendar(){" },
+  { name: "日またぎ判定を常に「またいでいない」にする", guards: "翌日は今月に切り替わる",
+    file: "index.html", from: "  if(now===calSeenDay) return false;   // 同じ日のうちは、手で選んだ月をそのまま保つ",
+    to: "  if(true) return false;" },
+  { name: "日またぎで月を今月に戻さない", guards: "翌日は今月に切り替わる",
+    file: "index.html", from: "  calSeenDay=now;\n  calYM=curYM();\n  calSelected=null;\n  return true;",
+    to: "  calSeenDay=now;\n  return true;" },
 ];
 
 /* テストを1回走らせる。

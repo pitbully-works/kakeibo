@@ -147,3 +147,37 @@ test("既存データ（家計簿・日記・健康）を壊していない", ()
   assert.equal(app.run(`Object.keys(state.diary).length`), 2);
   assert.equal(app.run(`state.health["2026-07-25"].weight`), 62.5);
 });
+
+/* ---------- 日またぎ ----------
+   calYM（表示中の月）は読み込み時に1回だけ決まるため、PWAを開いたまま
+   月をまたぐと（7/31→8/1）カレンダーだけ先月のままだった。その修正を守る。 */
+test("日をまたいで開くと、カレンダーは今月に切り替わる", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  const out = app.run(`calYM="2000-01"; calSeenDay="2000-01-31"; view="calendar"; render();
+    document.getElementById("app").innerHTML`);
+  const now = new Date();
+  assert.ok(out.includes(`${now.getFullYear()}年 ${now.getMonth() + 1}月`), "今月になっていない");
+  assert.ok(!out.includes("2000年 1月"), "先月（古い月）のまま");
+});
+
+test("日をまたいだら、選択中の日付もいったん外す", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  app.run(`calYM="2000-01"; calSeenDay="2000-01-31"; calSelected="2000-01-15"; view="calendar"; render();`);
+  assert.equal(app.run(`calSelected`), null, "先月の日付が選ばれたまま");
+});
+
+test("同じ日のうちは、手で選んだ月がそのまま保たれる（勝手に戻らない）", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  const out = app.run(`calShift(-2); view="calendar"; render(); document.getElementById("app").innerHTML`);
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 2);
+  assert.ok(out.includes(`${d.getFullYear()}年 ${d.getMonth() + 1}月`), "2か月前を表示できていない");
+});
+
+test("バックグラウンドから戻ったとき、日をまたいでいたら描き直す（入力画面は触らない）", () => {
+  const src = require("node:fs").readFileSync("index.html", "utf8");
+  const i = src.indexOf('document.addEventListener("visibilitychange"');
+  assert.notEqual(i, -1, "復帰時の処理が無い");
+  const block = src.slice(i, src.indexOf("});", i));
+  assert.match(block, /calSyncToToday\(\)/, "日またぎ判定を使っていない");
+  assert.match(block, /view==="calendar"\|\|view==="home"\|\|view==="summary"/, "描き直す画面を絞っていない（下書きが消える）");
+});

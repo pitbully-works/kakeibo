@@ -1005,6 +1005,18 @@ function renderAnalysis(){
 /* ---------- カレンダーページ ---------- */
 let calYM=curYM();          // 表示中の年月 "YYYY-MM"
 let calSelected=null;       // 選択中の日付 "YYYY-MM-DD"
+let calSeenDay=todayISO();  // 日またぎ検出用（PWAは開いたまま翌日になることがある）
+/* 日をまたいでいたら、表示中の月を今月へ合わせ直す。
+   calYM は読み込み時に1回だけ決まるため、開いたまま月をまたぐと
+   （例：7/31に開いて8/1に見る）カレンダーだけ先月のままになっていた。 */
+function calSyncToToday(){
+  const now=todayISO();
+  if(now===calSeenDay) return false;   // 同じ日のうちは、手で選んだ月をそのまま保つ
+  calSeenDay=now;
+  calYM=curYM();
+  calSelected=null;
+  return true;
+}
 function calShift(delta){
   const [y,m]=calYM.split("-").map(Number);
   const d=new Date(y, m-1+delta, 1);
@@ -1012,6 +1024,7 @@ function calShift(delta){
   calSelected=null;
 }
 function renderCalendar(){
+  calSyncToToday();
   const [y,m]=calYM.split("-").map(Number);
   const first=new Date(y,m-1,1);
   const startDow=first.getDay();               // 0=日
@@ -2088,6 +2101,14 @@ function escapeHtml(s){ return String(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;",
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
 
 /* ---------- イベント（委譲） ---------- */
+/* バックグラウンドから戻ったとき：日をまたいでいたら画面を今日に合わせる。
+   日記や設定などの入力途中の下書きを消さないよう、
+   自由入力の無い画面（カレンダー・ホーム・まとめ）だけ描き直す。 */
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden) return;
+  if(!calSyncToToday()) return;
+  if(view==="calendar"||view==="home"||view==="summary") render();
+});
 document.addEventListener("click",e=>{
   const nav=e.target.closest("#nav button"); if(nav){ showSheet(false); view=nav.dataset.nav; render(); return; }
   const go=e.target.closest("[data-go]"); if(go){ showSheet(false); view=go.dataset.go; render(); focusField(go.dataset.focus); return; }
