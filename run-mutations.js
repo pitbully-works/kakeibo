@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v25";', to: 'const CACHE = "kakeibo-v24";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v26";', to: 'const CACHE = "kakeibo-v25";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -424,6 +424,13 @@ const MUTATIONS = [
     to: '    { k: "pulse",  n: "心拍数", unit: "bpm",  min: 0,  max: 999, decimals: 0 },' },
   { name: "保存で心拍数を読まない", guards: "入力した心拍数が保存される",
     file: "index.html", from: 'bpLow:g("h-bplow"), pulse:g("h-pulse")', to: 'bpLow:g("h-bplow")' },
+  /* ---- ◯か月の推移（棒グラフ）の目もり ---- */
+  { name: "棒グラフの目もりを勝手な式にする", guards: "目もりは core の計算",
+    file: "index.html", from: "  const sc=Core.chartScale(vals, Core.CHART_TICKS);",
+    to: "  const sc={lo:0,hi:Math.max.apply(null,vals)||1,step:1,ticks:[]};" },
+  { name: "棒を下端から立てない", guards: "棒の高さが金額どおり",
+    file: "index.html", from: '    ? `<rect x="${(cx-bw/2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,(baseY-y(v))).toFixed(1)}" rx="2.5" fill="${color}"></rect>` : "";',
+    to: '    ? `<rect x="${(cx-bw/2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,(baseY-y(v))*0.8).toFixed(1)}" rx="2.5" fill="${color}"></rect>` : "";' },
 ];
 
 /* テストを1回走らせる。

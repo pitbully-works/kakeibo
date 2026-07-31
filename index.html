@@ -282,11 +282,6 @@
   .todo .tg{flex:0 0 auto;color:#c3ccc8;font-size:17px;font-weight:800}
   /* 分析タブ */
   .seg{display:flex;gap:6px;margin:6px 0 2px}
-  .mbars{display:flex;gap:6px;align-items:flex-end;height:104px;margin:8px 0 2px}
-  .mcol{flex:1;height:100%;display:flex;flex-direction:column;align-items:center}
-  .mpair{height:calc(100% - 15px);width:100%;display:flex;align-items:flex-end;justify-content:center;gap:3px}
-  .mbar{width:10px;border-radius:3px 3px 0 0;background:#cfd8d4}
-  .mlbl{font-size:10px;color:var(--sub);font-weight:700;line-height:15px}
   .ins{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;padding:8px 0;border-top:1px solid var(--line);line-height:1.5}
   .ins.first{border-top:none;padding-top:2px}
   .ins .ii{flex:0 0 auto;font-size:14px;line-height:1.35}
@@ -885,16 +880,44 @@ function paceChart(p){
   ${legend}`;
 }
 
-/* 月ごとの推移：収入（緑）と支出（赤）を並べた棒 */
+/* 月ごとの推移：収入（緑）と支出（赤）を並べた棒。
+   縦＝金額の目もり（万単位）。目もりの決め方は core.js（chartScale）が正。 */
 function trendChart(trend){
-  const max=Math.max(1,...trend.map(m=>Math.max(m.income,m.spend)));
-  const h=v=>v>0?Math.max(4,Math.round(v/max*100)):0;
-  const cols=trend.map(m=>`<div class="mcol"><div class="mpair">
-      <span class="mbar" style="height:${h(m.income)}%;background:#6f9c78"></span>
-      <span class="mbar" style="height:${h(m.spend)}%;background:#c2694f"></span>
-    </div><span class="mlbl">${m.label}</span></div>`).join("");
-  return `<div class="mbars">${cols}</div>
-  <div style="display:flex;gap:12px;justify-content:center;font-size:10.5px;color:var(--sub)">
+  const vals=[0];
+  trend.forEach(m=>{ vals.push(m.income, m.spend); });
+  const sc=Core.chartScale(vals, Core.CHART_TICKS);
+  const W=320,H=150,padL=36,padR=8,padT=12,padB=24;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const span=(sc.hi-sc.lo)||1;
+  const y=v=>padT+plotH*(1-(v-sc.lo)/span);
+
+  /* 横線（金額の目もり）と、左の数字 */
+  const grid=sc.ticks.map(t=>{
+    const yy=y(t).toFixed(1);
+    return `<line x1="${padL}" x2="${W-padR}" y1="${yy}" y2="${yy}" stroke="#e7ecee" stroke-width="1"></line>`
+         + `<text x="${padL-5}" y="${(y(t)+3.4).toFixed(1)}" text-anchor="end" font-size="9.5" fill="#647476">${yenTick(t)}</text>`;
+  }).join("");
+
+  /* 月ごとの棒（収入・支出のペア）と、下の月ラベル */
+  const n=Math.max(1,trend.length);
+  const slot=plotW/n, bw=Math.min(11, slot*0.22), gap=3;
+  const baseY=padT+plotH;
+  const bar=(cx,v,color)=> v>0
+    ? `<rect x="${(cx-bw/2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,(baseY-y(v))).toFixed(1)}" rx="2.5" fill="${color}"></rect>` : "";
+  const cols=trend.map((m,i)=>{
+    const cx=padL+slot*(i+0.5);
+    return bar(cx-(bw+gap)/2, m.income, "#6f9c78")
+         + bar(cx+(bw+gap)/2, m.spend, "#c2694f")
+         + `<text x="${cx.toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="9.5" fill="#647476">${escapeHtml(m.label)}</text>`;
+  }).join("");
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img">
+    ${grid}
+    <line x1="${padL}" x2="${padL}" y1="${padT}" y2="${baseY}" stroke="#d7dedb" stroke-width="1"></line>
+    <line x1="${padL}" x2="${W-padR}" y1="${baseY}" y2="${baseY}" stroke="#d7dedb" stroke-width="1"></line>
+    ${cols}
+  </svg>
+  <div style="display:flex;gap:12px;justify-content:center;font-size:10.5px;color:var(--sub);margin-top:4px">
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#6f9c78"></span> 収入</span>
     <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#c2694f"></span> 支出</span>
   </div>`;

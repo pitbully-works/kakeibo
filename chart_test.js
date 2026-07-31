@@ -259,3 +259,49 @@ test("金額の目もりの書き方：万単位・半端は小数1桁・小さ�
   assert.equal(app.run(`yenTick(125000)`), "12.5万");
   assert.equal(app.run(`yenTick(2500)`), "2,500");
 });
+
+/* ---------- 7. まとめ（分析）「◯か月の推移」の棒グラフ ----------
+   金額の目もりが無く、棒の高さだけでは金額が分からなかったのを直したぶんを守る。 */
+function trendHtml() {
+  const ym = new Date().toISOString().slice(0, 8);
+  const app = bootApp({ state: { settings: {}, tx: [
+    { id: "i", type: "income",  amount: 295535, cat: "salary", date: ym + "01" },
+    { id: "a", type: "expense", amount: 159809, cat: "rent",   date: ym + "02" },
+  ] } });
+  const out = app.run(`view="summary"; sumTab="analysis"; render(); document.getElementById("app").innerHTML`);
+  const i = out.indexOf("か月の推移");
+  return out.slice(i, out.indexOf("先取り", i));
+}
+
+test("推移の棒グラフに金額の目もりが出る（万単位・0から）", () => {
+  const block = trendHtml();
+  assert.match(block, />0</, "0の目もりが無い");
+  assert.match(block, />10万</, "10万の目もりが無い");
+  assert.match(block, />20万</, "20万の目もりが無い");
+});
+
+test("収入と支出の棒が描かれ、月のラベルが全部出る", () => {
+  const block = trendHtml();
+  assert.equal((block.match(/<rect/g) || []).length, 2, "棒の本数が違う（収入1・支出1のはず）");
+  assert.match(block, /fill="#6f9c78"/, "収入の棒が無い");
+  assert.match(block, /fill="#c2694f"/, "支出の棒が無い");
+  for (const m of block.match(/>(\d+月)</g).slice(0, 6)) assert.ok(m, "月ラベルが欠けている");
+  assert.equal((block.match(/>\d+月</g) || []).length >= 6, true, "月ラベルが6つ出ていない");
+});
+
+test("棒の高さは目もりに対して正しい（30万の目もりに対する収入約29.6万）", () => {
+  const block = trendHtml();
+  // 収入の棒（緑）の y と高さを取り出す
+  const m = /<rect x="[0-9.]+" y="([0-9.]+)" width="[0-9.]+" height="([0-9.]+)"[^>]*fill="#6f9c78"/.exec(block);
+  assert.notEqual(m, null, "収入の棒が見つからない");
+  const yTop = Number(m[1]), h = Number(m[2]);
+  // 描画領域：padT=12, plotH=150-12-24=114, 目もり上端 30万
+  const expectH = 114 * (295535 / 300000);
+  assert.ok(Math.abs(h - expectH) < 2, `高さが目もりと合っていない: ${h} (期待 ${expectH.toFixed(1)})`);
+  assert.ok(Math.abs((yTop + h) - (12 + 114)) < 1, "棒が下端（0円の線）から立っていない");
+});
+
+test("推移の目もりも core.js の計算を使っている", () => {
+  const block = appSrc.slice(appSrc.indexOf("function trendChart"), appSrc.indexOf("const CAT_COLOR"));
+  assert.match(block, /Core\.chartScale/, "目もりを画面側で作ってしまっている");
+});
