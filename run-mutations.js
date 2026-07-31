@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v24";', to: 'const CACHE = "kakeibo-v23";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v25";', to: 'const CACHE = "kakeibo-v24";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -415,6 +415,15 @@ const MUTATIONS = [
   { name: "凡例から予測の線を消す", guards: "どの線か分かる凡例",
     file: "index.html", from: '    ${showFore?`<span>${sw(col,"3 3")} 月末までの予測</span>`:""}',
     to: "" },
+  /* ---- 心拍数 ---- */
+  { name: "心拍数の項目を消す", guards: "心拍数を記録できる",
+    file: "core.js", from: '    { k: "pulse",  n: "心拍数", unit: "bpm",  min: 30,  max: 220, decimals: 0 },',
+    to: "" },
+  { name: "心拍数の範囲チェックを緩める", guards: "30〜220bpmだけ受け入れる",
+    file: "core.js", from: '    { k: "pulse",  n: "心拍数", unit: "bpm",  min: 30,  max: 220, decimals: 0 },',
+    to: '    { k: "pulse",  n: "心拍数", unit: "bpm",  min: 0,  max: 999, decimals: 0 },' },
+  { name: "保存で心拍数を読まない", guards: "入力した心拍数が保存される",
+    file: "index.html", from: 'bpLow:g("h-bplow"), pulse:g("h-pulse")', to: 'bpLow:g("h-bplow")' },
 ];
 
 /* テストを1回走らせる。

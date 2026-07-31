@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.0.3";
+  const APP_VERSION = "1.0.4";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -1093,6 +1093,8 @@
     { k: "weight", n: "体重",   unit: "kg",   min: 0,   max: 500, decimals: 1 },
     { k: "bpHigh", n: "血圧(上)", unit: "mmHg", min: 0,   max: 300, decimals: 0 },
     { k: "bpLow",  n: "血圧(下)", unit: "mmHg", min: 0,   max: 300, decimals: 0 },
+    /* 心拍数。範囲はPPG検証ページと同じ 30〜220bpm（整数）。 */
+    { k: "pulse",  n: "心拍数", unit: "bpm",  min: 30,  max: 220, decimals: 0 },
     /* 将来ここに { k:"temp", n:"体温", unit:"℃", min:30, max:45, decimals:1 } などを足せる */
   ];
 

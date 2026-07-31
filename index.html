@@ -1231,6 +1231,7 @@ function renderHealth(){
   const wS=Core.healthSeries(state.health,"weight",from,today);
   const hiS=Core.healthSeries(state.health,"bpHigh",from,today);
   const loS=Core.healthSeries(state.health,"bpLow",from,today);
+  const pS=Core.healthSeries(state.health,"pulse",from,today);
   const rbtn=(k,label)=>`<button data-act="health-range" data-range="${k}" class="rgbtn${healthRange===k?" on":""}">${label}</button>`;
   return `<div class="screen">
     <div class="stitle" style="margin-top:6px">健康記録（${new Date().getMonth()+1}/${new Date().getDate()}）</div>
@@ -1241,6 +1242,7 @@ function renderHealth(){
         <div class="field" style="flex:1"><label>血圧 上（mmHg）</label><input id="h-bphigh" inputmode="numeric" value="${rec.bpHigh!=null?rec.bpHigh:""}" placeholder="例 120"></div>
         <div class="field" style="flex:1"><label>血圧 下（mmHg）</label><input id="h-bplow" inputmode="numeric" value="${rec.bpLow!=null?rec.bpLow:""}" placeholder="例 78"></div>
       </div>
+      <div class="field"><label>心拍数（bpm）</label><input id="h-pulse" inputmode="numeric" value="${rec.pulse!=null?rec.pulse:""}" placeholder="例 65"></div>
       <button class="btn-main" data-act="save-health" style="margin-top:6px">❤️ この内容で記録する</button>
     </div>
     <div class="rangebar" style="display:flex;gap:6px;margin:14px 0 6px">${rbtn("day","日")}${rbtn("week","週")}${rbtn("month","月")}</div>
@@ -1255,12 +1257,16 @@ function renderHealth(){
       <div class="chtitle">血圧 下（最低・mmHg）</div>
       ${lineChart(loS,"#4f8ac2","")}
     </div>
+    <div class="barlist">
+      <div class="chtitle">心拍数の推移（bpm）</div>
+      ${lineChart(pS,"#e2739a","bpm")}
+    </div>
   </div>`;
 }
 function saveHealth(){
   const g=id=>{ const el=$(id); return el?el.value:""; };
-  const entry=Core.normalizeHealthEntry({ weight:g("h-weight"), bpHigh:g("h-bphigh"), bpLow:g("h-bplow") });
-  if(!entry){ toast("数値を入れてね（体重や血圧）"); return; }
+  const entry=Core.normalizeHealthEntry({ weight:g("h-weight"), bpHigh:g("h-bphigh"), bpLow:g("h-bplow"), pulse:g("h-pulse") });
+  if(!entry){ toast("数値を入れてね（体重・血圧・心拍数）"); return; }
   const before=JSON.parse(JSON.stringify(state.health));
   const today=todayISO();
   state.health=Object.assign({}, state.health); state.health[today]=entry;  // 同じ日は上書き

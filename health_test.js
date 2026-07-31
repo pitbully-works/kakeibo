@@ -175,3 +175,52 @@ test("既存の家計簿データを壊していない（健康は別領域）",
   assert.equal(app.run(`state.tx.length`), 1);
   assert.equal(app.run(`state.tx[0].amount`), 290000);
 });
+
+/* ---------- 8. 心拍数（bpm） ----------
+   体重・血圧に加えて心拍数を1日1件で記録し、推移グラフに出す。 */
+test("心拍数は 30〜220 の整数として受け入れる", () => {
+  const e = Core.normalizeHealthEntry({ pulse: "65.7" });
+  assert.equal(e.pulse, 66, "整数に丸められていない");
+  assert.equal(Core.normalizeHealthEntry({ pulse: 29 }), null, "30未満を受け入れている");
+  assert.equal(Core.normalizeHealthEntry({ pulse: 221 }), null, "220超を受け入れている");
+  assert.equal(Core.normalizeHealthEntry({ pulse: 30 }).pulse, 30, "下限30を捨てている");
+  assert.equal(Core.normalizeHealthEntry({ pulse: 220 }).pulse, 220, "上限220を捨てている");
+});
+
+test("心拍数だけでも記録でき、他の項目とも一緒に入る", () => {
+  const app = bootApp({ state: { settings: {}, tx: [], health: {} } });
+  app.run(`view="health"; render(); document.getElementById("h-pulse").value="65"; saveHealth();`);
+  assert.equal(app.run(`state.health[todayISO()].pulse`), 65);
+  app.run(`document.getElementById("h-weight").value="62.5";
+    document.getElementById("h-pulse").value="70"; saveHealth();`);
+  const rec = app.run(`state.health[todayISO()]`);
+  assert.equal(rec.weight, 62.5);
+  assert.equal(rec.pulse, 70);
+});
+
+test("健康ページに心拍数の入力欄と推移グラフがある", () => {
+  assert.match(appSrc, /id="h-pulse"/, "心拍数の入力が無い");
+  assert.match(appSrc, /心拍数の推移（bpm）/, "心拍数のグラフ見出しが無い");
+  assert.match(appSrc, /healthSeries\(state\.health,"pulse"/, "心拍数の推移を作っていない");
+});
+
+test("心拍数のグラフにも目もりと変化量が出る", () => {
+  const d = (n) => { const x = new Date(); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+  const h = {}; h[d(5)] = { pulse: 64 }; h[d(0)] = { pulse: 72 };
+  const app = bootApp({ state: { settings: {}, tx: [], health: h } });
+  const out = app.run(`healthRange="month"; view="health"; render(); document.getElementById("app").innerHTML`);
+  const block = out.slice(out.indexOf("心拍数の推移"));
+  assert.match(block, /＋8bpm/, "変化量（＋8bpm）が出ていない");
+  assert.match(block, /<text /, "目もりの数字が無い");
+});
+
+test("書き出し→読み込みで心拍数も元通り", () => {
+  const orig = { settings: {}, tx: [], health: { "2026-07-25": { weight: 62.5, pulse: 64 }, "2026-07-30": { pulse: 72 } } };
+  const round = Core.normalizeBackup(Core.parseBackupJson(JSON.stringify(Core.buildBackup(orig))));
+  assert.deepEqual(round.health, orig.health, "心拍数が欠けている");
+});
+
+test("心拍数を含む旧データが無くても、これまでの記録はそのまま読める", () => {
+  const r = Core.normalizeHealth({ "2026-07-25": { weight: 63, bpHigh: 118, bpLow: 76 } });
+  assert.deepEqual(r, { "2026-07-25": { weight: 63, bpHigh: 118, bpLow: 76 } });
+});
