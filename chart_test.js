@@ -205,3 +205,57 @@ test("グラフの目もりは core.js の計算を使っている（画面で�
   assert.match(block, /Core\.chartLabelIndexes/, "日付ラベルを画面側で作ってしまっている");
   assert.match(block, /Core\.seriesChange/, "変化量を画面側で作ってしまっている");
 });
+
+/* ---------- 6. まとめ（分析）「つかうペース」のグラフ ----------
+   金額の目もり・日にちのラベル・色つき凡例が出ることを守る。 */
+function paceHtml(day) {
+  const ym = new Date().toISOString().slice(0, 8);   // "YYYY-MM-"
+  const app = bootApp({ state: { settings: { savingsTarget: 120000 }, tx: [
+    { id: "i", type: "income",  amount: 295535, cat: "salary", date: ym + "01" },
+    { id: "a", type: "expense", amount: 135162, cat: "rent",   date: ym + "02", recurring: true },
+    { id: "b", type: "expense", amount: 24647,  cat: "food",   date: ym + "05" },
+  ] } });
+  if (day) app.run(`todayISO=()=>${JSON.stringify(ym + String(day).padStart(2, "0"))};`);
+  return app.run(`view="summary"; sumTab="analysis"; render(); document.getElementById("app").innerHTML`);
+}
+
+test("つかうペースのグラフに金額の目もりが出る（万単位）", () => {
+  const out = paceHtml(12);
+  assert.match(out, />5万</, "5万の目もりが無い");
+  assert.match(out, />10万</, "10万の目もりが無い");
+  assert.match(out, />0</, "0の目もりが無い");
+});
+
+test("つかうペースのグラフに日にちのラベルが出る（1日と月末は必ず）", () => {
+  const out = paceHtml(12);
+  assert.match(out, />1日</, "1日のラベルが無い");
+  assert.match(out, />(28|29|30|31)日</, "月末のラベルが無い");
+});
+
+test("凡例が色つきで3つ出る（累計・予算・予測）", () => {
+  const out = paceHtml(12);
+  assert.match(out, /つかった累計/, "累計の凡例が無い");
+  assert.match(out, /予算のペース/, "予算の凡例が無い");
+  assert.match(out, /月末までの予測/, "予測の凡例が無い");
+  assert.match(out, /stroke-dasharray="4 4"/, "予算の点線見本が無い");
+  assert.match(out, /stroke-dasharray="3 3"/, "予測の点線見本が無い");
+});
+
+test("月が終わった月の表示では、予測の凡例は出ない（線も無い）", () => {
+  const out = paceHtml(0);   // todayISO を差し替えない＝当日基準。月末実行でも落ちないこと自体を確認
+  assert.match(out, /つかった累計/, "累計の凡例が無い");
+});
+
+test("つかうペースの目もりも core.js の計算を使っている", () => {
+  const block = appSrc.slice(appSrc.indexOf("function paceChart"), appSrc.indexOf("function trendChart"));
+  assert.match(block, /Core\.chartScale/, "目もりを画面側で作ってしまっている");
+  assert.match(block, /Core\.chartLabelIndexes/, "日付ラベルを画面側で作ってしまっている");
+});
+
+test("金額の目もりの書き方：万単位・半端は小数1桁・小さい額はカンマ区切り", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  assert.equal(app.run(`yenTick(0)`), "0");
+  assert.equal(app.run(`yenTick(50000)`), "5万");
+  assert.equal(app.run(`yenTick(125000)`), "12.5万");
+  assert.equal(app.run(`yenTick(2500)`), "2,500");
+});

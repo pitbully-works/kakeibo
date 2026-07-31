@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v23";', to: 'const CACHE = "kakeibo-v22";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v24";', to: 'const CACHE = "kakeibo-v23";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -404,6 +404,16 @@ const MUTATIONS = [
   /* ---- バックアップに予定を含める ---- */
   { name: "復元で予定を入れ忘れる", guards: "予定も復元される",
     file: "index.html", from: "    state.plans = restored.plans || {};   // 予定も復元する（入れ忘れると古い予定が残る）",
+    to: "" },
+  /* ---- つかうペースの目もり・凡例 ---- */
+  { name: "ペースの目もりを勝手な式にする", guards: "目もりは core の計算",
+    file: "index.html", from: "  const sc=Core.chartScale([0, last.cum, p.budget>0?p.budget:0, showFore?p.forecast:0], Core.CHART_TICKS);",
+    to: "  const sc={lo:0,hi:Math.max(last.cum,p.budget,p.forecast,1),step:1,ticks:[]};" },
+  { name: "金額を万単位で書かない", guards: "目もりの読みやすさ",
+    file: "index.html", from: '  if(v>=10000){ const m=v/10000; return (Number.isInteger(m)?m:Math.round(m*10)/10)+"万"; }',
+    to: "" },
+  { name: "凡例から予測の線を消す", guards: "どの線か分かる凡例",
+    file: "index.html", from: '    ${showFore?`<span>${sw(col,"3 3")} 月末までの予測</span>`:""}',
     to: "" },
 ];
 

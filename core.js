@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.0.2";
+  const APP_VERSION = "1.0.3";
 
   /* ---------- 分類の定義 ---------- */
 
