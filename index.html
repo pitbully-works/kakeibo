@@ -1003,7 +1003,11 @@ function renderAnalysis(){
 }
 
 /* ---------- カレンダーページ ---------- */
-let calYM=curYM();          // 表示中の年月 "YYYY-MM"
+/* カレンダーが表示する「今月」。
+   curYM() は家計の区切りキー（起点20日なら 8/2 でも「7月」）を返すので、
+   カレンダーには使わない。ここは暦のとおりの月。 */
+function calCurYM(){ return ymOf(todayISO()); }
+let calYM=calCurYM();       // 表示中の年月 "YYYY-MM"
 let calSelected=null;       // 選択中の日付 "YYYY-MM-DD"
 let calSeenDay=todayISO();  // 日またぎ検出用（PWAは開いたまま翌日になることがある）
 /* 日をまたいでいたら、表示中の月を今月へ合わせ直す。
@@ -1013,7 +1017,7 @@ function calSyncToToday(){
   const now=todayISO();
   if(now===calSeenDay) return false;   // 同じ日のうちは、手で選んだ月をそのまま保つ
   calSeenDay=now;
-  calYM=curYM();
+  calYM=calCurYM();
   calSelected=null;
   return true;
 }

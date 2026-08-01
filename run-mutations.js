@@ -71,7 +71,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v27";', to: 'const CACHE = "kakeibo-v26";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v28";', to: 'const CACHE = "kakeibo-v27";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
@@ -438,8 +438,12 @@ const MUTATIONS = [
     file: "index.html", from: "  if(now===calSeenDay) return false;   // 同じ日のうちは、手で選んだ月をそのまま保つ",
     to: "  if(true) return false;" },
   { name: "日またぎで月を今月に戻さない", guards: "翌日は今月に切り替わる",
-    file: "index.html", from: "  calSeenDay=now;\n  calYM=curYM();\n  calSelected=null;\n  return true;",
+    file: "index.html", from: "  calSeenDay=now;\n  calYM=calCurYM();\n  calSelected=null;\n  return true;",
     to: "  calSeenDay=now;\n  return true;" },
+  /* ---- カレンダーは暦の月（家計の区切りキーではない） ---- */
+  { name: "カレンダーの今月を区切りキーにする", guards: "起点20日でも暦の月を表示",
+    file: "index.html", from: "function calCurYM(){ return ymOf(todayISO()); }",
+    to: "function calCurYM(){ return curYM(); }" },
 ];
 
 /* テストを1回走らせる。

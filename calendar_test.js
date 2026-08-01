@@ -181,3 +181,34 @@ test("バックグラウンドから戻ったとき、日をまたいでいた�
   assert.match(block, /calSyncToToday\(\)/, "日またぎ判定を使っていない");
   assert.match(block, /view==="calendar"\|\|view==="home"\|\|view==="summary"/, "描き直す画面を絞っていない（下書きが消える）");
 });
+
+/* ---------- 暦の月 vs 家計の区切り ----------
+   curYM() は家計の区切りキー（起点20日なら 8/2 でも「7月」）を返す。
+   カレンダーがこれを使っていたため、20日はじまり設定では月初〜19日のあいだ
+   ずっと先月が表示され、日またぎ同期が毎日先月へ引き戻していた。 */
+test("起点20日でも、カレンダーは暦どおりの今月を表示する（8/2なら8月）", () => {
+  const app = bootApp({ state: { settings: { cycleStart: 20 }, tx: [] } });
+  app.run(`todayISO=()=>"2026-08-02";`);
+  const out = app.run(`calSeenDay="2026-08-01"; view="calendar"; render();
+    document.getElementById("app").innerHTML`);
+  assert.ok(out.includes("2026年 8月"), "8月になっていない");
+  assert.ok(!out.includes("2026年 7月"), "区切りキーの7月に引き戻されている");
+});
+
+test("起点20日でも、日またぎ後に手動の月へ引き戻されない（同じ日のうちは保持）", () => {
+  const app = bootApp({ state: { settings: { cycleStart: 20 }, tx: [] } });
+  app.run(`todayISO=()=>"2026-08-02"; calSeenDay="2026-08-01"; view="calendar"; render();`);
+  const out = app.run(`calShift(2); render(); document.getElementById("app").innerHTML`);
+  assert.ok(out.includes("2026年 10月"), "10月へ移動できない");
+  const again = app.run(`render(); document.getElementById("app").innerHTML`);
+  assert.ok(again.includes("2026年 10月"), "同じ日のうちに10月から引き戻された");
+});
+
+test("カレンダーの「今月」は暦の月を使い、家計の区切りキーは使っていない", () => {
+  const src = require("node:fs").readFileSync("index.html", "utf8");
+  assert.match(src, /function calCurYM\(\)\{ return ymOf\(todayISO\(\)\); \}/, "暦の月の関数が無い");
+  assert.match(src, /let calYM=calCurYM\(\);/, "初期値が区切りキーに戻っている");
+  const sync = src.slice(src.indexOf("function calSyncToToday"), src.indexOf("function renderCalendar"));
+  assert.match(sync, /calYM=calCurYM\(\);/, "日またぎ同期が区切りキーに戻っている");
+  assert.ok(!sync.includes("calYM=curYM()"), "同期に curYM が残っている");
+});
