@@ -21,6 +21,7 @@ const KNOWN_GLOBALS = new Set([
   "Promise", "Object", "Array", "String", "Number", "Boolean", "Math", "JSON", "Date", "Error",
   "Image", "Blob", "URL", "FileReader", "RegExp", "Set", "Map", "parseInt", "parseFloat",
   "isNaN", "setTimeout", "clearTimeout", "queueMicrotask", "requestAnimationFrame",
+  "setInterval", "clearInterval", "cancelAnimationFrame",
   "encodeURIComponent", "decodeURIComponent", "alert", "confirm", "console",
   "localStorage", "sessionStorage", "document", "window", "navigator", "location",
   "Uint8ClampedArray", "Uint8Array", "Float64Array", "Float32Array", "Int32Array", "Intl", "Symbol", "WeakMap",

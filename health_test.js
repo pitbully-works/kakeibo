@@ -200,8 +200,10 @@ test("心拍数だけでも記録でき、他の項目とも一緒に入る", ()
 
 test("健康ページに心拍数の入力欄と推移グラフがある", () => {
   assert.match(appSrc, /id="h-pulse"/, "心拍数の入力が無い");
-  assert.match(appSrc, /心拍数の推移（bpm）/, "心拍数のグラフ見出しが無い");
+  assert.match(appSrc, /心拍数の推移（手入力・bpm）/, "手入力の心拍数グラフ見出しが無い");
+  assert.match(appSrc, /心拍数の推移（カメラ測定・bpm）/, "カメラ測定の心拍数グラフ見出しが無い");
   assert.match(appSrc, /healthSeries\(state\.health,"pulse"/, "心拍数の推移を作っていない");
+  assert.match(appSrc, /pulseSeries\(state\.pulse/, "カメラ測定の推移を作っていない");
 });
 
 test("心拍数のグラフにも目もりと変化量が出る", () => {

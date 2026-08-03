@@ -35,11 +35,13 @@
 
   #app{max-width:520px;margin:0 auto;min-height:100vh;min-height:100dvh;
     padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 8px)}
-  .screen{padding:16px 16px 8px;animation:fadein .28s cubic-bezier(.2,.7,.3,1)}
+  /* 上に52pxの帯を空けているのは、右上のせっていボタン(.gearbtn)と
+     画面の中身が重ならないようにするため。 */
+  .screen{padding:52px 16px 8px;animation:fadein .28s cubic-bezier(.2,.7,.3,1)}
   @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
   /* top greeting */
-  .greet{padding:10px 4px 2px}
+  .greet{padding:2px 4px 2px}
   .greet .g{font-size:12.5px;color:var(--sub);font-weight:700}
   .greet .date{font-size:27px;font-weight:800;line-height:1.25;letter-spacing:-.01em;margin-top:1px}
   .greet .date .wd{font-size:17px;margin-left:4px;color:var(--sub)}
@@ -392,11 +394,91 @@
   .prowadd{display:flex;gap:8px;align-items:center}
   .prowadd input[type="time"]{flex:0 0 96px;border:1px solid var(--line2);border-radius:10px;padding:9px 8px;background:var(--card);color:var(--ink);font-weight:700}
   .prowadd input#p-text{flex:1;min-width:0;border:1px solid var(--line2);border-radius:10px;padding:9px 10px;background:var(--card);color:var(--ink)}
+  /* 右上のせってい。
+     下のタブに「心拍」を入れるため、せっていはここへ移した。
+     画面の中身と重ならないよう、.screen の上に帯ぶんの余白を取ってある。 */
+  .gearbtn{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);
+    right:max(12px, calc(50% - 248px));width:40px;height:40px;border-radius:50%;
+    background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);
+    font-size:18px;line-height:1;display:grid;place-items:center;color:var(--ink);
+    transform:translateZ(0);z-index:90}
+  .gearbtn:active{transform:scale(.94)}
+  .gearbtn.on{border-color:var(--green-d);background:var(--green-l)}
+
+  /* 心拍数（β版） */
+  .betatag{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.02em;
+    background:var(--gold-l);color:var(--gold-d);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:2px}
+  .pnote{font-size:11px;color:var(--sub);line-height:1.6;margin-top:10px}
+  .chtitle+.pnote{margin-top:6px}
+  .pbig{text-align:center;padding:6px 0 2px}
+  .pbig .pv{font-size:46px;font-weight:800;color:var(--pink);line-height:1.1}
+  .pbig .pv small{font-size:16px;color:var(--sub);margin-left:5px;font-weight:700}
+  .pbig .pt{font-size:12px;color:var(--sub)}
+  .pbig .pq{font-size:13.5px;font-weight:800;margin-top:2px;color:var(--gold-d);letter-spacing:1px}
+  .pbig .pq span{font-size:12.5px;color:var(--ink);letter-spacing:0;margin-left:6px}
+  .pempty{text-align:center;color:var(--sub);font-size:13px;padding:14px 6px}
+
+  /* 測定画面 */
+  .pprev{width:100%;aspect-ratio:16/10;border-radius:13px;overflow:hidden;background:#20120f;
+    display:grid;place-items:center;color:#f0d9cc;font-size:12px}
+  .pprev video{width:100%;height:100%;object-fit:cover;display:block}
+  .phold{text-align:center;font-size:13px;font-weight:800;margin-top:10px;min-height:22px}
+  .pcount{text-align:center;font-size:46px;font-weight:800;color:var(--green-d);line-height:1.1;margin-top:2px}
+  .pcount small{font-size:15px;color:var(--sub);font-weight:700;margin-left:4px}
+  .ptrack{height:10px;background:#eef1ef;border-radius:6px;overflow:hidden;margin:10px 0 4px}
+  .ptrack i{display:block;height:100%;width:0;background:var(--green-d);border-radius:6px;transition:width .25s linear}
+  .ptrack i.prep{background:var(--amber)}
+  .pphase{text-align:center;font-size:12px;color:var(--sub);font-weight:700;min-height:20px}
+  #pulse-wave{width:100%;height:74px;display:block;margin-top:8px;background:#fbfcfb;border-radius:10px;border:1px solid var(--line2)}
+  .plive{display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:var(--sub);margin-top:8px}
+  .plive b{color:var(--pink);font-size:15px}
+  .pguide{display:flex;align-items:center;gap:9px;margin-top:10px;padding:11px 12px;border-radius:13px;
+    background:var(--green-l);border:1px solid #dcebe3}
+  .pguide.warn{background:var(--amber-l);border-color:#f0dcb4}
+  .pguide.bad{background:var(--terra-l);border-color:#f0d0c4}
+  .pguide .gi{font-size:18px;line-height:1;flex:none}
+  .pguide .gt{font-size:13px;font-weight:800;color:var(--green-dd)}
+  .pguide.warn .gt{color:var(--gold-d)} .pguide.bad .gt{color:var(--terra)}
+  .qbar{margin-top:10px}
+  .qbar .ql{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);font-weight:700;margin-bottom:3px}
+  .qbar .qt{height:7px;background:#eef1ef;border-radius:5px;overflow:hidden}
+  .qbar .qt i{display:block;height:100%;width:0;background:var(--green-d);border-radius:5px;transition:width .3s}
+  .qbar .qt i.low{background:var(--amber)} .qbar .qt i.bad{background:var(--terra)}
+
+  /* 結果・お知らせ */
+  .pres{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-top:12px}
+  .pres.ng{background:var(--terra-l);border-color:#f0d0c4}
+  .pres.ng .rt{font-size:13.5px;font-weight:800;color:var(--terra);line-height:1.6}
+  .pres .rd{font-size:11.5px;color:var(--sub);margin-top:6px}
+  .presok{font-size:12px;font-weight:800;color:var(--green-d);text-align:center;margin-top:4px}
+
+  /* 履歴 */
+  .plist{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .pitem{border-bottom:1px solid var(--line2)}
+  .pitem:last-child{border-bottom:0}
+  .pmain{display:flex;align-items:center;gap:11px;width:100%;padding:11px 13px;text-align:left;color:inherit}
+  .pmain .pv{font-size:20px;font-weight:800;color:var(--pink);white-space:nowrap;min-width:74px}
+  .pmain .pv small{font-size:11px;color:var(--sub);margin-left:2px;font-weight:700}
+  .pmain .pmid{flex:1;min-width:0}
+  .pmain .pmid b{display:block;font-size:13px;font-weight:700}
+  .pmain .pmid i{display:block;font-style:normal;font-size:11px;color:var(--gold-d);font-weight:700}
+  .pmain .pg{flex:none;color:var(--sub);font-size:15px}
+  .pdetail{padding:2px 13px 12px;background:#fbfcfb;border-top:1px solid var(--line2)}
+  .pdrow{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--line2)}
+  .pdrow:last-of-type{border-bottom:0}
+  .pdrow .k{color:var(--sub);font-weight:700;flex:none}
+  .pdrow .v{font-weight:800;text-align:right;word-break:break-all}
+  .pdbtns{display:flex;gap:8px;margin-top:10px}
+  .pdbtns button{flex:1;padding:10px;border-radius:11px;font-size:12.5px;font-weight:800;border:1px solid var(--line)}
+  .pdbtns .ed{background:#fff;color:var(--green-d);border-color:#bfe0d3}
+  .pdbtns .de{background:#fff;color:var(--terra);border-color:#f0d0c4}
+  .pedit{padding:10px 13px 13px;background:#fbfcfb;border-top:1px solid var(--line2)}
   .hidden{display:none !important}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<button class="gearbtn" id="gearbtn" data-go="settings" aria-label="せってい">⚙️</button>
 <nav class="nav" id="nav">
   <button data-nav="home" class="on"><span class="ni">🏠</span>ホーム</button>
   <button data-nav="summary"><span class="ni">📊</span>まとめ</button>
@@ -404,7 +486,7 @@
   <button data-nav="diary"><span class="ni">📖</span>日記</button>
   <button data-nav="health"><span class="ni">❤️</span>健康</button>
   <button data-nav="calc"><span class="ni">🧮</span>電卓</button>
-  <button data-nav="settings"><span class="ni">⚙️</span>せってい</button>
+  <button data-nav="pulse"><span class="ni">💓</span>心拍β</button>
 </nav>
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet"></div>
@@ -437,6 +519,7 @@ const defaultState = ()=>({
   health:{},  // { 'YYYY-MM-DD': {weight,bpHigh,bpLow} } 1日1件・上書き
   diary:{},  // { 'YYYY-MM-DD': '本文' } 1日1件・編集可
   plans:{},  // { 'YYYY-MM-DD': [{id,time,text,done}] } 予定。1日に何件でも
+  pulse:[],  // 心拍数（カメラ測定）の履歴。1日に何件でも。数値だけで映像は持たない
   calcHistory:[]  // 関数電卓の履歴 [{expr,value}]。式そのものは持ち歩かない
 });
 let state = load();
@@ -446,7 +529,7 @@ let sumTab = "month";   // まとめ画面のタブ： "month"（今月）／"an
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
     /* normalizeSettings が旧形式の設定を安全な形へ移行する */
-    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans), calcHistory:Core.normalizeSciHistory(s.calcHistory) }; } }
+    return { settings:Core.normalizeSettings(s.settings||{}), tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans), pulse:Core.normalizePulseList(s.pulse), calcHistory:Core.normalizeSciHistory(s.calcHistory) }; } }
   catch(e){ /* ignore */ }
   return defaultState();
 }
@@ -489,7 +572,10 @@ function compute(){
 /* ---------- ルート描画 ---------- */
 const $=id=>document.getElementById(id);
 function render(){
+  /* 心拍の画面から離れるときは、必ずカメラとライトを止める */
+  if(view!=="pulse" && pRunning) pulseStopAll();
   document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on", b.dataset.nav===view));
+  const gear=$("gearbtn"); if(gear&&gear.classList) gear.classList.toggle("on", view==="settings");
   const app=$("app");
   if(view==="home") app.innerHTML=renderHome();
   else if(view==="summary") app.innerHTML = sumTab==="analysis" ? renderAnalysis() : renderSummary();
@@ -497,6 +583,7 @@ function render(){
   else if(view==="diary") app.innerHTML=renderDiary();
   else if(view==="health") app.innerHTML=renderHealth();
   else if(view==="calc") app.innerHTML=renderSci();
+  else if(view==="pulse") app.innerHTML=renderPulse();
   else if(view==="settings") app.innerHTML=renderSettings();
   window.scrollTo(0,0);
 }
@@ -1272,8 +1359,10 @@ function renderHealth(){
   const hiS=Core.healthSeries(state.health,"bpHigh",from,today);
   const loS=Core.healthSeries(state.health,"bpLow",from,today);
   const pS=Core.healthSeries(state.health,"pulse",from,today);
+  const ppS=Core.pulseSeries(state.pulse,from,today);          // カメラ測定（β版）
   const rbtn=(k,label)=>`<button data-act="health-range" data-range="${k}" class="rgbtn${healthRange===k?" on":""}">${label}</button>`;
   return `<div class="screen">
+    ${pulseCard()}
     <div class="stitle" style="margin-top:6px">健康記録（${new Date().getMonth()+1}/${new Date().getDate()}）</div>
     <div class="calcnote" style="margin:0 0 10px">1日1件です。同じ日にもう一度記録すると上書きされます。</div>
     <div class="barlist">
@@ -1298,9 +1387,33 @@ function renderHealth(){
       ${lineChart(loS,"#4f8ac2","")}
     </div>
     <div class="barlist">
-      <div class="chtitle">心拍数の推移（bpm）</div>
+      <div class="chtitle">心拍数の推移（手入力・bpm）</div>
       ${lineChart(pS,"#e2739a","bpm")}
     </div>
+    <div class="barlist">
+      <div class="chtitle">心拍数の推移（カメラ測定・bpm）<span class="betatag">β版</span></div>
+      ${lineChart(ppS,"#c2557a","bpm")}
+      <div class="pnote">1日に何度か測ったときは、その日の平均を1つの点にしています。</div>
+    </div>
+  </div>`;
+}
+
+/* 健康ページの「心拍数」カード。
+   通常はここに 心拍数・日時・測定品質 だけを出す（細かい数字は心拍タブの詳細で見る）。 */
+function pulseCard(){
+  const latest=Core.pulseLatest(state.pulse);
+  const body = latest
+    ? `<div class="pbig">
+         <div class="pv mono">${latest.bpm}<small>bpm</small></div>
+         <div class="pt">${escapeHtml(pulseWhen(latest))}</div>
+         <div class="pq">${pulseQualityText(latest.stars)}</div>
+       </div>`
+    : `<div class="pempty">まだ測定がありません。<br>カメラとライトに指を当てて60秒で測れます。</div>`;
+  return `<div class="barlist" style="margin-top:0">
+    <div class="chtitle">心拍数（カメラ測定）<span class="betatag">β版</span></div>
+    ${body}
+    <button class="btn-main" style="margin-top:10px" data-act="pulse-go">📷 測定を始める</button>
+    <div class="pnote">${escapeHtml(PULSE_DISCLAIMER)}</div>
   </div>`;
 }
 function saveHealth(){
@@ -2073,6 +2186,7 @@ function onBackupPicked(file){
     state.health = restored.health || {};
     state.diary = restored.diary || {};
     state.plans = restored.plans || {};   // 予定も復元する（入れ忘れると古い予定が残る）
+    state.pulse = restored.pulse || [];   // 心拍数の履歴も復元する
     if(!save()){
       state = before;                               // 保存できないなら元のまま
       toast("バックアップを復元できませんでした");
@@ -2084,8 +2198,8 @@ function onBackupPicked(file){
   };
   reader.readAsText(file);
 }
-function downloadText(name,text){
-  const blob=new Blob([text],{type:"application/json"}); const url=URL.createObjectURL(blob);
+function downloadText(name,text,mime){
+  const blob=new Blob([text],{type:mime||(/\.csv$/i.test(name)?"text/csv":"application/json")}); const url=URL.createObjectURL(blob);
   const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click();
   setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },500);
 }
@@ -2104,12 +2218,570 @@ function toast(msg){ const el=$("toast"); el.innerHTML=`<span class="ck">✓</sp
 function escapeHtml(s){ return String(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
 
+/* =========================================================================
+   心拍数（β版）― カメラ(PPG)で測る
+   -------------------------------------------------------------------------
+   ・数の決め方は core.js（PULSE_CFG / analyzePulse / pulseSaveCheck）が唯一の正。
+     ここはカメラの制御と画面表示だけを持つ。
+   ・映像・画像はネットワークへ送らず、端末にも保存しない。
+     1コマごとに平均色などの数値だけを取り出し、フレームはすぐ捨てる。
+   ・測定終了・中止・画面移動のいずれでも、カメラとライトを必ず止める。
+   ・医療機器ではない。健康管理の参考値。
+   ========================================================================= */
+const PULSE_DISCLAIMER = "この測定値は健康管理の参考値です。診断・治療目的では使用できません。";
+
+let pulseStage = "home";   // "home"（結果・履歴）／"measure"（測定中）
+let pulseCond  = "rest";   // 測定状態（安静時／運動後／その他）
+let pulseOpenId = null;    // 詳細を開いている履歴のid
+let pulseEditId = null;    // 編集中の履歴のid
+let pulseResult = null;    // 直前の解析結果
+let pulseCheck  = null;    // 保存してよいかの判定
+let pulseSaved  = false;   // 直前の結果を保存できたか
+let pulseEnv    = {};      // 端末・カメラ・ライトの情報（数値と短い文字だけ）
+let pulseErr    = "";      // 中止・失敗の理由
+
+/* 測定中だけ持つもの。止めたら必ず全部片づける。 */
+let pStream = null, pTrack = null, pRafId = null, pRvfcId = null, pTickId = null, pWake = null;
+let pRunning = false, pSamples = [], pT0 = 0, pWatch = null, pLastSettings = "";
+let pCtx = null, pVideo = null, pLiveBpm = null, pGuideKey = "", pGuideAt = 0, pTickN = 0;
+
+/* 端末の見分けがつく程度の短い文字列（個人が特定される情報は入れない） */
+function pulseDeviceTag(){
+  try{
+    const ua = (navigator && navigator.userAgent) || "";
+    const m = ua.match(/(iPhone|iPad|Android|Macintosh|Windows)/);
+    const os = (ua.match(/OS[ ](\d+[_.]\d+)/) || [])[1] || (ua.match(/Version\/(\d+\.\d+)/) || [])[1] || "";
+    const sc = (typeof screen !== "undefined" && screen) ? (screen.width + "x" + screen.height) : "";
+    return [(m ? m[1] : "unknown"), os.replace("_", "."), sc].filter(Boolean).join(" ");
+  }catch(e){ return "unknown"; }
+}
+/* 保存する日時。端末の時計そのままの読みやすい形（世界標準時に直さない）。 */
+function pulseStamp(d){
+  return `${todayISO(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function pulseWhen(rec){
+  const t = rec.time || "00:00";
+  return `${mdLabel(rec.date)} ${t}`;
+}
+/* ★★★☆☆ と言葉。呼び名は core.js に合わせて「測定品質」で統一する。 */
+function pulseQualityText(stars){
+  return `${Core.pulseStarText(stars)} <span>${escapeHtml(Core.pulseQualityLabel(stars))}</span>`;
+}
+
+/* ---------- 画面 ---------- */
+function renderPulse(){
+  if(pulseStage === "measure") return renderPulseMeasure();
+
+  const list = state.pulse || [];
+  const latest = Core.pulseLatest(list);
+  const cbtn = (k,label)=>`<button data-act="pulse-cond" data-cond="${k}" class="rgbtn${pulseCond===k?" on":""}">${label}</button>`;
+
+  /* 直前の測定の知らせ（成功＝保存済み／不足＝保存しない） */
+  let resHtml = "";
+  if(pulseErr){
+    resHtml = `<div class="pres ng"><div class="rt">${escapeHtml(pulseErr)}</div></div>`;
+  }else if(pulseResult && pulseCheck && !pulseCheck.ok){
+    resHtml = `<div class="pres ng">
+      <div class="rt">${escapeHtml(pulseCheck.msg)}</div>
+      <div class="rd">${escapeHtml(pulseCheck.detail||"")}</div>
+    </div>`;
+  }else if(pulseResult && pulseResult.ok && pulseSaved){
+    resHtml = `<div class="pres">
+      <div class="pbig">
+        <div class="pv mono">${pulseResult.bpm}<small>bpm</small></div>
+        <div class="pq">${pulseQualityText(pulseResult.stars)}</div>
+      </div>
+      <div class="presok">記録しました ✓</div>
+      <button class="btn-main" style="margin-top:10px" data-act="pulse-to-health" data-bpm="${pulseResult.bpm}">❤️ ${pulseResult.bpm}bpm を健康記録に入れる</button>
+      <div class="pnote">健康記録は1日1件です。すでに今日の心拍数が入っていれば上書きされます。<br>${escapeHtml(PULSE_DISCLAIMER)}</div>
+    </div>`;
+  }
+
+  const rows = list.slice().reverse().map(r=>{
+    const open = pulseOpenId===r.id;
+    const editing = pulseEditId===r.id;
+    return `<div class="pitem">
+      <button class="pmain" data-act="pulse-detail" data-id="${escapeAttr(r.id)}">
+        <span class="pv mono">${r.bpm}<small>bpm</small></span>
+        <span class="pmid"><b>${escapeHtml(pulseWhen(r))}</b><i>${pulseQualityText(r.stars)}</i></span>
+        <span class="pg">${open?"⌄":"›"}</span>
+      </button>
+      ${open && !editing ? pulseDetailHtml(r) : ""}
+      ${editing ? pulseEditHtml(r) : ""}
+    </div>`;
+  }).join("");
+
+  return `<div class="screen">
+    <div class="stitle" style="margin-top:6px">心拍数<span class="betatag">β版</span></div>
+    <div class="calcnote" style="margin:0 0 10px">
+      背面カメラのレンズとライトを、指の腹でそっとふさいで60秒。
+      指の中の血の色の変化から脈を数えます。<br>
+      強く押しつけると血が止まって波が出ません。<b>軽く当てて動かさない</b>のがコツです。
+    </div>
+
+    ${resHtml}
+
+    <div class="barlist">
+      <div class="chtitle">測定状態</div>
+      <div class="rangebar" style="display:flex;gap:6px;margin:6px 0 12px">
+        ${cbtn("rest","安静時")}${cbtn("post","運動後")}${cbtn("other","その他")}
+      </div>
+      <button class="btn-main" data-act="pulse-start">📷 測定を始める（60秒）</button>
+      <div class="pnote">${escapeHtml(PULSE_DISCLAIMER)}</div>
+    </div>
+
+    <div class="stitle">これまでの測定（${list.length}件）</div>
+    ${list.length
+      ? `<div class="plist">${rows}</div>
+         <button class="btn-quiet" data-act="pulse-csv">📄 CSVで書き出す</button>`
+      : `<div class="empty"><span class="e">💓</span>まだ測定がありません。<br>上のボタンから測ってみてください。</div>`}
+    <div style="height:8px"></div>
+  </div>`;
+}
+
+/* 詳細（通常は出さない項目） */
+function pulseDetailHtml(r){
+  const row=(k,v)=>`<div class="pdrow"><span class="k">${k}</span><span class="v mono">${escapeHtml(String(v))}</span></div>`;
+  return `<div class="pdetail">
+    ${row("採用窓", `${r.kept==null?"—":r.kept} / ${r.wins==null?"—":r.wins}`)}
+    ${row("ばらつき", `${r.spread==null?"—":r.spread} bpm`)}
+    ${row("fps", r.fps==null?"—":r.fps)}
+    ${row("カメラ解像度", r.cam||"—")}
+    ${row("ライト", r.torch?"ON":"OFF")}
+    ${row("測定状態", Core.PULSE_CONDS[r.cond]||r.cond)}
+    ${row("使用端末", r.device||"—")}
+    ${row("測定日時", r.ts||`${r.date} ${r.time}`)}
+    <button class="btn-main" style="margin-top:10px" data-act="pulse-to-health" data-bpm="${r.bpm}">❤️ ${r.bpm}bpm を健康記録に入れる</button>
+    <div class="pdbtns">
+      <button class="ed" data-act="pulse-edit" data-id="${escapeAttr(r.id)}">✏️ 編集</button>
+      <button class="de" data-act="pulse-del" data-id="${escapeAttr(r.id)}">🗑 削除</button>
+    </div>
+  </div>`;
+}
+
+/* 編集（測り直せない値なので、直せるのは心拍数と測定状態だけ） */
+function pulseEditHtml(r){
+  const opt=(k,label)=>`<option value="${k}"${r.cond===k?" selected":""}>${label}</option>`;
+  return `<div class="pedit">
+    <div class="field"><label>心拍数（bpm）</label>
+      <input id="pe-bpm" inputmode="numeric" value="${r.bpm}"></div>
+    <div class="field"><label>測定状態</label>
+      <select id="pe-cond">${opt("rest","安静時")}${opt("post","運動後")}${opt("other","その他")}</select></div>
+    <div class="fhelp">測定品質・採用窓・fps などは測ったときの記録なので直せません。</div>
+    <button class="btn-main" style="margin-top:8px" data-act="pulse-edit-save" data-id="${escapeAttr(r.id)}">この内容で直す</button>
+    <button class="btn-quiet" data-act="pulse-edit-cancel">やめる</button>
+  </div>`;
+}
+
+/* 測定中の画面。ここは一度描いたら作り直さない（カメラの映像が消えるため）。
+   数字の更新は getElementById で中身だけ書き換える。 */
+function renderPulseMeasure(){
+  return `<div class="screen">
+    <div class="stitle" style="margin-top:6px">測定中<span class="betatag">β版</span></div>
+    <div class="barlist">
+      <div class="pprev" id="pulse-preview">カメラを準備中…</div>
+      <div class="phold" id="pulse-hold">指をカメラとライトに当ててください</div>
+      <div class="pcount mono"><span id="pulse-cnt">${Core.PULSE_CFG.TOTAL_SEC}</span><small>秒</small></div>
+      <div class="ptrack"><i id="pulse-bar" class="prep"></i></div>
+      <div class="pphase" id="pulse-phase">カメラを準備中</div>
+      <canvas id="pulse-wave" width="640" height="150"></canvas>
+      <div class="plive">
+        <span>いまの心拍数 <b id="pulse-bpm">--</b> bpm</span>
+        <span id="pulse-fps">--fps</span>
+      </div>
+      <div class="pguide" id="pulse-guide">
+        <span class="gi" id="pulse-gi">🔎</span><span class="gt" id="pulse-gt">信号を確認しています</span>
+      </div>
+      <div class="qbar">
+        <div class="ql"><span>測定品質</span><span id="pulse-qv">—</span></div>
+        <div class="qt"><i id="pulse-qf"></i></div>
+      </div>
+      <button class="btn-ghost" style="margin-top:14px" data-act="pulse-stop">測定をやめる</button>
+      <div class="pnote">${escapeHtml(PULSE_DISCLAIMER)}</div>
+    </div>
+  </div>`;
+}
+
+/* ---------- 測定 ---------- */
+function pulseSetText(id, text){ const el=$(id); if(el) el.textContent=text; }
+
+function pulseMountVideo(){
+  const box=$("pulse-preview");
+  if(!box || typeof box.appendChild!=="function") return;
+  try{
+    pVideo=document.createElement("video");
+    pVideo.setAttribute("playsinline","");
+    pVideo.setAttribute("muted","");
+    pVideo.muted=true; pVideo.autoplay=true;
+    box.innerHTML="";
+    box.appendChild(pVideo);
+  }catch(e){ pVideo=null; }
+}
+/* 1コマを 16×16 に縮めるための作業用キャンバス（画像は残さない） */
+function pulseCanvasCtx(){
+  if(pCtx) return pCtx;
+  try{
+    const c=document.createElement("canvas");
+    c.width=Core.PULSE_CFG.GRID; c.height=Core.PULSE_CFG.GRID;
+    pCtx=c.getContext("2d",{willReadFrequently:true});
+  }catch(e){ pCtx=null; }
+  return pCtx;
+}
+
+async function pulseStart(){
+  if(pRunning) return;
+  pulseResult=null; pulseCheck=null; pulseSaved=false; pulseErr="";
+  pSamples=[]; pT0=0; pLiveBpm=null; pGuideKey=""; pGuideAt=0; pTickN=0; pLastSettings="";
+  pulseEnv={};
+
+  if(!(typeof navigator!=="undefined" && navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){
+    pulseErr="この端末ではカメラを使えません。https:// で開いているかご確認ください。";
+    pulseStage="home"; render(); return;
+  }
+
+  pulseStage="measure"; render(); pulseMountVideo();
+
+  try{
+    pStream=await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{ facingMode:{ideal:"environment"}, width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30,max:30} },
+    });
+  }catch(e){
+    pulseFail("カメラを開けませんでした（"+((e&&e.name)||"不明")+"）。端末の設定でカメラを許可してください。");
+    return;
+  }
+  pTrack=pStream.getVideoTracks()[0];
+  if(pVideo){
+    try{ pVideo.srcObject=pStream; await pVideo.play(); }catch(e){ /* 再生できなくても解析は続く */ }
+  }
+  pRunning=true;
+  pT0=(typeof performance!=="undefined"&&performance.now)?performance.now():Date.now();
+
+  /* ライトを点ける。点けられない端末・ブラウザでも測定は続ける
+     （保存の可否は 測定品質・採用窓・fps だけで決める）。 */
+  let torch=false;
+  let caps={};
+  try{ caps=pTrack.getCapabilities?(pTrack.getCapabilities()||{}):{}; }catch(e){ caps={}; }
+  try{
+    if("torch" in caps){ await pTrack.applyConstraints({advanced:[{torch:true}]}); torch=true; }
+  }catch(e){ torch=false; }
+  try{
+    /* レンズの自動切り替え対策：ズームを最小（＝広角）に固定してみる */
+    if("zoom" in caps && caps.zoom) await pTrack.applyConstraints({advanced:[{zoom:caps.zoom.min}]});
+  }catch(e){ /* 指定できない端末もある。測定は続ける */ }
+
+  const st=(pTrack.getSettings?pTrack.getSettings():{})||{};
+  pLastSettings=`${st.width||"?"}x${st.height||"?"}@${Math.round(st.frameRate||0)}`;
+  pulseEnv={ cam:`${st.width||"?"}×${st.height||"?"}`, torch:torch, device:pulseDeviceTag() };
+  /* ライトが点かない端末では、明るい場所で測るよう最初に伝える */
+  if(!torch) pulseSetText("pulse-hold","ライトが使えません。明るい場所で、指をレンズに当ててください");
+
+  try{ if(navigator.wakeLock) pWake=await navigator.wakeLock.request("screen"); }catch(e){ /* 無くても測れる */ }
+
+  /* 途中でレンズが切り替わっていないか見張る（解像度やfpsが変われば怪しい） */
+  pWatch=setInterval(()=>{
+    if(!pTrack) return;
+    const s=(pTrack.getSettings?pTrack.getSettings():{})||{};
+    const cur=`${s.width||"?"}x${s.height||"?"}@${Math.round(s.frameRate||0)}`;
+    if(cur!==pLastSettings){ pLastSettings=cur; pulseFail("測定中にカメラのレンズが切り替わりました。もう一度測ってください。"); }
+  },1000);
+
+  pulseLoop();
+  pTickId=setInterval(pulseTick,200);
+}
+
+function pulseLoop(){
+  const v=pVideo;
+  if(!v) return;
+  const onFrame=()=>{
+    if(!pRunning) return;
+    pulseGrab(v);
+    if(v.requestVideoFrameCallback) pRvfcId=v.requestVideoFrameCallback(onFrame);
+    else pRafId=requestAnimationFrame(onFrame);
+  };
+  if(v.requestVideoFrameCallback) pRvfcId=v.requestVideoFrameCallback(onFrame);
+  else if(typeof requestAnimationFrame==="function") pRafId=requestAnimationFrame(onFrame);
+}
+
+/* 1コマぶんの平均色を取る。画像そのものは残さない（読み終えたら捨てる）。 */
+function pulseGrab(v){
+  const ctx=pulseCanvasCtx();
+  if(!ctx || !v.videoWidth) return;
+  const G=Core.PULSE_CFG.GRID;
+  const side=Math.min(v.videoWidth,v.videoHeight);
+  const sx=(v.videoWidth-side)/2, sy=(v.videoHeight-side)/2;
+  ctx.drawImage(v,sx,sy,side,side,0,0,G,G);
+  const d=ctx.getImageData(0,0,G,G).data;
+  const n=G*G;
+  let r=0,g=0,b=0;
+  const lum=new Float32Array(n);
+  for(let i=0,p=0;i<n;i++,p+=4){
+    r+=d[p]; g+=d[p+1]; b+=d[p+2];
+    lum[i]=0.299*d[p]+0.587*d[p+1]+0.114*d[p+2];
+  }
+  r/=n; g/=n; b/=n;
+  let m=0; for(let i=0;i<n;i++) m+=lum[i]; m/=n;
+  let sd=0; for(let i=0;i<n;i++) sd+=(lum[i]-m)*(lum[i]-m);
+  sd=Math.sqrt(sd/n);
+  const now=(typeof performance!=="undefined"&&performance.now)?performance.now():Date.now();
+  pSamples.push({ t:now-pT0, r:r, g:g, b:b, bright:(r+g+b)/3, sd:sd, redRatio:r/((g+b)/2+1) });
+}
+
+/* 200msごとの画面更新と、途中中止の判定 */
+function pulseTick(){
+  if(!pRunning) return;
+  const C=Core.PULSE_CFG;
+  const now=(typeof performance!=="undefined"&&performance.now)?performance.now():Date.now();
+  const el=(now-pT0)/1000;
+  const prep=el<C.PREP_SEC;
+  pTickN++;
+
+  pulseSetText("pulse-cnt", String(Math.max(0,Math.ceil(C.TOTAL_SEC-el))));
+  const bar=$("pulse-bar");
+  if(bar){
+    if(bar.style) bar.style.width=Math.max(0,Math.min(100,(el/C.TOTAL_SEC)*100)).toFixed(1)+"%";
+    if(bar.className!==undefined) bar.className=prep?"prep":"";
+  }
+  pulseSetText("pulse-phase", prep?"信号を確認中":"測定中");
+  pulseSetText("pulse-hold","指を動かさないでください");
+
+  /* 直近3秒の様子 */
+  const recent=pSamples.filter(s=>s.t>(el-3)*1000);
+  const okRate=recent.length ? recent.filter(Core.pulseFrameOk).length/recent.length : 0;
+  const bright=recent.length ? recent.reduce((a,s)=>a+s.bright,0)/recent.length : 0;
+  const fps=recent.length/3;
+  pulseSetText("pulse-fps", fps.toFixed(0)+"fps");
+
+  pulseGuide(recent, bright, okRate, prep);
+  pulseDrawWave(el);
+  if(!prep && pTickN%5===0) pulseLiveBpm();
+
+  /* 準備時間が終わっても指が当たっていないなら、そこで打ち切る */
+  if(!prep && recent.length>10){
+    if(okRate<0.4){
+      pulseFail(bright<C.minBright
+        ? "暗すぎます。ライトが指で隠れているかご確認のうえ、もう一度測ってください。"
+        : "指が外れているようです。レンズを指の腹でふさいで、もう一度測ってください。");
+      return;
+    }
+    if(fps<C.minFps){ pulseFail("コマ数が足りません（"+fps.toFixed(0)+"fps）。ほかのアプリを閉じて、もう一度測ってください。"); return; }
+  }
+  if(el>=C.TOTAL_SEC) pulseFinish();
+}
+
+/* いまの心拍数（表示だけ。確定の計算には使わない） */
+function pulseLiveBpm(){
+  const C=Core.PULSE_CFG;
+  const seg=pSamples.filter(s=>s.t>=C.PREP_SEC*1000);
+  if(seg.length<C.WIN_SEC*10) return;
+  const tail=seg.slice(-Math.round(C.WIN_SEC*40));
+  const sig=Core.pulseResample(tail.map(s=>s.t), tail.map(s=>s.g), C.FS);
+  if(!sig||sig.length<C.FS*4) return;
+  const r=Core.pulseAutocorrBpm(Core.pulseBandpass(sig,C.FS), C.FS);
+  if(r.bpm && r.q>=C.minQuality){ pLiveBpm=Math.round(r.bpm); pulseSetText("pulse-bpm", String(pLiveBpm)); }
+}
+
+/* リアルタイムの案内。表示だけの機能で、計算には一切関与しない。 */
+function pulseGuide(recent, bright, okRate, prep){
+  const C=Core.PULSE_CFG;
+  /* 直近の波の振幅を明るさで割った値（脈の出やすさの目安） */
+  let acdc=0;
+  if(recent.length>=10){
+    const v=recent.map(s=>s.g);
+    const mean=v.reduce((a,b)=>a+b,0)/v.length;
+    if(mean>0){
+      const k=Math.max(3,Math.round(v.length/8));
+      let sq=0;
+      for(let i=0;i<v.length;i++){
+        let s=0,c=0;
+        for(let j=Math.max(0,i-k);j<=Math.min(v.length-1,i+k);j++){ s+=v[j]; c++; }
+        const d=v[i]-s/c; sq+=d*d;
+      }
+      acdc=(Math.sqrt(sq/v.length)*2)/mean;
+    }
+  }
+  const sd=recent.length ? recent.reduce((a,s)=>a+s.sd,0)/recent.length : 0;
+  const red=recent.length ? recent.reduce((a,s)=>a+s.redRatio,0)/recent.length : 0;
+
+  const q=Math.max(0,Math.min(100,(acdc/(C.minAcDc*3))*100));
+  const qf=$("pulse-qf");
+  if(qf){ if(qf.style) qf.style.width=q.toFixed(0)+"%"; if(qf.className!==undefined) qf.className=q>=60?"":(q>=30?"low":"bad"); }
+  pulseSetText("pulse-qv", recent.length<10 ? "—" : q.toFixed(0)+"%");
+
+  let key,icon,text,cls;
+  if(recent.length<8)                    { key="wait";  icon="🔎"; text="信号を確認しています"; cls=""; }
+  else if(bright<20)                     { key="dark";  icon="💡"; text="暗すぎます。ライトが指で隠れているか確かめてください"; cls="bad"; }
+  else if(red<C.minRedRatio||bright>235) { key="off";   icon="👆"; text="レンズを完全に覆ってください"; cls="bad"; }
+  else if(sd>30)                         { key="move";  icon="✋"; text="指が動いています。そのまま止めてください"; cls="warn"; }
+  else if(acdc<0.0008)                   { key="tight"; icon="🤏"; text="指の力を少し緩めてください"; cls="warn"; }
+  else if(okRate<0.8||acdc<C.minAcDc)    { key="weak";  icon="〰️"; text="信号が弱めです。指の位置を少しずらしてください"; cls="warn"; }
+  else                                   { key="good";  icon="✅"; text=prep?"良好です。このまま保ってください":"測定良好"; cls=""; }
+
+  const now=(typeof performance!=="undefined"&&performance.now)?performance.now():Date.now();
+  if(key!==pGuideKey && now-pGuideAt>=1500){
+    pGuideKey=key; pGuideAt=now;
+    pulseSetText("pulse-gi",icon); pulseSetText("pulse-gt",text);
+    const g=$("pulse-guide"); if(g && g.className!==undefined) g.className="pguide "+cls;
+  }else if(key===pGuideKey){
+    pulseSetText("pulse-gt",text);
+  }
+}
+
+function pulseDrawWave(el){
+  const c=$("pulse-wave");
+  if(!c || typeof c.getContext!=="function") return;
+  let g; try{ g=c.getContext("2d"); }catch(e){ return; }
+  if(!g) return;
+  const W=c.width, H=c.height;
+  g.clearRect(0,0,W,H);
+  const seg=pSamples.filter(s=>s.t>(el-6)*1000);
+  if(seg.length<8) return;
+  const vals=seg.map(s=>s.g);
+  const mean=vals.reduce((a,b)=>a+b,0)/vals.length;
+  const dev=vals.map(v=>v-mean);
+  const amp=Math.max(0.4,Math.max(...dev.map(Math.abs)));
+  g.beginPath();
+  dev.forEach((v,i)=>{
+    const x=(i/(dev.length-1))*W;
+    const y=H/2-(v/amp)*(H/2-10);
+    i?g.lineTo(x,y):g.moveTo(x,y);
+  });
+  g.strokeStyle="#e2739a"; g.lineWidth=3; g.lineJoin="round"; g.lineCap="round"; g.stroke();
+}
+
+/* ---------- 停止（測定終了・中止・画面移動のすべてでここを通す） ---------- */
+function pulseStopAll(){
+  pRunning=false;
+  if(pTickId){ clearInterval(pTickId); pTickId=null; }
+  if(pWatch){ clearInterval(pWatch); pWatch=null; }
+  if(pRafId && typeof cancelAnimationFrame==="function"){ cancelAnimationFrame(pRafId); }
+  pRafId=null;
+  if(pRvfcId && pVideo && pVideo.cancelVideoFrameCallback){ try{ pVideo.cancelVideoFrameCallback(pRvfcId); }catch(e){} }
+  pRvfcId=null;
+  if(pTrack){ try{ pTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }   // ライトを必ず消す
+  if(pStream){ try{ pStream.getTracks().forEach(t=>t.stop()); }catch(e){} pStream=null; }
+  pTrack=null;
+  if(pVideo){ try{ pVideo.pause(); pVideo.srcObject=null; }catch(e){} }
+  pVideo=null;
+  if(pWake){ try{ pWake.release(); }catch(e){} pWake=null; }
+}
+
+/* 測定できなかったとき。理由を残して最初の画面へ戻す。 */
+function pulseFail(reason){
+  pulseStopAll();
+  pulseResult=null; pulseCheck=null; pulseSaved=false;
+  pulseErr=reason;
+  pulseStage="home";
+  render();
+}
+
+/* 60秒たった。解析して、条件を満たしていれば記録する。 */
+function pulseFinish(){
+  const raw=pSamples.slice();
+  pulseStopAll();
+  pSamples=[];
+  const r=Core.analyzePulse(raw);
+  const chk=Core.pulseSaveCheck(r);
+  pulseResult=r; pulseCheck=chk; pulseSaved=false; pulseErr="";
+  pulseStage="home";
+  if(chk.ok){
+    if(pulseSaveRecord(r)) pulseSaved=true;
+    else pulseCheck={ ok:false, msg:"記録を保存できませんでした（端末の空き容量をご確認ください）", detail:"" };
+  }
+  render();
+  if(pulseSaved) toast(`心拍数 ${r.bpm}bpm を記録しました ✓`);
+}
+
+/* 保存に失敗したら、記録する前の状態へ完全に戻す。 */
+function pulseSaveRecord(r){
+  const now=new Date();
+  const rec=Core.normalizePulseEntry({
+    id:uid(),
+    date:todayISO(now),
+    time:`${pad(now.getHours())}:${pad(now.getMinutes())}`,
+    ts:pulseStamp(now),
+    bpm:r.bpm, stars:r.stars, quality:r.quality,
+    kept:r.kept, wins:r.wins, spread:r.spread, fps:r.fps,
+    cond:pulseCond,
+    device:pulseEnv.device||pulseDeviceTag(),
+    cam:pulseEnv.cam||"",
+    torch:!!pulseEnv.torch,
+  });
+  if(!rec) return false;
+  const before=state.pulse;
+  state.pulse=Core.normalizePulseList([...(state.pulse||[]), rec]);
+  if(!save()){ state.pulse=before; return false; }
+  return true;
+}
+
+/* ---------- 履歴の編集・削除・書き出し ---------- */
+function pulseDelete(id){
+  const list=state.pulse||[];
+  const r=list.find(x=>x.id===id);
+  if(!r) return;
+  if(typeof confirm==="function" && !confirm(`この測定を削除しますか？\n${pulseWhen(r)}　${r.bpm}bpm`)) return;
+  const before=list;
+  state.pulse=list.filter(x=>x.id!==id);
+  if(!save()){ state.pulse=before; toast("削除できませんでした"); return; }
+  pulseOpenId=null; pulseEditId=null;
+  render(); toast("削除しました ✓");
+}
+
+function pulseEditSave(id){
+  const list=state.pulse||[];
+  const idx=list.findIndex(x=>x.id===id);
+  if(idx<0) return;
+  const bEl=$("pe-bpm"), cEl=$("pe-cond");
+  const merged=Object.assign({}, list[idx], {
+    bpm:bEl?bEl.value:list[idx].bpm,
+    cond:cEl?cEl.value:list[idx].cond,
+  });
+  const rec=Core.normalizePulseEntry(merged);
+  if(!rec){ toast(`心拍数は ${Core.PULSE_SAVE.bpmMin}〜${Core.PULSE_SAVE.bpmMax}bpm で入れてください`); return; }
+  rec.id=id;
+  const before=list;
+  const next=list.slice(); next[idx]=rec;
+  state.pulse=Core.normalizePulseList(next);
+  if(!save()){ state.pulse=before; toast("直せませんでした"); return; }
+  pulseEditId=null;
+  render(); toast("直しました ✓");
+}
+
+/* 測った心拍数を、健康記録（体重・血圧と同じ入れ物）へ入れる。
+   電卓の「答えを家計簿に記録する」と同じ考え方で、
+   測定の履歴とは別に、いつもの健康記録として1日1件で残す。
+   保存に失敗したら、入れる前の状態へ完全に戻す。 */
+function pulseToHealth(bpm){
+  const b=Math.round(Number(bpm));
+  if(!Number.isFinite(b)){ toast("心拍数を読み取れませんでした"); return; }
+  const today=todayISO();
+  const cur=state.health[today]||{};
+  const entry=Core.normalizeHealthEntry(Object.assign({}, cur, {pulse:b}));
+  if(!entry){ toast("健康記録に入れられませんでした"); return; }
+  const before=JSON.parse(JSON.stringify(state.health));
+  state.health=Object.assign({}, state.health); state.health[today]=entry;
+  if(!save()){
+    state.health=before;     // 入れる前へ完全に戻す
+    toast("記録を保存できませんでした");
+    return;
+  }
+  render(); toast(`心拍数 ${b}bpm を健康記録に入れました ✓`);
+}
+
+function pulseExportCsv(){
+  const list=state.pulse||[];
+  if(!list.length){ toast("書き出す測定がありません"); return; }
+  downloadText(`kakeibo-pulse-${todayISO()}.csv`, "\ufeff"+Core.pulseCsv(list));
+  toast("CSVを書き出しました");
+}
+
 /* ---------- イベント（委譲） ---------- */
 /* バックグラウンドから戻ったとき：日をまたいでいたら画面を今日に合わせる。
    日記や設定などの入力途中の下書きを消さないよう、
    自由入力の無い画面（カレンダー・ホーム・まとめ）だけ描き直す。 */
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden) return;
+  /* 画面を離れたら測定を中止する（カメラとライトを点けっぱなしにしない） */
+  if(document.hidden){ if(pRunning){ pulseFail("画面を離れたので測定を中止しました。"); } return; }
   if(!calSyncToToday()) return;
   if(view==="calendar"||view==="home"||view==="summary") render();
 });
@@ -2209,6 +2881,24 @@ function handleAct(a,e){
   if(a==="carry-recurring") return carryRecurring();
   if(a==="sum-tab"){ const el=e&&e.target&&e.target.closest("[data-tab]"); sumTab=(el&&el.dataset.tab)||"month"; render(); return; }
   if(a==="health-range"){ const el=e&&e.target&&e.target.closest("[data-range]"); healthRange=(el&&el.dataset.range)||"month"; render(); return; }
+  /* --- 心拍数（β版） --- */
+  if(a==="pulse-go"){ view="pulse"; pulseStage="home"; render(); return; }
+  if(a==="pulse-start") return pulseStart();
+  if(a==="pulse-stop"){ pulseStopAll(); pulseStage="home"; pulseErr="測定をやめました。"; render(); return; }
+  if(a==="pulse-cond"){ const el=e&&e.target&&e.target.closest("[data-cond]"); pulseCond=(el&&el.dataset.cond)||"rest"; render(); return; }
+  if(a==="pulse-detail"){ const el=e&&e.target&&e.target.closest("[data-id]"); const id=el&&el.dataset.id;
+    pulseOpenId = (pulseOpenId===id) ? null : id; pulseEditId=null; render(); return; }
+  if(a==="pulse-edit"){ const el=e&&e.target&&e.target.closest("[data-id]"); pulseEditId=el&&el.dataset.id; render(); return; }
+  if(a==="pulse-edit-cancel"){ pulseEditId=null; render(); return; }
+  if(a==="pulse-edit-save"){ const el=e&&e.target&&e.target.closest("[data-id]"); if(el) pulseEditSave(el.dataset.id); return; }
+  if(a==="pulse-del"){ const el=e&&e.target&&e.target.closest("[data-id]"); if(el) pulseDelete(el.dataset.id); return; }
+  if(a==="pulse-to-health"){ const el=e&&e.target&&e.target.closest("[data-bpm]"); if(el) pulseToHealth(el.dataset.bpm); return; }
+  if(a==="pulse-csv") return pulseExportCsv();
+}
+/* ページを閉じる・アプリを切り替えるときも、カメラとライトを必ず止める。
+   （テスト用の最小DOMには window.addEventListener が無いので存在を確かめる） */
+if(typeof window!=="undefined" && typeof window.addEventListener==="function"){
+  window.addEventListener("pagehide",()=>{ if(pRunning) pulseStopAll(); });
 }
 $("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
 $("backupInput").addEventListener("change",e=>{ onBackupPicked(e.target.files&&e.target.files[0]); });

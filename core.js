@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.0.7";
+  const APP_VERSION = "1.1.0";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -982,6 +982,7 @@
       health: normalizeHealth(st.health),
       diary: normalizeDiary(st.diary),
       plans: normalizePlans(st.plans),
+      pulse: normalizePulseList(st.pulse),
     };
   }
 
@@ -1078,6 +1079,7 @@
       health: normalizeHealth(data.health),   // 旧バックアップに health が無ければ空
       diary: normalizeDiary(data.diary),       // 旧バックアップに diary が無ければ空
       plans: normalizePlans(data.plans),       // 旧バックアップに plans が無ければ空
+      pulse: normalizePulseList(data.pulse),   // 旧バックアップに pulse が無ければ空
       dropped: dropped,
       version: Number(data.version) || 0,   // 旧形式は version が無い＝0
     };
@@ -1142,6 +1144,432 @@
       })
       .sort()
       .map(function (d) { return { date: d, value: h[d][field] }; });
+  }
+
+  /* =======================================================================
+     カメラ（PPG）で測る心拍数 ― 数の決め方だけ（UI非依存・唯一の正）
+     -----------------------------------------------------------------------
+     カメラの制御・プレビュー・描画は画面側(index.html)。ここは計算だけを持つ。
+     映像も画像も一切扱わない。受け取るのは1コマぶんの平均色などの数値だけで、
+     フレームそのものはどこにも残さない。
+
+     しきい値は試験ページ(kakeibo-ppg-test)で実機検証したものをそのまま移した。
+     市販の血圧計との比較22件で 平均絶対誤差 約1.9bpm／最大3bpm／相関 約0.95。
+     ここの数値を動かすと、その検証がやり直しになる。動かすときは再検証すること。
+
+     ※ 医療機器ではない。健康管理の参考値。
+     ======================================================================= */
+  const PULSE_CFG = {
+    TOTAL_SEC: 60,        // 測定の長さ（秒）
+    PREP_SEC: 10,         // 最初の準備時間。この区間は計算に使わない
+    FS: 30,               // 解析用に並べ直すサンプリング周波数(Hz)
+    WIN_SEC: 10,          // 窓の長さ（秒）
+    HOP_SEC: 5,           // 窓をずらす幅（秒）
+    GRID: 16,             // 1コマを 16×16 に縮めて平均を取る（画面側で使う）
+    /* 探す心拍数の範囲。試験ページで検証したときと同じ 40〜180 のまま。
+       「保存してよい心拍数」は PULSE_SAVE.bpmMin/Max（35〜200）で別に見る。
+       探索範囲を広げると自己相関が半分・2倍の山を拾いやすくなり、
+       検証済みの精度が変わってしまうため、ここは動かさない。 */
+    BPM_MIN: 40, BPM_MAX: 180,
+    minRedRatio: 1.15,    // 赤みの強さ（指が当たっていれば赤が突出する）
+    minBright: 12, maxBright: 246,
+    maxSpatialSd: 34,     // 画面内のばらつき（指で覆えていれば平らになる）
+    minAcDc: 0.0012,      // 脈の振幅／全体の明るさ（信号の強さ）
+    minQuality: 0.45,     // 自己相関のピークの高さ（0〜1）
+    minValidWin: 5,       // 使える窓の最低数（全9窓中）
+    maxSpread: 10,        // 使えた窓どうしの心拍数の開き（bpm）
+    maxBadFrameRate: 0.15,// 準備後に「指が外れた」と判定したコマの割合
+    minFps: 15,
+  };
+
+  /* 全部で何窓とれるか（60秒−準備10秒＝50秒、10秒窓を5秒ずつ → 9窓） */
+  const PULSE_WINDOWS = Math.floor(
+    ((PULSE_CFG.TOTAL_SEC - PULSE_CFG.PREP_SEC) - PULSE_CFG.WIN_SEC) / PULSE_CFG.HOP_SEC
+  ) + 1;
+
+  /* 正式な記録として保存してよい条件。
+     ここを満たさない測定は「参考にもならない」ので、履歴に残さない。
+
+     ライトの点灯は条件に入れない。点けられる端末では点けて信号を強くするが、
+     ライトを制御できない端末・ブラウザでも測定は続け、
+     保存してよいかは「測定品質・採用窓・fps」だけで判断する。
+     ライトのON/OFFは、あとから見返せるよう記録には残す。 */
+  const PULSE_SAVE = {
+    minKept: 6,             // 採用窓 6/9 以上
+    minFps: 25,             // 25fps 以上
+    minStars: 3,            // 測定品質 ★3（普通）以上
+    maxBadFrameRate: 0.15,  // 指が途中で離れていない
+    bpmMin: 35, bpmMax: 200,
+  };
+
+  /* 条件を満たさなかったときに画面へ出す文言（1か所に持つ） */
+  const PULSE_FAIL_MSG = "測定品質が不足しています。安静にして再測定してください。";
+
+  /* 測定品質（★5段階）。呼び名は「測定品質」で統一する。 */
+  const PULSE_QUALITY_LABELS = {
+    5: "とても良好",
+    4: "良好",
+    3: "普通",
+    2: "やや不安定",
+    1: "再測定推奨",
+  };
+  const PULSE_CONDS = { rest: "安静時", post: "運動後", other: "その他" };
+  const PULSE_MAX = 500;          // 履歴の上限件数（古いものから落とす）
+
+  function pulseQualityLabel(stars) {
+    const n = Math.round(Number(stars));
+    return PULSE_QUALITY_LABELS[n] || "—";
+  }
+  /* ★★★☆☆ の形。画面はこれを出すだけでよい。 */
+  function pulseStarText(stars) {
+    const n = Math.max(0, Math.min(5, Math.round(Number(stars)) || 0));
+    let s = "";
+    for (let i = 1; i <= 5; i++) s += (i <= n ? "★" : "☆");
+    return s;
+  }
+
+  /* 測定品質を★1〜5で決める。既にある指標を並べ替えて見せるだけで、
+     心拍数の計算そのものには使わない。 */
+  function pulseStars(kept, wins, spread, quality) {
+    const ratio = wins ? kept / wins : 0;
+    const sp = Number.isFinite(spread) ? spread : 999;
+    const q = Number.isFinite(quality) ? quality : 0;
+    if (ratio >= 0.99 && sp <= 2 && q >= 0.85) return 5;
+    if (ratio >= 0.85 && sp <= 4 && q >= 0.70) return 4;
+    if (ratio >= 0.65 && sp <= 7 && q >= 0.55) return 3;
+    if (ratio >= 0.50 && sp <= 10 && q >= 0.40) return 2;
+    return 1;
+  }
+
+  /* 1コマが「指がちゃんと当たっている」と言えるか。
+     画面側のリアルタイム表示と、あとの解析で同じ判定を使う。 */
+  function pulseFrameOk(s) {
+    if (!s || typeof s !== "object") return false;
+    const rr = Number.isFinite(s.redRatio) ? s.redRatio : (s.r / ((s.g + s.b) / 2 + 1));
+    const br = Number.isFinite(s.bright) ? s.bright : (s.r + s.g + s.b) / 3;
+    const sd = Number(s.sd);
+    if (!Number.isFinite(rr) || !Number.isFinite(br) || !Number.isFinite(sd)) return false;
+    return rr >= PULSE_CFG.minRedRatio && br >= PULSE_CFG.minBright &&
+      br <= PULSE_CFG.maxBright && sd <= PULSE_CFG.maxSpatialSd;
+  }
+
+  /* ---- 信号処理（試験ページと同じ） ---- */
+
+  /* コマの間隔はばらつくので、一定間隔に並べ直す */
+  function pulseResample(ts, vs, fs) {
+    if (!ts || ts.length < 4) return null;
+    const a0 = ts[0], a1 = ts[ts.length - 1];
+    const n = Math.floor(((a1 - a0) / 1000) * fs);
+    if (n < 10) return null;
+    const out = new Float64Array(n);
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      const t = a0 + (i / fs) * 1000;
+      while (j < ts.length - 2 && ts[j + 1] < t) j++;
+      const a = ts[j], b = ts[j + 1];
+      const w = b > a ? (t - a) / (b - a) : 0;
+      out[i] = vs[j] + (vs[j + 1] - vs[j]) * Math.max(0, Math.min(1, w));
+    }
+    return out;
+  }
+
+  /* 決まった時間の枠へ並べ直す。窓の数（9窓）が測定のわずかな長さの差で
+     8窓になったり9窓になったりしないよう、解析はいつも同じ長さで行う。
+     端をはみ出す時刻は、いちばん近い実測値でそのまま埋める（外挿はしない）。 */
+  function pulseResampleFixed(ts, vs, fs, from, to) {
+    if (!ts || ts.length < 4) return null;
+    const n = Math.floor(((to - from) / 1000) * fs);
+    if (n < 10) return null;
+    const out = new Float64Array(n);
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      const t = from + (i / fs) * 1000;
+      while (j < ts.length - 2 && ts[j + 1] < t) j++;
+      const a = ts[j], b = ts[j + 1];
+      const w = b > a ? (t - a) / (b - a) : 0;
+      out[i] = vs[j] + (vs[j + 1] - vs[j]) * Math.max(0, Math.min(1, w));
+    }
+    return out;
+  }
+
+  function pulseMovAvg(x, k) {
+    const n = x.length, out = new Float64Array(n);
+    let sum = 0;
+    const half = Math.floor(k / 2);
+    for (let i = 0; i < n; i++) {
+      sum += x[i];
+      if (i >= k) sum -= x[i - k];
+      out[Math.max(0, Math.min(n - 1, i - half))] = sum / Math.min(k, i + 1);
+    }
+    /* 上のループは末尾 half 個ぶんを書き残す（0のまま残る）。
+       0 のままだと「土台の揺れ」を引いた差が明るさそのものになり、
+       最後の窓だけ巨大な段差になって使えなくなる。
+       残っている分だけの平均で埋める（真ん中の値は上のループのまま変えない）。 */
+    for (let j = Math.max(1, n - half); j < n; j++) {
+      let s = 0, c = 0;
+      for (let i = Math.max(0, j - half + 1); i < n; i++) { s += x[i]; c++; }
+      out[j] = c ? s / c : x[n - 1];
+    }
+    return out;
+  }
+
+  /* 移動平均で「ゆっくりした揺れ」と「細かいノイズ」を落とす（簡易バンドパス） */
+  function pulseBandpass(x, fs) {
+    const slow = pulseMovAvg(x, Math.round(fs * 1.2));
+    const d = new Float64Array(x.length);
+    for (let i = 0; i < x.length; i++) d[i] = x[i] - slow[i];
+    return pulseMovAvg(d, Math.max(2, Math.round(fs * 0.12)));
+  }
+
+  function pulseRms(x) {
+    let s = 0;
+    for (let i = 0; i < x.length; i++) s += x[i] * x[i];
+    return Math.sqrt(s / x.length);
+  }
+
+  /* 自己相関で周期を探す。q は 0〜1（波形の繰り返しの良さ）。 */
+  function pulseAutocorrBpm(x, fs) {
+    const n = x.length;
+    if (n < 8) return { bpm: null, q: 0 };
+    let mean = 0;
+    for (let i = 0; i < n; i++) mean += x[i];
+    mean /= n;
+    const y = new Float64Array(n);
+    for (let i = 0; i < n; i++) y[i] = x[i] - mean;
+
+    const minLag = Math.floor((60 / PULSE_CFG.BPM_MAX) * fs);
+    const maxLag = Math.min(n - 1, Math.ceil((60 / PULSE_CFG.BPM_MIN) * fs));
+    let best = { lag: 0, v: 0 };
+    const corr = new Float64Array(maxLag + 2);
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let s = 0, a = 0, b = 0;
+      for (let i = 0; i + lag < n; i++) { s += y[i] * y[i + lag]; a += y[i] * y[i]; b += y[i + lag] * y[i + lag]; }
+      const v = (a > 0 && b > 0) ? s / Math.sqrt(a * b) : 0;
+      corr[lag] = v;
+      if (v > best.v) best = { lag: lag, v: v };
+    }
+    if (!best.lag || best.v <= 0) return { bpm: null, q: 0 };
+
+    /* 自己相関は 2倍・3倍の周期にも山ができる。いちばん短い（＝速い）山を本命にする。 */
+    for (let lag = minLag + 1; lag < best.lag - 1; lag++) {
+      if (corr[lag] >= best.v * 0.85 && corr[lag] >= corr[lag - 1] && corr[lag] >= corr[lag + 1]) {
+        best = { lag: lag, v: corr[lag] };
+        break;
+      }
+    }
+    /* 山の頂点を放物線で補間して細かい精度を出す */
+    const l = corr[best.lag - 1] || 0, c = corr[best.lag], r = corr[best.lag + 1] || 0;
+    const denom = (l - 2 * c + r);
+    const shift = denom !== 0 ? (0.5 * (l - r)) / denom : 0;
+    const lag = best.lag + Math.max(-1, Math.min(1, shift));
+    const bpm = (60 * fs) / lag;
+    if (bpm < PULSE_CFG.BPM_MIN || bpm > PULSE_CFG.BPM_MAX) return { bpm: null, q: 0 };
+    return { bpm: bpm, q: Math.max(0, Math.min(1, best.v)) };
+  }
+
+  /* 測定1回ぶんの解析（純粋関数）。
+     samples は [{ t:経過ミリ秒, r,g,b, bright, sd, redRatio }, ...]。
+     戻り値は必ず同じ形にして、画面側が分岐しやすいようにする。 */
+  function analyzePulse(samples) {
+    const C = PULSE_CFG;
+    const all = Array.isArray(samples) ? samples : [];
+    const use = all.filter(function (s) { return s && Number.isFinite(s.t) && s.t >= C.PREP_SEC * 1000; });
+    const total = use.length;
+    const bad = use.filter(function (s) { return !pulseFrameOk(s); }).length;
+    const badRate = total ? bad / total : 1;
+    const fps = total / (C.TOTAL_SEC - C.PREP_SEC);
+
+    const ng = function (reason) {
+      return {
+        ok: false, reason: reason, bpm: null, stars: 0, quality: 0,
+        kept: 0, wins: PULSE_WINDOWS, spread: null, fps: fps, badRate: badRate,
+      };
+    };
+
+    if (total < 100) return ng("コマ数が足りませんでした。もう一度測ってください。");
+    if (fps < C.minFps) return ng("コマ数が足りません（" + fps.toFixed(0) + "fps）。ほかのアプリを閉じて、もう一度測ってください。");
+    if (badRate > C.maxBadFrameRate) return ng("測定中に指が外れたか、明るさが変わりました。指を動かさずに、もう一度測ってください。");
+
+    /* 最後まで測れているか（途中で止めた測定を、短いまま解析しない） */
+    if (use[use.length - 1].t < (C.TOTAL_SEC - 1) * 1000) {
+      return ng("測定が最後まで終わりませんでした。もう一度測ってください。");
+    }
+    const sig = pulseResampleFixed(
+      use.map(function (s) { return s.t; }), use.map(function (s) { return s.g; }),
+      C.FS, C.PREP_SEC * 1000, C.TOTAL_SEC * 1000
+    );
+    if (!sig || sig.length < C.FS * C.WIN_SEC) return ng("信号が足りませんでした。もう一度測ってください。");
+
+    /* 明るさに対する脈の振幅（信号の強さ） */
+    const dcMean = use.reduce(function (a, s) { return a + s.g; }, 0) / use.length;
+    const filt = pulseBandpass(sig, C.FS);
+    const acdc = (pulseRms(filt) * 2) / Math.max(1, dcMean);
+    if (acdc < C.minAcDc) return ng("脈の信号が弱すぎます。レンズを指の腹でしっかりふさぎ、明るい場所でもう一度測ってください。");
+
+    /* 10秒の窓を5秒ずつずらして、それぞれの心拍数と波形の良さを出す */
+    const win = C.WIN_SEC * C.FS, hop = C.HOP_SEC * C.FS;
+    const wins = [];
+    for (let s = 0; s + win <= filt.length; s += hop) {
+      const r = pulseAutocorrBpm(filt.slice(s, s + win), C.FS);
+      wins.push({ at: C.PREP_SEC + s / C.FS, bpm: r.bpm, q: r.q });
+    }
+    const good = wins.filter(function (w) { return w.bpm && w.q >= C.minQuality; });
+    if (good.length < C.minValidWin) {
+      return ng("波形が安定しませんでした。指を動かさず、力を抜いて、もう一度測ってください。");
+    }
+    const bpms = good.map(function (w) { return w.bpm; }).sort(function (a, b) { return a - b; });
+    const med = bpms[Math.floor(bpms.length / 2)];
+    /* 中央値から離れすぎた窓は外れ値として捨て、残りで平均する */
+    const kept = bpms.filter(function (b) { return Math.abs(b - med) <= C.maxSpread / 2; });
+    const spread = kept.length ? kept[kept.length - 1] - kept[0] : 999;
+    if (kept.length < C.minValidWin || spread > C.maxSpread) {
+      return ng("測定が不安定でした（値のばらつきが大きい）。落ち着いた姿勢で、もう一度測ってください。");
+    }
+    const bpm = Math.round(kept.reduce(function (a, b) { return a + b; }, 0) / kept.length);
+    const quality = good.reduce(function (a, w) { return a + w.q; }, 0) / good.length;
+    return {
+      ok: true, reason: "",
+      bpm: bpm,
+      stars: pulseStars(kept.length, wins.length, spread, quality),
+      quality: Math.round(quality * 1000) / 1000,
+      kept: kept.length,
+      wins: wins.length,
+      spread: Math.round(spread * 10) / 10,
+      fps: Math.round(fps * 10) / 10,
+      badRate: Math.round(badRate * 1000) / 1000,
+    };
+  }
+
+  /* 正式な記録として保存してよいか。
+     ダメな理由は detail に持ち、画面に出す文言（msg）は常に同じにする。 */
+  function pulseSaveCheck(result) {
+    const S = PULSE_SAVE;
+    const no = function (detail) { return { ok: false, msg: PULSE_FAIL_MSG, detail: detail }; };
+    if (!result || !result.ok) return no((result && result.reason) || "測定できませんでした");
+    if (!Number.isFinite(result.bpm) || result.bpm < S.bpmMin || result.bpm > S.bpmMax) {
+      return no("心拍数が " + S.bpmMin + "〜" + S.bpmMax + "bpm の範囲から外れています");
+    }
+    if (!(result.kept >= S.minKept)) return no("安定した区間が足りません（採用窓 " + result.kept + "/" + result.wins + "・" + S.minKept + "以上が必要）");
+    if (!(result.fps >= S.minFps)) return no("コマ数が足りません（" + Math.round(result.fps) + "fps・" + S.minFps + "以上が必要）");
+    if (!(result.stars >= S.minStars)) return no("測定品質が ★" + result.stars + " でした（★" + S.minStars + "以上が必要）");
+    if (result.badRate > S.maxBadFrameRate) return no("測定中に指が離れました");
+    return { ok: true, msg: "", detail: "" };
+  }
+
+  /* ---- 履歴（保存するのは数値だけ。映像・画像は保存しない） ---- */
+
+  /* "HH:MM" として妥当か（健康記録の時刻表示用） */
+  function pulseTimeString(value) {
+    const v = String(value == null ? "" : value);
+    if (!/^\d{2}:\d{2}$/.test(v)) return null;
+    const h = Number(v.slice(0, 2)), m = Number(v.slice(3, 5));
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return v;
+  }
+
+  /* 測定1件を安全な形に整える。整えられなければ null。 */
+  function normalizePulseEntry(rec) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) return null;
+    const bpm = Math.round(Number(rec.bpm));
+    if (!Number.isFinite(bpm) || bpm < PULSE_SAVE.bpmMin || bpm > PULSE_SAVE.bpmMax) return null;
+    if (!validateDateString(rec.date)) return null;
+
+    const num = function (v, min, max, dec) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return null;
+      if (n < min || n > max) return null;
+      const p = Math.pow(10, dec);
+      return Math.round(n * p) / p;
+    };
+    const str = function (v, max) { return String(v == null ? "" : v).slice(0, max); };
+
+    const stars = num(rec.stars, 1, 5, 0);
+    const out = {
+      id: (typeof rec.id === "string" && rec.id) ? rec.id.slice(0, 64) : null,
+      date: rec.date,
+      time: pulseTimeString(rec.time) || "00:00",
+      ts: str(rec.ts, 40),
+      bpm: bpm,
+      stars: stars === null ? 1 : stars,
+      quality: num(rec.quality, 0, 1, 3),
+      kept: num(rec.kept, 0, 99, 0),
+      wins: num(rec.wins, 0, 99, 0),
+      spread: num(rec.spread, 0, 999, 1),
+      fps: num(rec.fps, 0, 999, 1),
+      cond: PULSE_CONDS[rec.cond] ? rec.cond : "rest",
+      device: str(rec.device, 60),
+      cam: str(rec.cam, 40),
+      torch: rec.torch === true,
+    };
+    return out;
+  }
+
+  /* 履歴ぜんぶを安全な形に整える。新しい順ではなく、日時の古い順に並べる。 */
+  function normalizePulseList(list) {
+    if (!Array.isArray(list)) return [];
+    const seen = {};
+    const out = [];
+    list.forEach(function (raw) {
+      const r = normalizePulseEntry(raw);
+      if (!r) return;
+      if (!r.id || seen[r.id]) r.id = "p" + out.length + "-" + Math.random().toString(36).slice(2, 8);
+      seen[r.id] = true;
+      out.push(r);
+    });
+    out.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return a.time < b.time ? -1 : (a.time > b.time ? 1 : 0);
+    });
+    /* 上限を超えたら、古いものから落とす */
+    return out.length > PULSE_MAX ? out.slice(out.length - PULSE_MAX) : out;
+  }
+
+  /* いちばん新しい測定（無ければ null） */
+  function pulseLatest(list) {
+    const rows = Array.isArray(list) ? list : [];
+    return rows.length ? rows[rows.length - 1] : null;
+  }
+
+  /* グラフ用：日ごとの平均を日付順で返す。
+     1日に何回でも測れるので、同じ日は平均して1点にする（線が縦に往復しないため）。 */
+  function pulseSeries(list, from, to) {
+    const rows = Array.isArray(list) ? list : [];
+    const lo = from && validateDateString(from) ? from : null;
+    const hi = to && validateDateString(to) ? to : null;
+    const byDate = {};
+    rows.forEach(function (r) {
+      if (!r || !Number.isFinite(r.bpm)) return;
+      if (lo && r.date < lo) return;
+      if (hi && r.date > hi) return;
+      const b = byDate[r.date] || (byDate[r.date] = { sum: 0, n: 0 });
+      b.sum += r.bpm; b.n++;
+    });
+    return Object.keys(byDate).sort().map(function (d) {
+      return { date: d, value: Math.round(byDate[d].sum / byDate[d].n) };
+    });
+  }
+
+  /* CSV。保存している項目をすべて出す（依頼どおり）。 */
+  function pulseCsv(list) {
+    const rows = Array.isArray(list) ? list : [];
+    const head = ["日時", "心拍数(bpm)", "測定品質(★)", "測定品質", "採用窓", "ばらつき(bpm)", "fps", "測定状態", "使用端末", "カメラ解像度", "ライト"];
+    const q = function (v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; };
+    const body = rows.map(function (r) {
+      return [
+        r.ts || (r.date + " " + r.time),
+        r.bpm,
+        r.stars,
+        pulseQualityLabel(r.stars),
+        (r.kept == null ? "" : r.kept) + "/" + (r.wins == null ? "" : r.wins),
+        r.spread == null ? "" : r.spread,
+        r.fps == null ? "" : r.fps,
+        PULSE_CONDS[r.cond] || r.cond,
+        r.device,
+        r.cam,
+        r.torch ? "ON" : "OFF",
+      ].map(q).join(",");
+    });
+    return [head.map(q).join(","), ...body].join("\n");
   }
 
   /* =======================================================================
@@ -2411,6 +2839,29 @@
     normalizeHealthEntry: normalizeHealthEntry,
     normalizeHealth: normalizeHealth,
     healthSeries: healthSeries,
+    PULSE_CFG: PULSE_CFG,
+    PULSE_SAVE: PULSE_SAVE,
+    PULSE_WINDOWS: PULSE_WINDOWS,
+    PULSE_FAIL_MSG: PULSE_FAIL_MSG,
+    PULSE_QUALITY_LABELS: PULSE_QUALITY_LABELS,
+    PULSE_CONDS: PULSE_CONDS,
+    PULSE_MAX: PULSE_MAX,
+    pulseQualityLabel: pulseQualityLabel,
+    pulseStarText: pulseStarText,
+    pulseStars: pulseStars,
+    pulseFrameOk: pulseFrameOk,
+    pulseResample: pulseResample,
+    pulseResampleFixed: pulseResampleFixed,
+    pulseBandpass: pulseBandpass,
+    pulseAutocorrBpm: pulseAutocorrBpm,
+    analyzePulse: analyzePulse,
+    pulseSaveCheck: pulseSaveCheck,
+    normalizePulseEntry: normalizePulseEntry,
+    normalizePulseList: normalizePulseList,
+    pulseLatest: pulseLatest,
+    pulseSeries: pulseSeries,
+    pulseCsv: pulseCsv,
+    pulseTimeString: pulseTimeString,
     chartNiceStep: chartNiceStep,
     chartScale: chartScale,
     chartLabelIndexes: chartLabelIndexes,
