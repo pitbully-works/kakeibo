@@ -156,10 +156,17 @@
     border-top:1px solid var(--line);display:flex;
     transform:translateZ(0);-webkit-backface-visibility:hidden;backface-visibility:hidden;will-change:transform;
     z-index:100}
+  /* いま見ている画面が、ひと目で分かるようにする。
+     絵文字は色を変えられないので、丸い色つきの台を敷いて、文字を濃く太くし、
+     絵文字を少しだけ大きくする。3つ重ねているのは、色の見分けがつきにくい人にも
+     「大きさ」と「太さ」で伝わるようにするため。 */
   .nav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-    color:var(--sub);font-size:9.5px;font-weight:700;letter-spacing:-.02em;padding:0 1px}
-  .nav button .ni{font-size:19px;line-height:1}
-  .nav button.on{color:var(--green-d)}
+    color:var(--sub);font-size:9.5px;font-weight:700;letter-spacing:-.02em;padding:0 1px;
+    margin:5px 2px;border-radius:13px;transition:background .18s,color .18s}
+  .nav button .ni{font-size:19px;line-height:1;transition:transform .18s}
+  .nav button.on{color:var(--green-dd);font-weight:800;background:var(--green-l);
+    box-shadow:inset 0 0 0 1px #d5e7dd}
+  .nav button.on .ni{transform:scale(1.14)}
   .rgbtn{flex:1;padding:7px 0;border:1px solid var(--line2);border-radius:9px;background:#fff;color:var(--sub);font-weight:700;font-size:12.5px}
   .rgbtn.on{background:var(--green-d);color:#fff;border-color:var(--green-d)}
   .cal-head{display:flex;align-items:center;justify-content:space-between;margin:6px 0 10px}
@@ -571,10 +578,20 @@ function compute(){
 
 /* ---------- ルート描画 ---------- */
 const $=id=>document.getElementById(id);
+/* 下のタブに「いま見ている画面」の印をつける。
+   見た目（.on）だけでなく aria-current も付けて、読み上げでも分かるようにする。 */
+function navMark(btn, on){
+  if(!btn) return;
+  if(btn.classList) btn.classList.toggle("on", on);
+  if(typeof btn.setAttribute!=="function") return;
+  if(on) btn.setAttribute("aria-current","page");
+  else if(typeof btn.removeAttribute==="function") btn.removeAttribute("aria-current");
+}
+
 function render(){
   /* 心拍の画面から離れるときは、必ずカメラとライトを止める */
   if(view!=="pulse" && pRunning) pulseStopAll();
-  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on", b.dataset.nav===view));
+  document.querySelectorAll("#nav button").forEach(b=>navMark(b, b.dataset.nav===view));
   const gear=$("gearbtn"); if(gear&&gear.classList) gear.classList.toggle("on", view==="settings");
   const app=$("app");
   if(view==="home") app.innerHTML=renderHome();

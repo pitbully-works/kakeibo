@@ -107,3 +107,48 @@ test("スクロールを妨げない（passiveで受ける）", () => {
   assert.equal((head.match(/\{passive:true\}/g) || []).length, 3, "passiveで受けていない指の操作がある");
   assert.equal(/preventDefault/.test(head), false, "既定の動きを止めている");
 });
+
+/* ---------- 5. いま見ている画面の印 ---------- */
+test("いま見ている画面のタブに、色つきの台と印をつける", () => {
+  const marks = [];
+  const btn = (nav) => ({
+    dataset: { nav },
+    classList: { toggle: (c, on) => marks.push([nav, c, on]) },
+    attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; },
+    removeAttribute(k) { delete this.attrs[k]; },
+  });
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  const here = btn("home"), other = btn("calc");
+  app.run(`(b)=>navMark(b,true)`)(here);
+  app.run(`(b)=>navMark(b,false)`)(other);
+  assert.equal(here.attrs["aria-current"], "page", "いる画面に印がついていない");
+  assert.equal("aria-current" in other.attrs, false, "いない画面に印が残っている");
+  assert.deepEqual(marks, [["home", "on", true], ["calc", "on", false]], "見た目の切り替えがされていない");
+});
+
+test("印を付け直しても、前の画面の印は残らない", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  const b = { classList: { toggle() {} }, attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } };
+  app.run(`(b)=>navMark(b,true)`)(b);
+  app.run(`(b)=>navMark(b,false)`)(b);
+  assert.equal("aria-current" in b.attrs, false, "印が消えていない");
+});
+
+test("印が無い作りの部品を渡しても落ちない", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  assert.doesNotThrow(() => app.run(`(b)=>navMark(b,true)`)({ classList: { toggle() {} } }));
+  assert.doesNotThrow(() => app.run(`(b)=>navMark(b,true)`)(null));
+});
+
+test("いる画面のタブは、色・太さ・大きさの3つで見分けられる", () => {
+  const css = html.slice(html.indexOf(".nav button{"), html.indexOf(".rgbtn{"));
+  assert.match(css, /\.nav button\.on\{[^}]*background:var\(--green-l\)/, "色つきの台が無い");
+  assert.match(css, /\.nav button\.on\{[^}]*font-weight:800/, "文字が太くなっていない");
+  assert.match(css, /\.nav button\.on \.ni\{transform:scale\(/, "絵文字が大きくなっていない");
+});
+
+test("画面を切り替えたら、タブの印も付け替える", () => {
+  assert.match(appSrc, /forEach\(b=>navMark\(b, b\.dataset\.nav===view\)\)/, "描き直しで印を付け替えていない");
+});

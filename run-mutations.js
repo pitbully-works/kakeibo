@@ -23,6 +23,18 @@ const dir = __dirname;
 
 /* 変異の一覧。それぞれ「守りたい振る舞い」に1対1で対応させる。 */
 const MUTATIONS = [
+  /* ---- いま見ている画面の印（下のタブ） ---- */
+  { name: "いる画面の台の色を消す", guards: "いま見ている画面が色つきの台で分かる",
+    file: "index.html", from: "  .nav button.on{color:var(--green-dd);font-weight:800;background:var(--green-l);",
+    to: "  .nav button.on{color:var(--green-dd);font-weight:800;" },
+  { name: "いる画面の絵文字を大きくしない", guards: "色だけに頼らず大きさでも分かる",
+    file: "index.html", from: "  .nav button.on .ni{transform:scale(1.14)}", to: "" },
+  { name: "いない画面の印を消し忘れる", guards: "前にいた画面の印を残さない",
+    file: "index.html", from: "  else if(typeof btn.removeAttribute===\"function\") btn.removeAttribute(\"aria-current\");", to: "" },
+  { name: "画面を切り替えても印を付け替えない", guards: "描き直しでタブの印を付け替える",
+    file: "index.html", from: '  document.querySelectorAll("#nav button").forEach(b=>navMark(b, b.dataset.nav===view));',
+    to: "" },
+
   /* ---- 横スワイプでの画面切り替え ---- */
   { name: "端でも回り込ませる", guards: "ホーム・心拍の端では行き止まりにする",
     file: "core.js", from: "    if (next < 0 || next >= SWIPE_VIEWS.length) return null;   // 端では動かさない",
@@ -132,7 +144,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v30";', to: 'const CACHE = "kakeibo-v29";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v31";', to: 'const CACHE = "kakeibo-v30";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
