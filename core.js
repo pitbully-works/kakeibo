@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.1.0";
+  const APP_VERSION = "1.2.0";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -1144,6 +1144,24 @@
       })
       .sort()
       .map(function (d) { return { date: d, value: h[d][field] }; });
+  }
+
+  /* =======================================================================
+     横スワイプでの画面切り替え ― どこへ移るかを決めるだけ
+     -----------------------------------------------------------------------
+     下のタブと同じ並び。指を動かした向き（dx）から、次の画面を返す。
+     端（ホーム／心拍）では行き止まりにして、ぐるっと回り込ませない。
+     せっていは右上のボタン専用なので、この並びには入れない。
+     ======================================================================= */
+  const SWIPE_VIEWS = ["home", "summary", "calendar", "diary", "health", "calc", "pulse"];
+
+  function swipeNextView(view, dx) {
+    const i = SWIPE_VIEWS.indexOf(view);
+    if (i < 0) return null;                     // せってい画面などは対象外
+    if (!Number.isFinite(Number(dx)) || Number(dx) === 0) return null;
+    const next = i + (Number(dx) < 0 ? 1 : -1); // 左へ払えば次、右へ払えば前
+    if (next < 0 || next >= SWIPE_VIEWS.length) return null;   // 端では動かさない
+    return SWIPE_VIEWS[next];
   }
 
   /* =======================================================================
@@ -2839,6 +2857,8 @@
     normalizeHealthEntry: normalizeHealthEntry,
     normalizeHealth: normalizeHealth,
     healthSeries: healthSeries,
+    SWIPE_VIEWS: SWIPE_VIEWS,
+    swipeNextView: swipeNextView,
     PULSE_CFG: PULSE_CFG,
     PULSE_SAVE: PULSE_SAVE,
     PULSE_WINDOWS: PULSE_WINDOWS,

@@ -23,6 +23,31 @@ const dir = __dirname;
 
 /* 変異の一覧。それぞれ「守りたい振る舞い」に1対1で対応させる。 */
 const MUTATIONS = [
+  /* ---- 横スワイプでの画面切り替え ---- */
+  { name: "端でも回り込ませる", guards: "ホーム・心拍の端では行き止まりにする",
+    file: "core.js", from: "    if (next < 0 || next >= SWIPE_VIEWS.length) return null;   // 端では動かさない",
+    to: "    if (false) return null;   // 端では動かさない" },
+  { name: "払う向きを逆にする", guards: "左へ払えば次、右へ払えば前",
+    file: "core.js", from: "    const next = i + (Number(dx) < 0 ? 1 : -1); // 左へ払えば次、右へ払えば前",
+    to: "    const next = i + (Number(dx) < 0 ? -1 : 1); // 左へ払えば次、右へ払えば前" },
+  { name: "せっていもスワイプの並びに入れる", guards: "せっていは右上のボタン専用",
+    file: "core.js", from: '  const SWIPE_VIEWS = ["home", "summary", "calendar", "diary", "health", "calc", "pulse"];',
+    to: '  const SWIPE_VIEWS = ["home", "summary", "calendar", "diary", "health", "calc", "pulse", "settings"];' },
+  { name: "縦スクロールでも切り替える", guards: "縦の動きと取り違えない",
+    file: "index.html", from: "  if(Math.abs(dx) < Math.abs(dy) * 1.5) return null;   // 縦スクロールと取り違えない",
+    to: "  if(false) return null;   // 縦スクロールと取り違えない" },
+  { name: "ほんの少し触れただけで切り替える", guards: "60px以上動かしたときだけ切り替える",
+    file: "index.html", from: "const SWIPE_MIN_X = 60;", to: "const SWIPE_MIN_X = 2;" },
+  { name: "ゆっくりなぞっても切り替える", guards: "ゆっくりした動きでは切り替えない",
+    file: "index.html", from: "  if(ms > SWIPE_MAX_MS) return null;", to: "  if(false) return null;" },
+  { name: "シートを開いていても切り替える", guards: "記録シート中は切り替えない",
+    file: "index.html", from: "  if(sheetState) return true;                       // 記録シートを開いている", to: "" },
+  { name: "測定中でも切り替える", guards: "心拍の測定中は切り替えない",
+    file: "index.html", from: "  if(pRunning) return true;                         // 心拍を測っている最中", to: "" },
+  { name: "つまむ操作でも切り替える", guards: "2本指では切り替えない",
+    file: "index.html", from: "  if(!e.touches || e.touches.length!==1) return;      // つまむ操作は対象外",
+    to: "  if(!e.touches) return;      // つまむ操作は対象外" },
+
   /* ---- 心拍数（カメラ/PPG・β版） ---- */
   { name: "採用窓の下限を外す", guards: "採用窓6/9未満は保存しない",
     file: "core.js", from: "    minKept: 6,             // 採用窓 6/9 以上", to: "    minKept: 0,             // 採用窓 6/9 以上" },
@@ -107,7 +132,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v29";', to: 'const CACHE = "kakeibo-v28";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v30";', to: 'const CACHE = "kakeibo-v29";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",

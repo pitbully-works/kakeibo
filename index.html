@@ -2775,6 +2775,58 @@ function pulseExportCsv(){
   toast("CSVを書き出しました");
 }
 
+/* =========================================================================
+   横スワイプで画面を切り替える
+   -------------------------------------------------------------------------
+   下のタブと同じ並びを、指で左右に払って移動できるようにする。
+   ・縦スクロールと取り違えないよう、横の動きが縦よりはっきり大きいときだけ
+   ・記録シートを開いている間と、心拍を測っている間は切り替えない
+   ・入力欄や波形の上から始めた指の動きは、切り替えに使わない
+   どこへ移るかは core.js の swipeNextView() が決める。
+   ========================================================================= */
+const SWIPE_MIN_X = 60;    // これ以上、横に動いたら切り替える（px）
+const SWIPE_MAX_MS = 700;  // ゆっくりした動きは、なぞり操作とみなして切り替えない
+let swipeX = 0, swipeY = 0, swipeAt = 0, swipeLive = false;
+
+/* 切り替えてよい場面か。だめな理由があるうちは触らない。 */
+function swipeBlocked(el){
+  if(sheetState) return true;                       // 記録シートを開いている
+  if(pRunning) return true;                         // 心拍を測っている最中
+  if(el && typeof el.closest==="function" && el.closest("input,textarea,select,canvas,.sheet,#scrim")) return true;
+  return false;
+}
+
+/* 指の動きから、移る先を決める（移らないなら null）。 */
+function swipeDecide(dx, dy, ms, fromView){
+  if(ms > SWIPE_MAX_MS) return null;
+  if(Math.abs(dx) < SWIPE_MIN_X) return null;
+  if(Math.abs(dx) < Math.abs(dy) * 1.5) return null;   // 縦スクロールと取り違えない
+  return Core.swipeNextView(fromView, dx);
+}
+
+document.addEventListener("touchstart",(e)=>{
+  swipeLive=false;
+  if(!e.touches || e.touches.length!==1) return;      // つまむ操作は対象外
+  if(swipeBlocked(e.target)) return;
+  swipeX=e.touches[0].clientX; swipeY=e.touches[0].clientY;
+  swipeAt=Date.now(); swipeLive=true;
+},{passive:true});
+
+document.addEventListener("touchmove",(e)=>{
+  if(swipeLive && e.touches && e.touches.length>1) swipeLive=false;   // 途中で指が増えたらやめる
+},{passive:true});
+
+document.addEventListener("touchend",(e)=>{
+  if(!swipeLive) return;
+  swipeLive=false;
+  const t = e.changedTouches && e.changedTouches[0];
+  if(!t) return;
+  const next = swipeDecide(t.clientX-swipeX, t.clientY-swipeY, Date.now()-swipeAt, view);
+  if(!next) return;
+  showSheet(false);
+  view=next; render();
+},{passive:true});
+
 /* ---------- イベント（委譲） ---------- */
 /* バックグラウンドから戻ったとき：日をまたいでいたら画面を今日に合わせる。
    日記や設定などの入力途中の下書きを消さないよう、
