@@ -520,3 +520,54 @@ test("映像・画像を保存も送信もしない", () => {
   const saved = Core.normalizePulseEntry(rec({ photo: "data:image/png;base64,AAAA" }));
   assert.equal("photo" in saved, false, "画像が記録に混ざっている");
 });
+
+/* =========================================================================
+   カメラの許可（iPhoneのホーム画面アプリで確認が出ない問題）
+   -------------------------------------------------------------------------
+   ホーム画面に追加したアプリでは「ボタンを押した直後」でないと許可の確認が
+   出ず、そのまま NotAllowedError になる。画面を描き直してから頼むと間に合わ
+   ないので、カメラを頼むのが先であることを固定する。
+   ========================================================================= */
+test("カメラの許可は、画面を描き直すより先に求める", async () => {
+  const app = bootApp({});
+  app.run(`
+    __order = [];
+    render = function(){ __order.push("render"); };
+    navigator.mediaDevices = { getUserMedia: function(){
+      __order.push("camera");
+      const e = new Error("denied"); e.name = "NotAllowedError";
+      return Promise.reject(e);
+    } };
+  `);
+  await app.run(`pulseStart()`);
+  assert.equal(app.run(`__order[0]`), "camera");
+});
+
+test("ホーム画面のアプリで断られたら、Safariの設定まで案内する", async () => {
+  const app = bootApp({});
+  app.run(`
+    render = function(){};
+    navigator.standalone = true;
+    navigator.mediaDevices = { getUserMedia: function(){
+      const e = new Error("denied"); e.name = "NotAllowedError";
+      return Promise.reject(e);
+    } };
+  `);
+  await app.run(`pulseStart()`);
+  const msg = app.run(`pulseErr`);
+  assert.match(msg, /開くたびに確認/);
+  assert.match(msg, /Safari/);
+});
+
+test("ほかのアプリがカメラを使っているときは、その旨を伝える", async () => {
+  const app = bootApp({});
+  app.run(`
+    render = function(){};
+    navigator.mediaDevices = { getUserMedia: function(){
+      const e = new Error("busy"); e.name = "NotReadableError";
+      return Promise.reject(e);
+    } };
+  `);
+  await app.run(`pulseStart()`);
+  assert.match(app.run(`pulseErr`), /ほかのアプリ/);
+});

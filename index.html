@@ -2445,6 +2445,22 @@ function pulseCanvasCtx(){
   return pCtx;
 }
 
+/* カメラが開けなかった理由を、直し方まで含めた言葉にする。 */
+function pulseCamError(e){
+  const name=(e&&e.name)||"不明";
+  if(name==="NotAllowedError"){
+    if(isStandalonePWA()){
+      return "カメラの使用が許可されませんでした。ホーム画面のアプリは開くたびに確認が出ます。"
+        +"確認が出てこないときは、設定 → アプリ → Safari → カメラ を「確認」にしてから、もう一度お試しください。";
+    }
+    return "カメラの使用が許可されませんでした。アドレスバーの「ぁあ」→ Webサイトの設定 → カメラ を「許可」にしてください。";
+  }
+  if(name==="NotFoundError") return "カメラが見つかりませんでした。";
+  if(name==="NotReadableError") return "ほかのアプリがカメラを使っています。カメラアプリなどを閉じてから、もう一度お試しください。";
+  if(name==="OverconstrainedError") return "このカメラでは指定した設定で測れませんでした。もう一度お試しください。";
+  return "カメラを開けませんでした（"+name+"）。もう一度お試しください。";
+}
+
 async function pulseStart(){
   if(pRunning) return;
   pulseResult=null; pulseCheck=null; pulseSaved=false; pulseErr="";
@@ -2456,17 +2472,21 @@ async function pulseStart(){
     pulseStage="home"; render(); return;
   }
 
-  pulseStage="measure"; render(); pulseMountVideo();
-
+  /* ここが肝心。カメラを頼む前に画面を描き直さない。
+     iPhoneのホーム画面アプリ（PWA）では「ボタンを押した直後」でないと
+     許可の確認が出ず、そのまま NotAllowedError になってしまう。
+     そのため getUserMedia を最初に呼び、映像が取れてから測定画面へ移る。 */
   try{
     pStream=await navigator.mediaDevices.getUserMedia({
       audio:false,
       video:{ facingMode:{ideal:"environment"}, width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30,max:30} },
     });
   }catch(e){
-    pulseFail("カメラを開けませんでした（"+((e&&e.name)||"不明")+"）。端末の設定でカメラを許可してください。");
+    pulseFail(pulseCamError(e));
     return;
   }
+
+  pulseStage="measure"; render(); pulseMountVideo();
   pTrack=pStream.getVideoTracks()[0];
   if(pVideo){
     try{ pVideo.srcObject=pStream; await pVideo.play(); }catch(e){ /* 再生できなくても解析は続く */ }
