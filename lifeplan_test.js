@@ -137,7 +137,10 @@ test("ライフプランの「バックアップの読み込み」が受け取�
   const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: SAMPLE }));
   /* 向こうは parsed.inputs があるかを見て取り込む */
   assert.ok(out.inputs, "inputs が無いと読み込んでもらえない");
-  assert.deepEqual(Object.keys(out.inputs).sort(), ["banks", "gold", "loans", "privatePensionPlans"]);
+  assert.deepEqual(Object.keys(out.inputs).sort(), [
+    "banks", "gold", "growthAllocation", "growthSchedule", "loans",
+    "privatePensionPlans", "tsumitateAllocation", "tsumitateSchedule",
+  ]);
 });
 
 test("キー名は、ライフプラン側とまったく同じにする（言い換えない）", () => {
@@ -232,7 +235,9 @@ test("せっていには、合計と内訳ボタンだけを出す", () => {
   assert.match(out, /¥4,992,000/, "金の評価額が出ていない");
   assert.match(out, /¥1,102,770/, "銀行の合計が出ていない");
   assert.match(out, /¥3,051,600/, "借入の合計が出ていない");
-  assert.equal((out.match(/data-act="lp-open"/g) || []).length, 4, "内訳ボタンが4つ無い");
+  /* NISA・金・銀行・借入・民間年金の5つ（NISAは先取りの欄からも開けるので6か所） */
+  assert.equal((out.match(/data-act="lp-open"/g) || []).length, 6, "内訳ボタンの数が合わない");
+  assert.match(out, /data-kind="nisa"/, "NISAの内訳ボタンが無い");
   /* 一覧の中に入力欄は出さない */
   assert.equal(out.includes('id="lp-b-bal-0"'), false, "せっていに内訳の入力欄が出ている");
 });
@@ -324,4 +329,176 @@ test("せっていへ戻れる", () => {
   const app = withLp();
   app.run(`view="lp"; render();`);
   assert.match(appSrc, /if\(a==="lp-back"\)\{ view="settings"; render\(\); return; \}/, "戻る道が無い");
+});
+
+/* =========================================================================
+   【6】生年月日と、NISA積立のスケジュール
+   -------------------------------------------------------------------------
+   ライフプランの積立は年齢の区間で決まるので、生年月日が要る。
+   打てる場所を、いつでも1か所だけにするのがここの肝。
+   ========================================================================= */
+const NISA = {
+  tsumitateSchedule: [{ fromAge: 57.75, toAge: 65, monthlyYen: 90000 }],
+  growthSchedule: [{ fromAge: 57.5, toAge: 65, monthlyYen: 10000 }],
+  tsumitateAllocation: [{ name: "全世界株式", amount: 40000 }, { name: "S&P500", amount: 40000 }],
+};
+const autoSettings = () => Core.normalizeSettings({ birth: "1968-11-13", nisaMonthly: 110000, lp: NISA });
+
+test("生年月日から、ライフプランと同じ年齢の出し方をする", () => {
+  const a = Core.ageFromBirth("1968-11-13", "2026-08-08");
+  assert.ok(Math.abs(a - 57.734) < 0.002, `年齢がずれている: ${a}`);
+  assert.equal(Core.ageFromBirth("", "2026-08-08"), null);
+  assert.equal(Core.ageFromBirth("1968-11-13", ""), null);
+  assert.equal(Core.ageFromBirth("2026-02-31", "2026-08-08"), null, "存在しない日付を受け入れている");
+  assert.equal(Core.ageFromBirth("2030-01-01", "2026-08-08"), null, "未来の生年月日を受け入れている");
+});
+
+test("生年月日は、妥当なものだけ設定に残す", () => {
+  assert.equal(Core.normalizeSettings({ birth: "1968-11-13" }).birth, "1968-11-13");
+  assert.equal(Core.normalizeSettings({ birth: "2026-02-31" }).birth, "");
+  assert.equal(Core.normalizeSettings({ birth: "こわれ" }).birth, "");
+  assert.equal(Core.normalizeSettings({}).birth, "");
+});
+
+test("年齢の区間から、今月の先取り額を出す", () => {
+  const s = autoSettings();
+  /* 8/8 は成長投資枠だけ始まっている */
+  assert.equal(Core.nisaPlannedOn(s, "2026-08-08"), 10000);
+  /* つみたて（57歳9ヶ月＝2026-08-13ごろ）が始まると足される */
+  assert.equal(Core.nisaPlannedOn(s, "2026-09-08"), 100000);
+  /* 区間を過ぎたら0 */
+  assert.equal(Core.nisaPlannedOn(s, "2040-01-01"), 0);
+});
+
+test("重なった区間は足す（ライフプランと同じ数え方）", () => {
+  assert.equal(Core.scheduledMonthly([
+    { fromAge: 55, toAge: 65, monthlyYen: 30000 },
+    { fromAge: 57, toAge: 60, monthlyYen: 20000 },
+  ], 58), 50000);
+  assert.equal(Core.scheduledMonthly([{ fromAge: 55, toAge: 65, monthlyYen: 30000 }], 65), 30000, "終了年齢は含む");
+  assert.equal(Core.scheduledMonthly([{ fromAge: 55, toAge: 65, monthlyYen: 30000 }], 54.9), 0);
+  assert.equal(Core.scheduledMonthly(null, 58), 0);
+  assert.equal(Core.scheduledMonthly([{ fromAge: 55, toAge: 65, monthlyYen: 30000 }], null), 0);
+});
+
+test("終わりが始まりより前の区間は、始まりにそろえる", () => {
+  const a = Core.normalizeLpSchedule([{ fromAge: 60, toAge: 50, monthlyYen: 10000 }]);
+  assert.equal(a[0].toAge, 60);
+});
+
+test("打てる場所は1か所だけ（自動か手入力かが切り替わる）", () => {
+  assert.equal(Core.nisaAuto(autoSettings()), true, "そろっているのに自動になっていない");
+  /* 生年月日が無ければ手入力のまま */
+  assert.equal(Core.nisaAuto(Core.normalizeSettings({ nisaMonthly: 110000, lp: NISA })), false);
+  /* 区間が無ければ手入力のまま */
+  assert.equal(Core.nisaAuto(Core.normalizeSettings({ birth: "1968-11-13", nisaMonthly: 110000 })), false);
+});
+
+test("前から使っている人の金額が、ある日いきなり0にならない", () => {
+  /* 生年月日も区間も入れていない人は、これまでどおり打ち込んだ月額を使う */
+  const old = Core.normalizeSettings({ nisaMonthly: 110000 });
+  assert.equal(Core.nisaPlannedOn(old, "2026-08-08"), 110000);
+  const c = Core.computeMonth(old, [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }], "2026-08");
+  assert.equal(c.nisaPlanned, 110000);
+});
+
+test("「いつから いくら」が分かる", () => {
+  const next = Core.nisaUpcoming(autoSettings(), "2026-08-08");
+  assert.equal(next.fromAge, 57.75);
+  assert.equal(next.monthly, 90000);
+  assert.equal(next.startDate, "2026-08-13");
+  /* すべて始まっていれば、これから始まるものは無い */
+  assert.equal(Core.nisaUpcoming(autoSettings(), "2026-09-08"), null);
+  assert.equal(Core.nisaUpcoming(Core.normalizeSettings({ nisaMonthly: 1 }), "2026-08-08"), null);
+});
+
+test("いつ計算しても同じ答えになる（区切りの初日で見る）", () => {
+  const s = autoSettings();
+  const txs = [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }];
+  const a = Core.computeMonth(s, txs, "2026-08");
+  const b = Core.computeMonth(s, txs, "2026-08");
+  assert.equal(a.nisaPlanned, b.nisaPlanned);
+  assert.equal(a.nisaPlanned, Core.nisaPlannedOn(s, a.periodFrom));
+});
+
+test("NISAのスケジュールと銘柄も、ライフプランへそのまま渡す", () => {
+  const out = Core.buildLifePlanInputs(autoSettings()).inputs;
+  assert.deepEqual(out.tsumitateSchedule, [{ fromAge: 57.75, toAge: 65, monthlyYen: 90000 }]);
+  assert.deepEqual(out.tsumitateAllocation, [{ name: "全世界株式", amount: 40000 }, { name: "S&P500", amount: 40000 }]);
+  assert.deepEqual(Object.keys(out.tsumitateSchedule[0]).sort(), ["fromAge", "monthlyYen", "toAge"]);
+  assert.deepEqual(Object.keys(out.tsumitateAllocation[0]).sort(), ["amount", "name"]);
+  /* 生年月日そのものは渡さない（ライフプラン側で入れる項目） */
+  assert.equal("birth" in out, false);
+  assert.equal("birthDate" in out, false);
+});
+
+test("せっていに生年月日の欄があり、なぜ要るかが書いてある", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
+  assert.match(out, /id="f-birth"/, "生年月日の欄が無い");
+  assert.match(out, /なぜ必要か/, "理由が書いていない");
+  assert.match(out, /年齢の区間/, "年齢の区間で決まることを説明していない");
+});
+
+test("生年月日を保存できる", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  app.run(`view="settings"; render(); document.getElementById("f-birth").value="1968-11-13"; saveSettings();`);
+  assert.equal(app.run(`state.settings.birth`), "1968-11-13");
+});
+
+test("自動のときは、月額の欄が打てない（読み取り専用）", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
+  const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
+  const field = out.slice(out.indexOf('id="f-nisa"') - 60, out.indexOf('id="f-nisa"') + 60);
+  assert.match(field, /readonly/, "自動なのに打ててしまう");
+});
+
+test("自動のときは、月額の欄の値で上書きしない", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
+  app.run(`view="settings"; render(); document.getElementById("f-nisa").value="999999"; saveSettings();`);
+  assert.notEqual(app.run(`state.settings.nisaMonthly`), 999999, "読み取り専用の表示を書き戻している");
+});
+
+test("開始前は0で、いつから幾らになるかを画面に出す", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: { tsumitateSchedule: [{ fromAge: 90, toAge: 95, monthlyYen: 90000 }] } }, tx: [] } });
+  const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
+  assert.match(out, /まだ積立の期間に入っていない/, "0である理由を伝えていない");
+  assert.match(out, /から 月¥90,000/, "いつから幾らかを出していない");
+});
+
+test("NISAの内訳を直して保存できる", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
+  app.run(`view="lp"; lpKind="nisa"; render();
+    document.getElementById("lp-ts-from-0").value="58";
+    document.getElementById("lp-ts-to-0").value="65";
+    document.getElementById("lp-ts-yen-0").value="80000";
+    document.getElementById("lp-gs-from-0").value="57.5";
+    document.getElementById("lp-gs-to-0").value="65";
+    document.getElementById("lp-gs-yen-0").value="10000";
+    lpSaveNisa();`);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].monthlyYen`), 80000);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].fromAge`), 58);
+});
+
+test("NISAの内訳に、区間と銘柄の両方を足せる", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
+  app.run(`view="lp"; lpKind="nisa"; render(); lpAddRow("tsumitateSchedule");`);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule.length`), 2);
+  app.run(`lpAddRow("growthAllocation");`);
+  assert.equal(app.run(`state.settings.lp.growthAllocation.length`), 1);
+});
+
+test("NISAの内訳の行を、確かめてから消せる", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
+  app.run(`view="lp"; lpKind="nisa"; render(); confirm=()=>false; lpDeleteRow(0,"tsumitateAllocation");`);
+  assert.equal(app.run(`state.settings.lp.tsumitateAllocation.length`), 2, "確かめずに消している");
+  app.run(`confirm=()=>true; lpDeleteRow(0,"tsumitateAllocation");`);
+  assert.equal(app.run(`state.settings.lp.tsumitateAllocation.length`), 1);
+});
+
+test("NISAの画面が白くならない", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  const out = app.run(`view="lp"; lpKind="nisa"; render(); document.getElementById("app").innerHTML`);
+  assert.ok(out.length > 300, "画面が空");
+  assert.match(out, /生年月日/, "生年月日を入れる案内が無い");
 });

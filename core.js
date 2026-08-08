@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.4.0";
+  const APP_VERSION = "1.5.0";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -182,6 +182,8 @@
       goalCurrent: num(s.goalCurrent),
       currency: s.currency || "JPY",
       cycleStart: normalizeCycleStart(s.cycleStart),
+      /* 年齢の区間で決める積立に使う。空なら年齢は使わない。 */
+      birth: normalizeBirth(s.birth),
     };
     /* ライフプランへ渡す資産。ここだけが入力口で、家計の計算には入れない。
        まだ何も入れていないうちは、設定に持たせない（保存を無駄に太らせないため）。 */
@@ -272,13 +274,129 @@
       banks: normalizeLpBanks(a.banks),
       loans: normalizeLpLoans(a.loans),
       privatePensionPlans: normalizeLpPensions(a.privatePensionPlans),
+      /* NISA積立。ライフプランと同じキー名にそろえる。 */
+      tsumitateSchedule: normalizeLpSchedule(a.tsumitateSchedule),
+      growthSchedule: normalizeLpSchedule(a.growthSchedule),
+      tsumitateAllocation: normalizeLpAllocation(a.tsumitateAllocation),
+      growthAllocation: normalizeLpAllocation(a.growthAllocation),
     };
+  }
+
+  /* =======================================================================
+     生年月日と、NISA積立のスケジュール
+     -----------------------------------------------------------------------
+     【なぜ生年月日が要るか】
+     ライフプランの積立は「57歳9ヶ月〜65歳・月9万円」のように、年齢の区間で
+     決める。いま何歳かが分からないと、どの区間にいるかを決められず、
+     今月いくら先取りするのかも出せない。だから生年月日を1つだけ預かる。
+     年齢の出し方はライフプラン側（computeAgeFromBirthDate）と同じにする。
+     ずれると、渡したあとに向こうで違う金額になってしまう。
+
+     【二重入力にしないための決めごと】
+     NISA積立の月額を書ける場所は、いつでも1か所だけ。
+       ・生年月日とスケジュールがそろっている → スケジュールが唯一の入力口。
+         月額の欄は自動計算の表示になり、打てなくなる。
+       ・どちらか欠けている → これまでどおり月額の欄に打つ。
+         （前からお使いの方の金額が、ある日いきなり0にならないようにするため）
+     ======================================================================= */
+
+  /* 生年月日。妥当でなければ空にする（空なら年齢は使わない）。 */
+  function normalizeBirth(v) {
+    const s = String(v == null ? "" : v).slice(0, 10);
+    return validateDateString(s) ? s : "";
+  }
+
+  /* 生年月日と基準日から、小数の年齢を出す。
+     ライフプランと同じ 365.2425日/年 で数える。決められなければ null。 */
+  function ageFromBirth(birth, onDate) {
+    const b = normalizeBirth(birth);
+    const d = validateDateString(onDate) ? onDate : null;
+    if (!b || !d) return null;
+    const bt = Date.parse(b + "T00:00:00Z");
+    const nt = Date.parse(d + "T00:00:00Z");
+    if (!Number.isFinite(bt) || !Number.isFinite(nt) || nt < bt) return null;
+    return (nt - bt) / (365.2425 * 24 * 3600 * 1000);
+  }
+
+  /* 年齢の区間スケジュール。ライフプランの tsumitateSchedule と同じ形。 */
+  function normalizeLpSchedule(list) {
+    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
+      const row = r || {};
+      const from = lpAge(row.fromAge);
+      const to = lpAge(row.toAge);
+      return {
+        fromAge: from,
+        /* 終わりが始まりより前にならないようにする */
+        toAge: to < from ? from : to,
+        monthlyYen: lpNum(row.monthlyYen, 1e9),
+      };
+    });
+  }
+
+  /* 銘柄別の内訳。ライフプランの tsumitateAllocation と同じ形。 */
+  function normalizeLpAllocation(list) {
+    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
+      const row = r || {};
+      return { name: lpName(row.name), amount: lpNum(row.amount, 1e9) };
+    });
+  }
+
+  /* ある年齢のときの月額。区間が重なっていれば足す（ライフプランと同じ数え方）。 */
+  function scheduledMonthly(schedule, age) {
+    if (!Number.isFinite(age)) return 0;
+    return normalizeLpSchedule(schedule).reduce(function (sum, r) {
+      return (age >= r.fromAge && age <= r.toAge) ? sum + r.monthlyYen : sum;
+    }, 0);
+  }
+
+  /* スケジュールで先取り額を決められる状態か（生年月日と区間がそろっているか）。 */
+  function nisaAuto(settings) {
+    const s = settings || {};
+    const lp = s.lp || {};
+    const hasSchedule = (Array.isArray(lp.tsumitateSchedule) && lp.tsumitateSchedule.length > 0) ||
+      (Array.isArray(lp.growthSchedule) && lp.growthSchedule.length > 0);
+    return !!normalizeBirth(s.birth) && hasSchedule;
+  }
+
+  /* 今月ぶんの NISA先取り額。
+     基準日はその区切りの初日にする（「いま」に依らず、いつ計算しても同じ答えになる）。 */
+  function nisaPlannedOn(settings, onDate) {
+    const s = settings || {};
+    if (!nisaAuto(s)) return num(s.nisaMonthly);
+    const age = ageFromBirth(s.birth, onDate);
+    if (age === null) return num(s.nisaMonthly);
+    const lp = s.lp || {};
+    return Math.round(scheduledMonthly(lp.tsumitateSchedule, age) + scheduledMonthly(lp.growthSchedule, age));
+  }
+
+  /* 「いつから いくら」を画面に出すための材料。まだ始まっていない区間を探す。 */
+  function nisaUpcoming(settings, onDate) {
+    const s = settings || {};
+    if (!nisaAuto(s)) return null;
+    const age = ageFromBirth(s.birth, onDate);
+    if (age === null) return null;
+    const lp = s.lp || {};
+    const rows = normalizeLpSchedule(lp.tsumitateSchedule).concat(normalizeLpSchedule(lp.growthSchedule));
+    const future = rows.filter(function (r) { return r.fromAge > age; })
+      .sort(function (a, b) { return a.fromAge - b.fromAge; });
+    if (!future.length) return null;
+    const fromAge = future[0].fromAge;
+    const monthly = rows.reduce(function (sum, r) {
+      return r.fromAge === fromAge ? sum + r.monthlyYen : sum;
+    }, 0);
+    /* その年齢になる日 */
+    const b = normalizeBirth(s.birth);
+    const bt = new Date(b + "T00:00:00Z");
+    const start = new Date(bt.getTime() + fromAge * 365.2425 * 24 * 3600 * 1000);
+    return { fromAge: fromAge, monthly: Math.round(monthly), startDate: start.toISOString().slice(0, 10) };
   }
 
   /* 中身が空かどうか。空なら設定に持たせない（端末の保存領域を無駄に使わないため）。 */
   function lpHasAny(assets) {
     const a = normalizeLifePlanAssets(assets);
     return a.banks.length > 0 || a.loans.length > 0 || a.privatePensionPlans.length > 0 ||
+      a.tsumitateSchedule.length > 0 || a.growthSchedule.length > 0 ||
+      a.tsumitateAllocation.length > 0 || a.growthAllocation.length > 0 ||
       a.gold.currentGrams > 0 || a.gold.pricePerGram > 0 || a.gold.monthlyYen > 0;
   }
 
@@ -309,6 +427,10 @@
         banks: a.banks,
         loans: a.loans,
         privatePensionPlans: a.privatePensionPlans,
+        tsumitateSchedule: a.tsumitateSchedule,
+        growthSchedule: a.growthSchedule,
+        tsumitateAllocation: a.tsumitateAllocation,
+        growthAllocation: a.growthAllocation,
       },
     };
   }
@@ -349,7 +471,9 @@
 
     /* --- 先取り（予定額） --- */
     const savingsPlanned = s.savingsTarget;
-    const nisaPlanned = s.nisaMonthly;
+    /* NISAの先取り額。スケジュールがあればそこから、無ければ打ち込んだ月額。
+       基準日は区切りの初日にして、いつ計算しても同じ答えになるようにする。 */
+    const nisaPlanned = nisaPlannedOn(s, cycleRange(ym, s.cycleStart).from);
     const setAside = savingsPlanned + nisaPlanned;
 
     /* --- 正式な計算式 --- */
@@ -2948,6 +3072,14 @@
     normalizeLpBanks: normalizeLpBanks,
     normalizeLpLoans: normalizeLpLoans,
     normalizeLpPensions: normalizeLpPensions,
+    normalizeBirth: normalizeBirth,
+    ageFromBirth: ageFromBirth,
+    normalizeLpSchedule: normalizeLpSchedule,
+    normalizeLpAllocation: normalizeLpAllocation,
+    scheduledMonthly: scheduledMonthly,
+    nisaAuto: nisaAuto,
+    nisaPlannedOn: nisaPlannedOn,
+    nisaUpcoming: nisaUpcoming,
     lpHasAny: lpHasAny,
     lpGoldValue: lpGoldValue,
     lpBanksTotal: lpBanksTotal,
