@@ -64,14 +64,20 @@
 
   /* dream strip */
   .dreamlbl{text-align:center;font-size:10px;color:#9aa6a3;margin:16px 0 6px;letter-spacing:.05em}
-  .dreamstrip{display:flex;gap:8px}
-  .ds{flex:1;min-width:0;border-radius:14px;padding:10px 8px 11px;text-align:center;background:var(--card);border:1px solid var(--line);
+  .dreamlbl i{display:block;font-style:normal;font-size:9px;margin-top:3px;letter-spacing:0}
+  /* タイルは9枚ある。1行に詰めると1枚ぶんが指より細くなり、文字が縦に潰れる。
+     幅を決めて横スクロールにする。右端が半分見えることで「まだ続く」と分かる。 */
+  .dreamstrip{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;
+    padding:2px 2px 8px;margin:0 -2px;scrollbar-width:none}
+  .dreamstrip::-webkit-scrollbar{display:none}
+  .ds{flex:0 0 92px;scroll-snap-align:start;border-radius:14px;padding:11px 8px 12px;text-align:center;background:var(--card);border:1px solid var(--line);
     transition:transform .12s cubic-bezier(.2,.7,.3,1)}
   .ds:active{transform:scale(.97)}
   .ds .tapin{font-size:9px;color:#a7b2af;margin-top:5px}
-  .ds .di{font-size:16px}
-  .ds .dk{font-size:9.5px;color:var(--sub);margin-top:2px}
-  .ds .dv{font-size:12.5px;font-weight:800;white-space:nowrap;margin-top:1px}
+  .ds .di{font-size:18px}
+  .ds .dk{font-size:10.5px;color:var(--sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ds .dv{font-size:13px;font-weight:800;white-space:nowrap;margin-top:2px;overflow:hidden;text-overflow:ellipsis}
   .ds.gold .dv{color:var(--gold-d)}.ds.blue .dv{color:#2f7fad}.ds.green .dv{color:var(--green-d)}
   .ds .track{height:5px;background:#ecefed;border-radius:3px;overflow:hidden;margin-top:7px}
   .ds .track>i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#e7c06f,var(--gold));transition:width .5s cubic-bezier(.2,.7,.3,1)}
@@ -789,20 +795,23 @@ function renderHome(){
   const goalTile = c.goalPct!==null
     ? `<button class="ds gold" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||"目標")}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div></button>`
     : `<button class="ds gold" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">設定する</div><div class="tapin">タップで入力</div></button>`;
-  const nisaTile = `<button class="ds blue" data-go="settings" data-focus="f-nisa"><div class="di">📈</div><div class="dk">NISA（予定）</div><div class="dv mono">${yen(c.nisaPlanned)}</div><div class="tapin">タップで入力</div></button>`;
-  /* ライフプランへ渡す項目も、ホームからそのまま入れに行けるようにする */
-  const lpA = Core.normalizeLifePlanAssets(state.settings.lp);
+  const nisaTile = `<button class="ds blue" data-go="settings" data-focus="f-nisa"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(c.nisaPlanned)}/月</div><div class="tapin">タップで入力</div></button>`;
+  /* ライフプランへ渡す項目も、ホームからそのまま入れに行けるようにする。
+     出す数字は「毎月いくら」。残高を出していたため、毎月の積立額を入れても
+     ここが動かず「反映されない」ように見えていた。残高は内訳の画面で見る。 */
+  const lpAge = Core.ageFromBirth(state.settings.birth, Core.cycleRange(curYM(), cycleStart()).from);
+  const lpMon = (kind) => yen(Core.lpMonthlyOf(state.settings, kind, lpAge))+"/月";
   const lpTile = (kind, icon, label, value) =>
     `<button class="ds" data-act="lp-open" data-kind="${kind}"><div class="di">${icon}</div><div class="dk">${label}</div><div class="dv mono">${value}</div><div class="tapin">タップで入力</div></button>`;
   const lpTiles = [
-    lpTile("pension","📜","民年金", yen(lpA.privatePensionPlans.reduce((t,p)=>t+p.monthlyContribution,0))+"/月"),
-    lpTile("insurance","🛟","生命保険", yen(lpA.insurancePolicies.reduce((t,p)=>t+p.monthlyPremium,0))+"/月"),
-    lpTile("gold","🪙","金（きん）", yen(Core.lpGoldValue(lpA.gold))),
-    lpTile("ideco","🏛","iDeCo", yen(lpA.ideco.monthlyContribution)+"/月"),
-    lpTile("loans","💳","借入金", yen(Core.lpLoansTotal(lpA.loans))),
-    lpTile("banks","🏦","銀行貯金", yen(Core.lpBanksTotal(lpA.banks))),
+    lpTile("pension","📜","民間年金", lpMon("pension")),
+    lpTile("insurance","🛟","生命保険", lpMon("insurance")),
+    lpTile("gold","🪙","金（きん）", lpMon("gold")),
+    lpTile("ideco","🏛","iDeCo", lpMon("ideco")),
+    lpTile("loans","💳","借入返済", lpMon("loans")),
+    lpTile("banks","🏦","銀行貯金", lpMon("banks")),
   ].join("");
-  const saveTile = `<button class="ds green" data-go="settings" data-focus="f-save"><div class="di">🐷</div><div class="dk">貯金（予定）</div><div class="dv mono">${yen(c.savingsPlanned)}</div><div class="tapin">タップで入力</div></button>`;
+  const saveTile = `<button class="ds green" data-go="settings" data-focus="f-save"><div class="di">🐷</div><div class="dk">先取り貯金</div><div class="dv mono">${yen(c.savingsPlanned)}/月</div><div class="tapin">タップで入力</div></button>`;
 
   return `<div class="screen">
     <div class="greet">
@@ -818,7 +827,7 @@ function renderHome(){
       ${mini}
     </div>
     ${taskCard()}
-    <div class="dreamlbl">― あなたの夢の進み ―</div>
+    <div class="dreamlbl">― あなたの夢の進み ―<i>金額はどれも毎月ぶん・よこにスクロールできます →</i></div>
     <div class="dreamstrip">${goalTile}${nisaTile}${saveTile}${lpTiles}</div>
     <button class="recordbtn" data-act="open-record">📸 記録する</button>
     ${monthPlanCard()}
@@ -3056,10 +3065,18 @@ let lpKind = "gold";     // 内訳画面で開いている種類
 /* いまの設定にある資産（未入力なら空の形） */
 function lpAssets(){ return Core.normalizeLifePlanAssets(state.settings.lp); }
 
+/* 「この内容で保存する」で呼ぶ保存。名前も金額も入っていない行はここで捨てる。
+   「＋ 足す」で作った直後の空行まで消してしまわないよう、
+   静かな保存（lpSave）では捨てない。使い分けはここだけの決めごと。 */
+function lpSaveTidy(next){ return lpSave(Core.lpDropEmptyRows(next)); }
+
 /* 設定に戻さず、その場で保存する。失敗したら完全に元へ戻す。 */
 function lpSave(next){
   const before = JSON.parse(JSON.stringify(state.settings));
-  state.settings = Core.normalizeSettings(Object.assign({}, state.settings, { lp: next }));
+  /* 行のしるし（id）を、まだ無い行にだけ付ける。
+     これが無いとライフプラン側が名前で照合するしかなく、
+     名前が空・同名だと、渡すたびに同じ行が増えてしまう。 */
+  state.settings = Core.normalizeSettings(Object.assign({}, state.settings, { lp: Core.lpEnsureIds(next) }));
   if(!save()){
     state.settings = before;
     toast("保存できませんでした");
@@ -3077,20 +3094,28 @@ function lpSummaryHtml(){
     <span class="lpv mono">${value}</span>
     <button class="lpbtn" data-act="lp-open" data-kind="${kind}">内訳</button>
   </div>`;
+  /* 出す数字は、どの項目も「毎月いくら」でそろえる。
+     残高（評価額・預金残高・借入の元金）は右の数字ではなく、名前の下の小さい字に出す。
+     ここが残高だったため、毎月の金額を入れても画面が動かず
+     「保存できていない」ように見えていた。 */
+  const on = Core.cycleRange(curYM(), state.settings.cycleStart).from;
+  const age = Core.ageFromBirth(state.settings.birth, on);
+  const mon = (kind) => yen(Core.lpMonthlyOf(state.settings, kind, age))+"/月";
   return `<div class="stitle">ライフプランへ渡すデータ</div>
   <div class="calcnote" style="margin:0 0 10px">
     ライフプランアプリへ入れ直す手間をなくすための欄です。<br>
+    右の数字は、どれも<b>毎月いくら</b>です。残高は「内訳」で見られます。<br>
     <b>毎月の家計の計算には入りません。</b>実際に払ったお金は、これまでどおり「記録」から入れてください。
   </div>
   <div class="barlist">
-    ${row("nisa","📈","NISA積立", yen(Core.nisaPlannedOn(state.settings, Core.cycleRange(curYM(), state.settings.cycleStart).from))+"/月",
+    ${row("nisa","📈","NISA積立", yen(Core.nisaPlannedOn(state.settings, on))+"/月",
       Core.nisaAuto(state.settings) ? `つみたて${a.tsumitateSchedule.length}区間・成長${a.growthSchedule.length}区間` : "生年月日と区間を入れると自動計算")}
-    ${row("gold","🪙","金（きん）", yen(Core.lpGoldValue(a.gold)), `${a.gold.currentGrams||0}g × ${yen(a.gold.pricePerGram)}`)}
-    ${row("banks","🏦","銀行貯金", yen(Core.lpBanksTotal(a.banks)), `${a.banks.length}件`)}
-    ${row("loans","💳","借入金", yen(Core.lpLoansTotal(a.loans)), `${a.loans.length}件`)}
-    ${row("ideco","🏛","iDeCo", yen(a.ideco.monthlyContribution)+"/月", a.ideco.productName||"毎月の掛金は先取り")}
-    ${row("insurance","🛟","生命保険", yen(a.insurancePolicies.reduce((t,p)=>t+p.monthlyPremium,0))+"/月", `${a.insurancePolicies.length}件`)}
-    ${row("pension","📜","民間年金", yen(Core.lpPensionMonthly(a.privatePensionPlans))+"/月", `${a.privatePensionPlans.length}件`)}
+    ${row("gold","🪙","金（きん）", mon("gold"), `いま ${a.gold.currentGrams||0}g・評価 ${yen(Core.lpGoldValue(a.gold))}`)}
+    ${row("banks","🏦","銀行貯金", mon("banks"), `${a.banks.length}件・残高 ${yen(Core.lpBanksTotal(a.banks))}`)}
+    ${row("loans","💳","借入金", mon("loans"), `${a.loans.length}件・残り ${yen(Core.lpLoansTotal(a.loans))}`)}
+    ${row("ideco","🏛","iDeCo", mon("ideco"), a.ideco.productName||"毎月の掛金は先取り")}
+    ${row("insurance","🛟","生命保険", mon("insurance"), `${a.insurancePolicies.length}件`)}
+    ${row("pension","📜","民間年金", mon("pension"), `${a.privatePensionPlans.length}件`)}
     <button class="btn-ghost" data-act="lp-export" style="margin-top:10px">📤 ライフプランへ渡す</button>
   </div>`;
 }
@@ -3192,7 +3217,7 @@ function lpIdecoHtml(d){
       ${f("lp-id-value","いまの評価額（円）",d.currentValue,"0")}
       ${f("lp-id-principal","これまでの掛金合計（円）",d.principalTotal,"0")}
       ${f("lp-id-start","掛金 開始年齢",d.startAge,"50","decimal")}
-      ${f("lp-id-end","掛金 終了年齢",d.endAge,"65","decimal")}
+      ${f("lp-id-end","掛金 終了年齢（その誕生日まで）",d.endAge,"65","decimal")}
       ${f("lp-id-pstart","受取 開始年齢",d.payoutStartAge,"65","decimal")}
       ${f("lp-id-pyears","受取 年数",d.payoutYears,"20","decimal")}
     </div>
@@ -3209,7 +3234,7 @@ function lpInsuranceHtml(list){
       <label>保険の名前<input id="lp-in-name-${i}" value="${escapeAttr(p.name)}" placeholder="○○生命"></label>
       <label>毎月の保険料（円）<input class="mono" id="lp-in-prem-${i}" inputmode="numeric" value="${p.monthlyPremium||""}" placeholder="0"></label>
       <label>払い始め年齢<input class="mono" id="lp-in-from-${i}" inputmode="decimal" value="${p.premiumFromAge||""}" placeholder="46"></label>
-      <label>払い終わり年齢<input class="mono" id="lp-in-to-${i}" inputmode="decimal" value="${p.premiumToAge||""}" placeholder="65"></label>
+      <label>払い終わり年齢（その誕生日まで）<input class="mono" id="lp-in-to-${i}" inputmode="decimal" value="${p.premiumToAge||""}" placeholder="65"></label>
       <label style="grid-column:1/-1">保障が続く年齢<input class="mono" id="lp-in-cov-${i}" inputmode="decimal" value="${p.coverageUntilAge||""}" placeholder="82"></label>
     </div></div>`).join("");
   return `<div class="barlist">
@@ -3281,9 +3306,9 @@ function lpPensionHtml(list){
       <label>年金の名前<input id="lp-p-name-${i}" value="${escapeAttr(p.name)}" placeholder="○○年金共済"></label>
       <label>毎月の掛金（円）<input class="mono" id="lp-p-mon-${i}" inputmode="numeric" value="${p.monthlyContribution||""}" placeholder="0"></label>
       <label>掛ける 開始年齢<input class="mono" id="lp-p-cf-${i}" inputmode="decimal" value="${p.contribFromAge||""}" placeholder="35"></label>
-      <label>掛ける 終了年齢<input class="mono" id="lp-p-ct-${i}" inputmode="decimal" value="${p.contribToAge||""}" placeholder="60"></label>
+      <label>掛ける 終了年齢（その誕生日まで）<input class="mono" id="lp-p-ct-${i}" inputmode="decimal" value="${p.contribToAge||""}" placeholder="60"></label>
       <label>もらう 開始年齢<input class="mono" id="lp-p-pf-${i}" inputmode="decimal" value="${p.payoutFromAge||""}" placeholder="60"></label>
-      <label>もらう 終了年齢<input class="mono" id="lp-p-pt-${i}" inputmode="decimal" value="${p.payoutToAge||""}" placeholder="70"></label>
+      <label>もらう 終了年齢（その誕生日まで）<input class="mono" id="lp-p-pt-${i}" inputmode="decimal" value="${p.payoutToAge||""}" placeholder="70"></label>
       <label>毎月もらう額（円）<input class="mono" id="lp-p-pay-${i}" inputmode="numeric" value="${p.monthlyPayout||""}" placeholder="0"></label>
     </div></div>`).join("");
   return `<div class="barlist">
@@ -3300,23 +3325,23 @@ const lpVal = (id) => { const el=$(id); return el?el.value:""; };
 function lpSaveGold(){
   const a = lpAssets();
   a.gold = { currentGrams: lpVal("lp-g-grams"), pricePerGram: lpVal("lp-g-price"), monthlyYen: lpVal("lp-g-monthly") };
-  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
 }
 function lpSaveBanks(){
   const a = lpAssets();
   a.banks = a.banks.map((b,i)=>({
     name: lpVal(`lp-b-name-${i}`), balance: lpVal(`lp-b-bal-${i}`),
-    monthlyDeposit: lpVal(`lp-b-mon-${i}`), interestPct: lpVal(`lp-b-int-${i}`),
+    monthlyDeposit: lpVal(`lp-b-mon-${i}`), interestPct: lpVal(`lp-b-int-${i}`), id: b.id,
   }));
-  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
 }
 function lpSaveLoans(){
   const a = lpAssets();
   a.loans = a.loans.map((l,i)=>({
     name: lpVal(`lp-l-name-${i}`), principal: lpVal(`lp-l-pri-${i}`),
-    annualRatePct: lpVal(`lp-l-rate-${i}`), monthlyPayment: lpVal(`lp-l-pay-${i}`),
+    annualRatePct: lpVal(`lp-l-rate-${i}`), monthlyPayment: lpVal(`lp-l-pay-${i}`), id: l.id,
   }));
-  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
 }
 function lpSavePension(){
   const a = lpAssets();
@@ -3324,21 +3349,24 @@ function lpSavePension(){
     name: lpVal(`lp-p-name-${i}`), monthlyContribution: lpVal(`lp-p-mon-${i}`),
     contribFromAge: lpVal(`lp-p-cf-${i}`), contribToAge: lpVal(`lp-p-ct-${i}`),
     payoutFromAge: lpVal(`lp-p-pf-${i}`), payoutToAge: lpVal(`lp-p-pt-${i}`),
-    monthlyPayout: lpVal(`lp-p-pay-${i}`),
+    monthlyPayout: lpVal(`lp-p-pay-${i}`), id: p.id,
   }));
-  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
 }
 
 /* NISAの4つの表を、画面の値から作り直す */
 function lpReadNisa(){
   const a = lpAssets();
+  /* 行のしるし（id）は必ず持ち回る。落とすと保存のたびに新しい id が付き、
+     ライフプラン側で別の行と見なされて同じものが増える。 */
   const sched = (id, rows) => rows.map((r,i)=>({
     fromAge: lpVal(`${id}-from-${i}`), toAge: lpVal(`${id}-to-${i}`),
     funds: (r.funds||[]).map((_,n)=>({ name: lpVal(`${id}-fn-${i}-${n}`), amount: lpVal(`${id}-fa-${i}-${n}`) })),
+    id: r.id,
   }));
   a.tsumitateSchedule = sched("lp-ts", a.tsumitateSchedule);
   a.growthSchedule = sched("lp-gs", a.growthSchedule);
-  a.lumpSums = a.lumpSums.map((_,i)=>({ age: lpVal(`lp-lm-age-${i}`), amount: lpVal(`lp-lm-amt-${i}`) }));
+  a.lumpSums = a.lumpSums.map((r,i)=>({ age: lpVal(`lp-lm-age-${i}`), amount: lpVal(`lp-lm-amt-${i}`), id: r.id }));
   return a;
 }
 /* 区間の中に銘柄を1行足す／消す */
@@ -3358,7 +3386,7 @@ function lpDeleteFund(key, i, n){
   row.funds = row.funds.filter((_,x)=>x!==Number(n));
   if(lpSave(a)){ render(); toast("消しました ✓"); }
 }
-function lpSaveNisa(){ if(lpSave(lpReadNisa())){ render(); toast("保存しました ✓"); } }
+function lpSaveNisa(){ if(lpSaveTidy(lpReadNisa())){ render(); toast("保存しました ✓"); } }
 
 function lpSaveIdeco(){
   const a = lpAssets();
@@ -3368,18 +3396,18 @@ function lpSaveIdeco(){
     startAge: lpVal("lp-id-start"), endAge: lpVal("lp-id-end"),
     payoutStartAge: lpVal("lp-id-pstart"), payoutYears: lpVal("lp-id-pyears"),
   };
-  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
 }
 function lpReadInsurance(){
   const a = lpAssets();
-  a.insurancePolicies = a.insurancePolicies.map((_,i)=>({
+  a.insurancePolicies = a.insurancePolicies.map((r,i)=>({
     name: lpVal(`lp-in-name-${i}`), monthlyPremium: lpVal(`lp-in-prem-${i}`),
     premiumFromAge: lpVal(`lp-in-from-${i}`), premiumToAge: lpVal(`lp-in-to-${i}`),
-    coverageUntilAge: lpVal(`lp-in-cov-${i}`),
+    coverageUntilAge: lpVal(`lp-in-cov-${i}`), id: r.id,
   }));
   return a;
 }
-function lpSaveInsurance(){ if(lpSave(lpReadInsurance())){ render(); toast("保存しました ✓"); } }
+function lpSaveInsurance(){ if(lpSaveTidy(lpReadInsurance())){ render(); toast("保存しました ✓"); } }
 
 /* 行を足す。書きかけを消さないよう、いま画面にある値をそのまま保存してから足す。 */
 function lpAddRow(key){
@@ -3410,15 +3438,15 @@ function lpAddRow(key){
 /* 「足す」「消す」の前に、書きかけを取りこぼさないための静かな保存 */
 function lpSaveBanksQuiet(){ const a=lpAssets(); a.banks=a.banks.map((b,i)=>({
   name:lpVal(`lp-b-name-${i}`), balance:lpVal(`lp-b-bal-${i}`),
-  monthlyDeposit:lpVal(`lp-b-mon-${i}`), interestPct:lpVal(`lp-b-int-${i}`) })); lpSave(a); }
+  monthlyDeposit:lpVal(`lp-b-mon-${i}`), interestPct:lpVal(`lp-b-int-${i}`), id:b.id })); lpSave(a); }
 function lpSaveLoansQuiet(){ const a=lpAssets(); a.loans=a.loans.map((l,i)=>({
   name:lpVal(`lp-l-name-${i}`), principal:lpVal(`lp-l-pri-${i}`),
-  annualRatePct:lpVal(`lp-l-rate-${i}`), monthlyPayment:lpVal(`lp-l-pay-${i}`) })); lpSave(a); }
+  annualRatePct:lpVal(`lp-l-rate-${i}`), monthlyPayment:lpVal(`lp-l-pay-${i}`), id:l.id })); lpSave(a); }
 function lpSavePensionQuiet(){ const a=lpAssets(); a.privatePensionPlans=a.privatePensionPlans.map((p,i)=>({
   name:lpVal(`lp-p-name-${i}`), monthlyContribution:lpVal(`lp-p-mon-${i}`),
   contribFromAge:lpVal(`lp-p-cf-${i}`), contribToAge:lpVal(`lp-p-ct-${i}`),
   payoutFromAge:lpVal(`lp-p-pf-${i}`), payoutToAge:lpVal(`lp-p-pt-${i}`),
-  monthlyPayout:lpVal(`lp-p-pay-${i}`) })); lpSave(a); }
+  monthlyPayout:lpVal(`lp-p-pay-${i}`), id:p.id })); lpSave(a); }
 
 function lpDeleteRow(i, keyFromBtn){
   const idx = Number(i);
@@ -3453,6 +3481,10 @@ function lpDeleteRow(i, keyFromBtn){
 
 /* ---------- ライフプランへ渡す ---------- */
 function lpExport(){
+  /* 前に作った保存データには、まだ行のしるし（id）が無い。
+     しるしが無いまま渡すと向こうは名前で照合するしかなく、
+     名前が空・同名だと同じ行が増える。渡す前に付けて、この端末にも残す。 */
+  if(Core.lpHasAny(state.settings.lp)) lpSave(lpAssets());
   const text = JSON.stringify(Core.buildLifePlanInputs(state.settings), null, 2);
   /* ライフプラン側は文字を貼りつけて読み込む作りなので、まずコピーを試す。
      コピーできない端末では、これまでどおりファイルに書き出す。 */

@@ -219,6 +219,18 @@
     return Math.min(n, max === undefined ? 1e12 : max);
   };
   const lpName = (v) => String(v == null ? "" : v).slice(0, LP_MAX_NAME);
+  /* 行のしるし（id）。
+     ライフプラン側は「id が一致する行」を最優先で対応させ、無ければ名前で照合する。
+     名前が空・同じ名前が複数あると照合できず、渡すたびに同じ行が増えてしまう。
+     そこで id を持ち回る。once 付けた id は作り直さない（作り直すと別の行と見なされる）。 */
+  const lpId = (v) => String(v == null ? "" : v).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
+  /* id は「有るときだけ」持たせる。無い行に空の id を足すと、
+     これまでの保存データと形が変わってしまうため。 */
+  const lpWithId = function (row, raw) {
+    const id = lpId(raw && raw.id);
+    if (id) row.id = id;
+    return row;
+  };
   /* 年齢は0〜120。ライフプラン側と同じく小数（57.5＝57歳6ヶ月）を許す。 */
   const lpAge = (v) => Math.round(lpNum(v, 120) * 12) / 12;
 
@@ -234,31 +246,31 @@
   function normalizeLpBanks(list) {
     return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (b) {
       const r = b || {};
-      return {
+      return lpWithId({
         name: lpName(r.name),
         balance: lpNum(r.balance, 1e12),
         monthlyDeposit: lpNum(r.monthlyDeposit, 1e9),
         interestPct: lpNum(r.interestPct, 100),
-      };
+      }, r);
     });
   }
 
   function normalizeLpLoans(list) {
     return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (l) {
       const r = l || {};
-      return {
+      return lpWithId({
         name: lpName(r.name),
         principal: lpNum(r.principal, 1e12),
         annualRatePct: lpNum(r.annualRatePct, 100),
         monthlyPayment: lpNum(r.monthlyPayment, 1e9),
-      };
+      }, r);
     });
   }
 
   function normalizeLpPensions(list) {
     return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (p) {
       const r = p || {};
-      return {
+      return lpWithId({
         name: lpName(r.name),
         contribFromAge: lpAge(r.contribFromAge),
         contribToAge: lpAge(r.contribToAge),
@@ -266,7 +278,7 @@
         payoutFromAge: lpAge(r.payoutFromAge),
         payoutToAge: lpAge(r.payoutToAge),
         monthlyPayout: lpNum(r.monthlyPayout, 1e9),
-      };
+      }, r);
     });
   }
 
@@ -275,7 +287,7 @@
   function normalizeLpLumps(list) {
     return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
       const row = r || {};
-      return { age: lpAge(row.age), amount: lpNum(row.amount, 1e12) };
+      return lpWithId({ age: lpAge(row.age), amount: lpNum(row.amount, 1e12) }, row);
     });
   }
 
@@ -284,13 +296,13 @@
   function normalizeLpInsurance(list) {
     return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
       const row = r || {};
-      return {
+      return lpWithId({
         name: lpName(row.name),
         premiumFromAge: lpAge(row.premiumFromAge),
         premiumToAge: lpAge(row.premiumToAge),
         monthlyPremium: lpNum(row.monthlyPremium, 1e9),
         coverageUntilAge: lpAge(row.coverageUntilAge),
-      };
+      }, row);
     });
   }
 
@@ -380,14 +392,14 @@
       const to = lpAge(row.toAge);
       const funds = normalizeLpAllocation(row.funds);
       const sum = funds.reduce(function (a, f) { return a + f.amount; }, 0);
-      return {
+      return lpWithId({
         fromAge: from,
         /* 終わりが始まりより前にならないようにする */
         toAge: to < from ? from : to,
         funds: funds,
         /* 銘柄が入っていればその合計。まだ無ければ、旧データの月額をそのまま使う。 */
         monthlyYen: funds.length ? sum : lpNum(row.monthlyYen, 1e9),
-      };
+      }, row);
     });
   }
 
@@ -560,6 +572,81 @@
     return normalizeLpPensions(list).reduce(function (s, p) { return s + p.monthlyContribution; }, 0);
   }
 
+  /* ---- 設定とホームに出す「毎月いくら」 ----
+     ここは長く残高（金の評価額・預金残高・借入の元金）を出していた。
+     そのため毎月の積立額や返済額を入れても画面の数字が動かず、
+     「入れたのに反映されない」ように見えていた。出すのは毎月動くお金にする。
+
+     足し算のもとは lpMonthlyItems ひとつだけにする（先取り＋毎月固定の支出）。
+     ここで別に足し直すと、使えるお金の計算と画面がずれる。
+     NISAだけは年齢の区間から決まるので日付が要る（nisaPlannedOn が唯一の正）。 */
+  function lpMonthlyOf(settings, kind, age) {
+    const rows = lpMonthlyItems(settings, age);
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].key === kind) return rows[i].amount;
+    }
+    return 0;
+  }
+
+  /* ---- 行のしるし（id）を、まだ無い行にだけ付ける ----
+     すでに id がある行には絶対に付け替えない。
+     付け替えると、ライフプラン側が別の行と見なして同じものが二重に増える。
+     makeId を渡せば作り方を差し替えられる（テスト用）。 */
+  let lpIdSeq = 0;
+  function lpNewId() {
+    lpIdSeq += 1;
+    return "k" + Date.now().toString(36) + lpIdSeq.toString(36) +
+      Math.floor(Math.random() * 1679616).toString(36);
+  }
+  function lpEnsureIds(assets, makeId) {
+    const gen = typeof makeId === "function" ? makeId : lpNewId;
+    const a = normalizeLifePlanAssets(assets);
+    const fix = function (list) {
+      return list.map(function (r) {
+        return r.id ? r : Object.assign({}, r, { id: lpId(gen()) });
+      });
+    };
+    a.banks = fix(a.banks);
+    a.loans = fix(a.loans);
+    a.privatePensionPlans = fix(a.privatePensionPlans);
+    a.insurancePolicies = fix(a.insurancePolicies);
+    a.lumpSums = fix(a.lumpSums);
+    a.tsumitateSchedule = fix(a.tsumitateSchedule);
+    a.growthSchedule = fix(a.growthSchedule);
+    return a;
+  }
+
+  /* ---- 名前も金額も入っていない行を捨てる ----
+     「＋ 足す」で作った直後の空行は残す（書いている途中だから）。
+     捨てるのは「この内容で保存する」を押したときだけ。呼ぶ側で使い分ける。 */
+  function lpRowIsEmpty(row) {
+    if (!row) return true;
+    const keys = Object.keys(row);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k === "id") continue;                    // しるしだけの行は空とみなす
+      const v = row[k];
+      if (Array.isArray(v)) { if (v.length > 0) return false; continue; }
+      if (typeof v === "string") { if (v.trim() !== "") return false; continue; }
+      if (Number(v) !== 0) return false;
+    }
+    return true;
+  }
+  function lpDropEmptyRows(assets) {
+    const a = normalizeLifePlanAssets(assets);
+    const keep = function (list) {
+      return list.filter(function (r) { return !lpRowIsEmpty(r); });
+    };
+    a.banks = keep(a.banks);
+    a.loans = keep(a.loans);
+    a.privatePensionPlans = keep(a.privatePensionPlans);
+    a.insurancePolicies = keep(a.insurancePolicies);
+    a.lumpSums = keep(a.lumpSums);
+    a.tsumitateSchedule = keep(a.tsumitateSchedule);
+    a.growthSchedule = keep(a.growthSchedule);
+    return a;
+  }
+
   /* ライフプランアプリへ渡す形。
      向こうの「バックアップの読み込み」がそのまま受け取れる { inputs: ... } にする。
      読み込み側は差分をかぶせる作りなので、ここで渡した4つだけが入れ替わり、
@@ -571,7 +658,13 @@
     const on = validateDateString(onDate) ? onDate : new Date().toISOString().slice(0, 10);
     const age = ageFromBirth(s.birth, on);
     /* ライフプラン側の区間は月額だけを持つので、銘柄は落として渡す */
-    const strip = function (r) { return { fromAge: r.fromAge, toAge: r.toAge, monthlyYen: r.monthlyYen }; };
+    const strip = function (r) {
+      const o = { fromAge: r.fromAge, toAge: r.toAge, monthlyYen: r.monthlyYen };
+      /* 行のしるしは落とさない。落とすと向こうで名前照合になり、
+         区間は名前を持たないので、渡すたびに同じ区間が増えてしまう。 */
+      if (r.id) o.id = r.id;
+      return o;
+    };
     /* 空の分類は<b>渡さない</b>。
        「家計簿に登録が無い」だけで、ライフプラン側の既存データを消してはいけない。
        受け取る側は、届かなかった分類にはいっさい手を触れない。 */
@@ -594,6 +687,9 @@
       schemaVersion: 1,
       appVersion: APP_VERSION,
       generatedAt: on,
+      /* 生年月日。ライフプラン側は書き換えず、食い違っていたら知らせるだけに使う。
+         これを渡していなかったため、その知らせが実際には出ていなかった。 */
+      birth: normalizeBirth(s.birth),
       inputs: only({
         gold: filled(a.gold) ? a.gold : {},
         ideco: filled(a.ideco) ? a.ideco : {},
@@ -3289,6 +3385,10 @@
     lpBanksTotal: lpBanksTotal,
     lpLoansTotal: lpLoansTotal,
     lpPensionMonthly: lpPensionMonthly,
+    lpMonthlyOf: lpMonthlyOf,
+    lpEnsureIds: lpEnsureIds,
+    lpRowIsEmpty: lpRowIsEmpty,
+    lpDropEmptyRows: lpDropEmptyRows,
     buildLifePlanInputs: buildLifePlanInputs,
     computeMonth: computeMonth,
     weekSpent: weekSpent,
