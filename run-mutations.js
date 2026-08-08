@@ -23,6 +23,20 @@ const dir = __dirname;
 
 /* 変異の一覧。それぞれ「守りたい振る舞い」に1対1で対応させる。 */
 const MUTATIONS = [
+  /* ---- 日記の日付えらび・写真ボタン ---- */
+  { name: "書きかけを確かめずに捨てる", guards: "日付を変える前に確かめる",
+    file: "index.html", from: '  if(dirty && typeof confirm==="function" && !confirm("書きかけの内容は保存されません。日付を変えますか？")){',
+    to: "  if(false){" },
+  { name: "おかしな日付でも切り替える", guards: "存在しない日付は受け付けない",
+    file: "index.html", from: '  if(!Core.validateDateString(value)){ toast("日付を選んでください"); return; }', to: "" },
+  { name: "今日を選んでも今日に戻らない", guards: "今日を選んだら今日の日記へ戻る",
+    file: "index.html", from: '  diaryEditDate = (value === todayISO()) ? null : value;', to: "  diaryEditDate = value;" },
+  { name: "日付えらびを受け取らない", guards: "日付を選んだら切り替わる",
+    file: "index.html", from: '  if(el && el.id === "d-date") pickDiaryDate(el.value);', to: "" },
+  { name: "写真ボタンをただの文字に戻す", guards: "押せる場所だと分かる見た目",
+    file: "index.html", from: '    : `<button class="photobtn" data-act="add-diary-photo">',
+    to: '    : `<button class="btn-quiet" data-act="add-diary-photo">' },
+
   /* ---- いま見ている画面の印（下のタブ） ---- */
   { name: "いる画面の台の色を消す", guards: "いま見ている画面が色つきの台で分かる",
     file: "index.html", from: "  .nav button.on{color:var(--green-dd);font-weight:800;background:var(--green-l);",
@@ -144,7 +158,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v31";', to: 'const CACHE = "kakeibo-v30";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v33";', to: 'const CACHE = "kakeibo-v32";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",

@@ -190,3 +190,90 @@ test("日記の写真も保存前に縮小する", () => {
   const block = appSrc.slice(appSrc.indexOf("async function saveDiary"), appSrc.indexOf("/* ---------- 健康ページ"));
   assert.match(block, /resizeDataUrl\(photo, Core\.PHOTO_STORE_MAX/, "保存前に縮小していない");
 });
+
+/* =========================================================================
+   日記の日付えらび／写真ボタン
+   -------------------------------------------------------------------------
+   ・カレンダーへ行かなくても、日記の画面のまま日付を変えられること
+   ・書きかけの本文を、確かめずに捨ててしまわないこと
+   ・「写真を追加」が、押せる場所だと分かる見た目になっていること
+   ========================================================================= */
+test("日記の画面に日付えらびがあり、いまの日付が入っている", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{ "2026-08-01":{text:"むかしの日記"} } } });
+  const today = app.run(`todayISO()`);
+  const out = app.run(`view="diary"; diaryEditDate=null; render(); document.getElementById("app").innerHTML`);
+  assert.match(out, /id="d-date"/, "日付えらびが無い");
+  assert.ok(out.includes(`value="${today}"`), "いまの日付が入っていない");
+});
+
+test("日付を変えると、その日の日記に切り替わる", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{ "2026-08-01":{text:"むかしの日記"} } } });
+  app.run(`view="diary"; render(); pickDiaryDate("2026-08-01");`);
+  assert.equal(app.run(`diaryEditDate`), "2026-08-01");
+  const out = app.run(`render(); document.getElementById("app").innerHTML`);
+  assert.match(out, /むかしの日記/, "その日の本文が出ていない");
+});
+
+test("今日を選んだら、今日の日記に戻る", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{} } });
+  app.run(`view="diary"; diaryEditDate="2026-08-01"; render(); pickDiaryDate(todayISO());`);
+  assert.equal(app.run(`diaryEditDate`), null, "今日に戻っていない");
+});
+
+test("書きかけがあるときは、確かめてから日付を変える", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{} } });
+  app.run(`view="diary"; render();
+    document.getElementById("d-text").value="書きかけ";
+    confirm=()=>false; pickDiaryDate("2026-08-01");`);
+  assert.equal(app.run(`diaryEditDate`), null, "確かめずに日付を変えている");
+  app.run(`confirm=()=>true; view="diary"; render();
+    document.getElementById("d-text").value="書きかけ";
+    pickDiaryDate("2026-08-01");`);
+  assert.equal(app.run(`diaryEditDate`), "2026-08-01");
+});
+
+test("書きかけが無ければ、確かめずに日付を変えられる", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{} } });
+  app.run(`view="diary"; render(); confirm=()=>{ throw new Error("聞いてはいけない"); };`);
+  assert.doesNotThrow(() => app.run(`pickDiaryDate("2026-08-01");`));
+  assert.equal(app.run(`diaryEditDate`), "2026-08-01");
+});
+
+test("おかしな日付では、日付を変えない", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{} } });
+  app.run(`view="diary"; render(); pickDiaryDate("2026-02-31");`);
+  assert.equal(app.run(`diaryEditDate`), null);
+  app.run(`pickDiaryDate("");`);
+  assert.equal(app.run(`diaryEditDate`), null);
+});
+
+test("今日を見ているときは「今日」ボタンを出さない", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{} } });
+  const today = app.run(`view="diary"; diaryEditDate=null; render(); document.getElementById("app").innerHTML`);
+  assert.equal(/class="today"/.test(today), false, "今日なのに「今日」ボタンが出ている");
+  const past = app.run(`diaryEditDate="2026-08-01"; render(); document.getElementById("app").innerHTML`);
+  assert.match(past, /class="today"/, "ほかの日なのに「今日」ボタンが無い");
+});
+
+test("日付えらびの操作が、画面につながっている", () => {
+  /* 日付は「押す」ではなく「選ぶ」操作なので、change で受ける必要がある。
+     ここが外れると、日付を選んでも何も起きなくなる。 */
+  assert.match(appSrc, /addEventListener\("change"/, "change を受けていない");
+  assert.match(appSrc, /if\(el && el\.id === "d-date"\) pickDiaryDate\(el\.value\);/, "日付を選んだときの受け取りが無い");
+});
+
+test("「写真を追加」が、押せる場所だと分かる見た目になっている", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{} } });
+  const out = app.run(`view="diary"; render(); document.getElementById("app").innerHTML`);
+  assert.match(out, /class="photobtn"/, "写真ボタンの見た目が変わっていない");
+  assert.match(out, /data-act="add-diary-photo"/, "写真ボタンの動きが無い");
+  assert.match(html, /\.photobtn\{/, "写真ボタンの見た目の指定が無い");
+  assert.match(html, /border:2px dashed/, "枠が無く、押せる場所に見えない");
+});
+
+test("写真があるときは、追加ボタンではなく写真と外すボタンを出す", () => {
+  const app = bootApp({ state: { settings:{}, tx:[], diary:{} } });
+  const out = app.run(`view="diary"; diaryPhotoPending="data:image/png;base64,AAA"; render(); document.getElementById("app").innerHTML`);
+  assert.equal(out.includes('class="photobtn"'), false, "写真があるのに追加ボタンが出ている");
+  assert.match(out, /rm-diary-photo/, "外すボタンが無い");
+});

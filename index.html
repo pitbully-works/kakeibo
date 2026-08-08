@@ -147,6 +147,23 @@
   .btn-ghost{width:100%;background:#fff;color:var(--green-d);border:1.5px solid #bfe0d3;border-radius:15px;padding:13px;font-size:14px;font-weight:800;margin-top:8px}
   .btn-quiet{width:100%;color:var(--sub);font-size:12.5px;padding:10px;font-weight:700;margin-top:2px}
 
+  /* 日記の日付えらび。カレンダーへ行かなくても、この場で日付を変えられる。 */
+  .dpick{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+  .dpick label{font-size:12px;color:var(--sub);font-weight:700;flex:none}
+  .dpick input{flex:1;min-width:0;font:inherit;font-size:14px;font-weight:700;color:var(--ink);
+    padding:10px;border:1px solid var(--line2);border-radius:11px;background:#fff}
+  .dpick .today{flex:none;width:auto;margin:0;padding:10px 13px;font-size:12.5px;font-weight:800;
+    color:var(--green-d);background:var(--green-l);border:1px solid #cfe4d9;border-radius:11px}
+
+  /* 写真を追加。文字だけだと押せる場所に見えないので、
+     枠と背景をつけて「ここを押す」と分かる形にする。 */
+  .photobtn{width:100%;margin-top:10px;padding:15px 12px;border-radius:14px;
+    border:2px dashed #bfd8cb;background:var(--green-l);color:var(--green-dd);
+    font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}
+  .photobtn .pi{font-size:19px;line-height:1}
+  .photobtn small{display:block;font-size:11px;font-weight:700;color:var(--sub);margin-top:3px}
+  .photobtn:active{transform:scale(.985);background:#dcebe3}
+
   /* bottom nav */
   /* 下のタブ。iOSでは、半透明＋ぼかし（backdrop-filter）の固定要素は
      スクロール中に描き直しが追いつかず、画面の途中に取り残されて見えることがある。
@@ -1240,11 +1257,19 @@ function renderDiary(){
   }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">まだ日記がありません</div>`;
   const photoBlock = curPhoto
     ? `<div style="margin-top:8px"><img src="${curPhoto}" style="width:100%;border-radius:10px;display:block"><button class="btn-quiet" data-act="rm-diary-photo" style="margin-top:6px">🗑 写真を外す</button></div>`
-    : `<button class="btn-quiet" data-act="add-diary-photo" style="margin-top:8px">📷 写真を追加（撮影・ライブラリ）</button>`;
+    : `<button class="photobtn" data-act="add-diary-photo">
+        <span class="pi">📷</span>
+        <span>写真を追加<small>撮影・ライブラリから選べます</small></span>
+      </button>`;
   return `<div class="screen">
     ${planSection(editing)}
     <div class="stitle">日記（${editing.slice(5).replace("-","/")}）</div>
-    <div class="calcnote" style="margin:0 0 10px">1日1件です。過去の日付をタップすると、その日の日記を直せます。</div>
+    <div class="dpick">
+      <label for="d-date">日付</label>
+      <input type="date" id="d-date" value="${editing}">
+      ${editing!==todayISO()?`<button class="today" data-act="new-diary">今日</button>`:""}
+    </div>
+    <div class="calcnote" style="margin:0 0 10px">1日1件です。上の日付を変えると、その日の日記を書けます。</div>
     <div class="barlist">
       <div class="field"><label>本文</label>
         <textarea id="d-text" rows="6" maxlength="${Core.DIARY_MAX}" placeholder="今日のできごと・気づいたこと" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit;padding:10px;border:1px solid var(--line2);border-radius:10px">${escapeHtml(curText)}</textarea>
@@ -1259,6 +1284,24 @@ function renderDiary(){
     <div class="barlist">${listHtml}</div>
   </div>`;
 }
+/* 日記の日付えらび。
+   書きかけの本文は保存されないので、変わっていれば必ず確かめてから移る。 */
+function pickDiaryDate(value){
+  if(!Core.validateDateString(value)){ toast("日付を選んでください"); return; }
+  const cur = diaryEditDate || todayISO();
+  if(value === cur) return;
+  const el = $("d-text");
+  const stored = (state.diary[cur] || {}).text || "";
+  const dirty = (el && el.value !== stored) || diaryPhotoPending !== undefined;
+  if(dirty && typeof confirm==="function" && !confirm("書きかけの内容は保存されません。日付を変えますか？")){
+    const dp = $("d-date"); if(dp) dp.value = cur;    // 選び直しを取り消す
+    return;
+  }
+  diaryEditDate = (value === todayISO()) ? null : value;
+  diaryPhotoPending = undefined;
+  render();
+}
+
 async function saveDiary(){
   const el=$("d-text"); const text=el?el.value:"";
   const date=diaryEditDate||todayISO();
@@ -2868,6 +2911,12 @@ document.addEventListener("touchend",(e)=>{
 /* バックグラウンドから戻ったとき：日をまたいでいたら画面を今日に合わせる。
    日記や設定などの入力途中の下書きを消さないよう、
    自由入力の無い画面（カレンダー・ホーム・まとめ）だけ描き直す。 */
+/* 日記の日付えらびは、押すのではなく選ぶ操作なので change で受ける。 */
+document.addEventListener("change",(e)=>{
+  const el = e && e.target;
+  if(el && el.id === "d-date") pickDiaryDate(el.value);
+});
+
 document.addEventListener("visibilitychange",()=>{
   /* 画面を離れたら測定を中止する（カメラとライトを点けっぱなしにしない） */
   if(document.hidden){ if(pRunning){ pulseFail("画面を離れたので測定を中止しました。"); } return; }
