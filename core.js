@@ -467,39 +467,74 @@
      支出には足さない。両方に足すと二重に引かれてしまう。 */
   const lpSum = function (rows) { return rows.reduce(function (s2, r) { return s2 + r.amount; }, 0); };
 
+  /* いま払っている期間の中か。
+     考え方は NISA のスケジュール（scheduledMonthly）と同じで、
+     「開始年齢 <= いまの年齢 <= 終了年齢」なら払っている。
+
+     ただし、これまで期間を見ずに足していたため、
+     期間が入っていない古い保存データがそのまま残っている。
+     いきなり0円にすると、これまで引かれていた分が消えて金額が変わってしまう。
+     判断できないときは「払っている」側に倒す（安全側＝これまでどおり）。
+
+       ・生年月日が未入力      → 年齢が出せないので、払っている扱い
+       ・開始も終了も未入力    → 期間の指定なし。払っている扱い
+       ・開始だけ入っている    → その年齢から先はずっと払っている
+       ・終了だけ入っている    → その年齢までは払っている
+       ・開始 > 終了（不正）   → 判断できないので、払っている扱い（勝手に直さない）
+  */
+  function lpInPeriod(fromAge, toAge, age) {
+    const from = Number(fromAge) > 0 ? Number(fromAge) : null;
+    const to = Number(toAge) > 0 ? Number(toAge) : null;
+    if (!Number.isFinite(age)) return true;          // 年齢が出せない
+    if (from === null && to === null) return true;   // 期間の指定なし
+    if (from !== null && to !== null && from > to) return true;  // 逆さま＝不正
+    if (from !== null && age < from) return false;   // まだ始まっていない
+    if (to !== null && age > to) return false;       // もう終わっている
+    return true;
+  }
+
+  /* 期間の中にある分だけを足す */
+  function lpActiveSum(rows, fromKey, toKey, amountKey, age) {
+    return (Array.isArray(rows) ? rows : []).reduce(function (s2, r) {
+      if (!r) return s2;
+      return lpInPeriod(r[fromKey], r[toKey], age) ? s2 + (Number(r[amountKey]) || 0) : s2;
+    }, 0);
+  }
+
   /* 貯まっていくお金 → 先取り。使えるお金から取り分けるが、支出ではない。 */
-  function lpSetAsideItems(settings) {
+  function lpSetAsideItems(settings, age) {
     const a = normalizeLifePlanAssets((settings || {}).lp);
     const rows = [];
     if (a.gold.monthlyYen > 0) rows.push({ key: "gold", name: "金（きん）の積立", amount: a.gold.monthlyYen });
     const bank = a.banks.reduce(function (s2, b) { return s2 + b.monthlyDeposit; }, 0);
     if (bank > 0) rows.push({ key: "banks", name: "銀行への入金", amount: bank });
-    const pen = a.privatePensionPlans.reduce(function (s2, p) { return s2 + p.monthlyContribution; }, 0);
+    /* 掛ける期間の中にある契約だけを足す */
+    const pen = lpActiveSum(a.privatePensionPlans, "contribFromAge", "contribToAge", "monthlyContribution", age);
     if (pen > 0) rows.push({ key: "pension", name: "民間年金の掛金", amount: pen });
     /* iDeCoの掛金も、毎月ほんとうに出ていくお金なので先取りに入れる。
        受給年齢まで引き出せないが、それは「使えるお金」から外す理由であって、
        家計から出ていかない理由ではない。金や民間年金の掛金と同じ扱いにする。
        ただし給与から天引きされていて、記録の給与が天引き後の手取りなら、
        ここに入れると二重に引かれる。その場合は掛金を0のままにする。 */
-    if (a.ideco.monthlyContribution > 0) {
-      rows.push({ key: "ideco", name: "iDeCoの掛金", amount: a.ideco.monthlyContribution });
-    }
+    const ide = lpActiveSum([a.ideco], "startAge", "endAge", "monthlyContribution", age);
+    if (ide > 0) rows.push({ key: "ideco", name: "iDeCoの掛金", amount: ide });
     return rows;
   }
 
   /* 出ていって戻らないお金 → 毎月固定の支出。借入の返済と生命保険の保険料。 */
-  function lpSpendItems(settings) {
+  function lpSpendItems(settings, age) {
     const a = normalizeLifePlanAssets((settings || {}).lp);
     const rows = [];
     const loan = a.loans.reduce(function (s2, l) { return s2 + l.monthlyPayment; }, 0);
     if (loan > 0) rows.push({ key: "loans", name: "借入の返済", amount: loan });
-    const ins = a.insurancePolicies.reduce(function (s2, i) { return s2 + i.monthlyPremium; }, 0);
+    /* 保険料を払う期間の中にある契約だけを足す（保障が続く年齢とは別物） */
+    const ins = lpActiveSum(a.insurancePolicies, "premiumFromAge", "premiumToAge", "monthlyPremium", age);
     if (ins > 0) rows.push({ key: "insurance", name: "生命保険の保険料", amount: ins });
     return rows;
   }
 
-  function lpMonthlyItems(settings) { return lpSetAsideItems(settings).concat(lpSpendItems(settings)); }
-  function lpMonthlyTotal(settings) { return lpSum(lpMonthlyItems(settings)); }
+  function lpMonthlyItems(settings, age) { return lpSetAsideItems(settings, age).concat(lpSpendItems(settings, age)); }
+  function lpMonthlyTotal(settings, age) { return lpSum(lpMonthlyItems(settings, age)); }
 
   /* 中身が空かどうか。空なら設定に持たせない（端末の保存領域を無駄に使わないため）。 */
   function lpHasAny(assets) {
@@ -537,9 +572,31 @@
     const age = ageFromBirth(s.birth, on);
     /* ライフプラン側の区間は月額だけを持つので、銘柄は落として渡す */
     const strip = function (r) { return { fromAge: r.fromAge, toAge: r.toAge, monthlyYen: r.monthlyYen }; };
+    /* 空の分類は<b>渡さない</b>。
+       「家計簿に登録が無い」だけで、ライフプラン側の既存データを消してはいけない。
+       受け取る側は、届かなかった分類にはいっさい手を触れない。 */
+    const only = function (obj) {
+      const out = {};
+      Object.keys(obj).forEach(function (k) {
+        const v = obj[k];
+        if (Array.isArray(v) ? v.length > 0 : v && Object.keys(v).length > 0) out[k] = v;
+      });
+      return out;
+    };
+    /* 中身がすべて0の gold / ideco も「未登録」とみなす */
+    const filled = function (o) {
+      return Object.keys(o).some(function (k) { return Number(o[k]) > 0 || (typeof o[k] === "string" && o[k]); });
+    };
     return {
-      inputs: {
-        gold: a.gold,
+      /* 家計簿から来たデータだと分かるようにする。
+         通常のバックアップ復元と同じ扱いにさせないための目印。 */
+      source: "kakeibo",
+      schemaVersion: 1,
+      appVersion: APP_VERSION,
+      generatedAt: on,
+      inputs: only({
+        gold: filled(a.gold) ? a.gold : {},
+        ideco: filled(a.ideco) ? a.ideco : {},
         banks: a.banks,
         loans: a.loans,
         privatePensionPlans: a.privatePensionPlans,
@@ -551,8 +608,7 @@
         growthAllocation: lpAllocationAt(a.growthSchedule, age),
         lumpSums: a.lumpSums,
         insurancePolicies: a.insurancePolicies,
-        ideco: a.ideco,
-      },
+      }),
     };
   }
 
@@ -585,7 +641,9 @@
     const expRecs = month.filter(function (t) { return t.type === "expense"; });
     /* ライフプラン欄の「出ていく毎月の金額」（借入の返済・生命保険）。
        記録からは入れない決めごとなので、ここで毎月固定の支出として足す。 */
-    const lpSpend = lpSpendItems(s);
+    /* その月の年齢（区切りの初日で見る）。生年月日が無ければ null。 */
+    const lpAgeNow = ageFromBirth(s.birth, cycleRange(ym, s.cycleStart).from);
+    const lpSpend = lpSpendItems(s, lpAgeNow);
     const lpSpendSum = lpSum(lpSpend);
     const spendTotal = sum(expRecs, function (t) { return t.amount; }) + lpSpendSum;
 
@@ -600,7 +658,7 @@
        基準日は区切りの初日にして、いつ計算しても同じ答えになるようにする。 */
     const nisaPlanned = nisaPlannedOn(s, cycleRange(ym, s.cycleStart).from);
     /* 貯まるもの（金・銀行・民間年金）は先取り。出ていくもの（借入・生命保険）は上で支出に足した。 */
-    const lpSetAside = lpSetAsideItems(s);
+    const lpSetAside = lpSetAsideItems(s, lpAgeNow);
     const lpSetAsideSum = lpSum(lpSetAside);
     const lpMonthly = lpSetAside.concat(lpSpend);
     const lpMonthlySum = lpSetAsideSum + lpSpendSum;
@@ -3216,6 +3274,8 @@
     lpAllocationAt: lpAllocationAt,
     normalizeLpInsurance: normalizeLpInsurance,
     normalizeLpIdeco: normalizeLpIdeco,
+    lpInPeriod: lpInPeriod,
+    lpActiveSum: lpActiveSum,
     lpSetAsideItems: lpSetAsideItems,
     lpSpendItems: lpSpendItems,
     lpMonthlyItems: lpMonthlyItems,

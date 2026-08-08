@@ -133,14 +133,22 @@ test("銀行・借入・民間年金の合計が出る", () => {
 /* =========================================================================
    【3】渡す形
    ========================================================================= */
-test("ライフプランの「バックアップの読み込み」が受け取れる形で出す", () => {
+test("家計簿から来たデータだと分かる印をつける", () => {
   const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: SAMPLE }));
-  /* 向こうは parsed.inputs があるかを見て取り込む */
+  assert.equal(out.source, "kakeibo", "通常のバックアップ復元と見分けがつかない");
+  assert.equal(out.schemaVersion, 1);
   assert.ok(out.inputs, "inputs が無いと読み込んでもらえない");
   assert.deepEqual(Object.keys(out.inputs).sort(), [
-    "banks", "gold", "growthAllocation", "growthSchedule", "ideco", "insurancePolicies",
-    "loans", "lumpSums", "privatePensionPlans", "tsumitateAllocation", "tsumitateSchedule",
-  ]);
+    "banks", "gold", "loans", "privatePensionPlans",
+  ], "登録した分類だけを渡していない");
+});
+
+test("登録が無い分類は渡さない（空配列で既存データを消させない）", () => {
+  const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: { banks: [{ name: "A", balance: 100 }] } }));
+  assert.deepEqual(Object.keys(out.inputs), ["banks"], "空の分類まで渡している");
+  for (const k of ["loans", "insurancePolicies", "privatePensionPlans", "gold", "ideco", "lumpSums"]) {
+    assert.equal(k in out.inputs, false, `${k} を空で渡すと、向こうの既存データが消える恐れがある`);
+  }
 });
 
 test("キー名は、ライフプラン側とまったく同じにする（言い換えない）", () => {
@@ -159,10 +167,10 @@ test("ライフプランでしか入れない値は上書きしない", () => {
   }
 });
 
-test("何も入れていなくても、空の形で出せる（落ちない）", () => {
+test("何も入れていなければ、渡すものが無い（落ちない）", () => {
   const out = Core.buildLifePlanInputs({});
-  assert.deepEqual(out.inputs.banks, []);
-  assert.deepEqual(out.inputs.gold, { currentGrams: 0, pricePerGram: 0, monthlyYen: 0 });
+  assert.deepEqual(out.inputs, {}, "未登録なのに何かを渡している");
+  assert.equal(out.source, "kakeibo");
   assert.doesNotThrow(() => Core.buildLifePlanInputs(null));
 });
 
@@ -669,4 +677,137 @@ test("記録の選択から、生命保険と私年金を外す（入力口は�
   const c = Core.computeMonth(Core.normalizeSettings({}),
     [{ id: "1", date: "2026-08-05", type: "expense", cat: "insure", amount: 15767 }], "2026-08");
   assert.equal(c.spendTotal, 15767, "過去の記録が集計から消えている");
+});
+
+/* =========================================================================
+   【8】払う期間の中だけを家計から引く
+   -------------------------------------------------------------------------
+   【不具合】iDeCo・民間年金・生命保険について、開始年齢・終了年齢を見ずに
+   月額を足していた。払い終わった保険料や、まだ始まっていない掛金まで
+   毎月引かれていた。考え方は NISA のスケジュール判定と同じにそろえる。
+
+   期間が入っていない古い保存データが残っているので、判断できないときは
+   「払っている」側に倒す（＝これまでどおりの金額。いきなり変わらない）。
+   ========================================================================= */
+const PERIOD = (over = {}) => Object.assign({
+  privatePensionPlans: [{ name: "年金共済", monthlyContribution: 15000, contribFromAge: 35, contribToAge: 60 }],
+  insurancePolicies: [{ name: "医療共済", monthlyPremium: 15767, premiumFromAge: 46, premiumToAge: 63 }],
+  ideco: { monthlyContribution: 23000, startAge: 50, endAge: 65 },
+}, over);
+const TXS = [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }];
+/* 1968-11-13生まれ → 2026-08-01時点で約57.72歳 */
+const atAge = (lp, birth) => Core.computeMonth(Core.normalizeSettings({ birth: birth, lp: lp }), TXS, "2026-08");
+
+test("期間の判定は、開始年齢と終了年齢の両端を含む", () => {
+  assert.equal(Core.lpInPeriod(46, 63, 45.99), false, "開始年齢の前なのに払っている");
+  assert.equal(Core.lpInPeriod(46, 63, 46), true, "開始年齢ちょうどで払っていない");
+  assert.equal(Core.lpInPeriod(46, 63, 63), true, "終了年齢ちょうどで払っていない");
+  assert.equal(Core.lpInPeriod(46, 63, 63.01), false, "終了年齢の後なのに払っている");
+});
+
+test("期間が入っていないときは、これまでどおり払っている扱い", () => {
+  assert.equal(Core.lpInPeriod(0, 0, 57.7), true, "期間未設定で0円にしている");
+  assert.equal(Core.lpInPeriod(50, 0, 57.7), true, "終了だけ未設定で0円にしている");
+  assert.equal(Core.lpInPeriod(50, 0, 49), false, "開始前なのに払っている");
+  assert.equal(Core.lpInPeriod(0, 60, 57.7), true, "開始だけ未設定で0円にしている");
+  assert.equal(Core.lpInPeriod(0, 60, 61), false, "終了後なのに払っている");
+  assert.equal(Core.lpInPeriod(63, 46, 57.7), true, "逆さまの期間を勝手に0円にしている");
+  assert.equal(Core.lpInPeriod(46, 63, null), true, "年齢が出せないのに0円にしている");
+  assert.equal(Core.lpInPeriod(46, 63, NaN), true);
+});
+
+test("生年月日が無ければ、これまでどおり全部引く（金額がいきなり変わらない）", () => {
+  const c = atAge(PERIOD(), "");
+  assert.equal(c.lpSetAsideSum, 15000 + 23000);
+  assert.equal(c.lpSpendSum, 15767);
+});
+
+test("払う期間の中なら、これまでどおり引く", () => {
+  const c = atAge(PERIOD(), "1968-11-13");   // 約57.7歳
+  assert.equal(c.lpSetAsideSum, 15000 + 23000, "民間年金とiDeCoが引かれていない");
+  assert.equal(c.lpSpendSum, 15767, "保険料が引かれていない");
+});
+
+test("払い終わった契約は0円になる", () => {
+  /* 1958-11-13生まれ → 約67.7歳。年金(〜60)・保険(〜63)・iDeCo(〜65)すべて終了 */
+  const c = atAge(PERIOD(), "1958-11-13");
+  assert.equal(c.lpSetAsideSum, 0, "終わった掛金を引き続けている");
+  assert.equal(c.lpSpendSum, 0, "払い終わった保険料を引き続けている");
+  const plain = Core.computeMonth(Core.normalizeSettings({ birth: "1958-11-13" }), TXS, "2026-08");
+  assert.equal(c.available, plain.available, "使えるお金に響いている");
+});
+
+test("まだ始まっていない契約は0円になる", () => {
+  /* 1988-11-13生まれ → 約37.7歳。年金(35〜)だけ始まっている */
+  const c = atAge(PERIOD(), "1988-11-13");
+  assert.equal(c.lpSetAsideSum, 15000, "始まっていないiDeCoまで引いている");
+  assert.equal(c.lpSpendSum, 0, "始まっていない保険料を引いている");
+});
+
+test("誕生日の前月・当月・翌月で、切り替わる月が1か月ずれない", () => {
+  /* 終了年齢は「その誕生日まで」の意味（ライフプラン側と同じ数え方）。
+     1966-09-20生まれ・終了60歳 → 2026-09-20に60歳になる。
+     区切りの初日で見るので、9月分（9/1時点＝59.95歳）はまだ払い、10月分（60.03歳）は終了。 */
+  const lp = { insurancePolicies: [{ name: "A", monthlyPremium: 10000, premiumFromAge: 40, premiumToAge: 60 }] };
+  const s = Core.normalizeSettings({ birth: "1966-09-20", lp: lp });
+  assert.equal(Core.computeMonth(s, [], "2026-08").lpSpendSum, 10000, "誕生日の前月で切れている");
+  assert.equal(Core.computeMonth(s, [], "2026-09").lpSpendSum, 10000, "誕生日の当月で切れている");
+  assert.equal(Core.computeMonth(s, [], "2026-10").lpSpendSum, 0, "誕生日を過ぎても払い続けている");
+});
+
+test("年をまたいでも正しく判定する", () => {
+  const lp = { ideco: { monthlyContribution: 20000, startAge: 60, endAge: 65 } };
+  const s = Core.normalizeSettings({ birth: "1966-12-15", lp: lp });   // 2026-12-15に60歳
+  assert.equal(Core.computeMonth(s, [], "2026-11").lpSetAsideSum, 0, "開始前なのに引いている");
+  assert.equal(Core.computeMonth(s, [], "2027-01").lpSetAsideSum, 20000, "開始後なのに引いていない");
+});
+
+test("複数の契約が混ざっていても、期間の中のものだけを足す", () => {
+  const lp = { insurancePolicies: [
+    { name: "終わった", monthlyPremium: 8000, premiumFromAge: 30, premiumToAge: 50 },
+    { name: "いま払っている", monthlyPremium: 15767, premiumFromAge: 46, premiumToAge: 63 },
+    { name: "これから", monthlyPremium: 3000, premiumFromAge: 60, premiumToAge: 70 },
+    { name: "期間なし（古いデータ）", monthlyPremium: 1000 },
+  ] };
+  const c = atAge(lp, "1968-11-13");
+  assert.equal(c.lpSpendSum, 15767 + 1000, "期間の外の契約まで足している");
+});
+
+test("おかしな値が入っていても、家計全体にNaNが伝わらない", () => {
+  const lp = {
+    insurancePolicies: [
+      { name: "A", monthlyPremium: "１５０００", premiumFromAge: "abc", premiumToAge: null },
+      { name: "B", monthlyPremium: "12,000", premiumFromAge: -5, premiumToAge: 999 },
+      { name: "C", monthlyPremium: NaN, premiumFromAge: undefined, premiumToAge: "" },
+    ],
+    ideco: { monthlyContribution: -1, startAge: 200, endAge: 0 },
+    privatePensionPlans: [{ name: "D", monthlyContribution: 1e20, contribFromAge: 0, contribToAge: 0 }],
+  };
+  const c = atAge(lp, "1968-11-13");
+  for (const k of ["available", "setAside", "spendTotal", "lpSetAsideSum", "lpSpendSum"]) {
+    assert.ok(Number.isFinite(c[k]), `${k} が数でなくなっている: ${c[k]}`);
+  }
+  assert.ok(c.lpSpendSum >= 0, "マイナスの保険料が入っている");
+});
+
+test("NISAの判定は変えていない（同じ考え方だが別の道すじ）", () => {
+  const s = Core.normalizeSettings({ birth: "1968-11-13", lp: {
+    tsumitateSchedule: [{ fromAge: 57.75, toAge: 65, funds: [{ name: "全世界株式", amount: 90000 }] }] } });
+  assert.equal(Core.nisaPlannedOn(s, "2026-08-08"), 0, "開始前なのに引いている");
+  assert.equal(Core.nisaPlannedOn(s, "2026-09-08"), 90000, "開始後なのに引いていない");
+});
+
+test("家計簿由来の印が変わったら気づける", () => {
+  assert.equal(Core.buildLifePlanInputs(Core.normalizeSettings({ lp: SAMPLE })).source, "kakeibo");
+});
+
+test("ライフプランでしか入れない値を、勝手に渡さない", () => {
+  /* ここに余計なキーが混ざると、向こうで入れた年齢や年金額が上書きされてしまう */
+  const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: SAMPLE })).inputs;
+  const allowed = ["gold", "ideco", "banks", "loans", "privatePensionPlans",
+    "tsumitateSchedule", "growthSchedule", "tsumitateAllocation", "growthAllocation",
+    "lumpSums", "insurancePolicies"];
+  for (const k of Object.keys(out)) {
+    assert.ok(allowed.includes(k), `渡してはいけない項目が混ざっている: ${k}`);
+  }
 });

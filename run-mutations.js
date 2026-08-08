@@ -25,8 +25,7 @@ const dir = __dirname;
 const MUTATIONS = [
   /* ---- 先取りと支出の分け方・iDeCo・生命保険 ---- */
   { name: "借入を先取りに戻す", guards: "出ていくお金は支出として数える",
-    file: "core.js", from: '    if (loan > 0) rows.push({ key: "loans", name: "借入の返済", amount: loan });\n    const ins',
-    to: '    const ins' },
+    file: "core.js", from: '    if (loan > 0) rows.push({ key: "loans", name: "借入の返済", amount: loan });', to: "" },
   { name: "生命保険を支出に入れない", guards: "保険料は毎月固定の支出",
     file: "core.js", from: '    if (ins > 0) rows.push({ key: "insurance", name: "生命保険の保険料", amount: ins });', to: "" },
   { name: "出ていくお金を毎月固定に数えない", guards: "毎月固定に入る",
@@ -36,9 +35,9 @@ const MUTATIONS = [
     file: "core.js", from: "    const setAside = savingsPlanned + nisaPlanned + lpSetAsideSum;",
     to: "    const setAside = savingsPlanned + nisaPlanned + lpSetAsideSum + lpSpendSum;" },
   { name: "iDeCoの掛金を先取りに入れない", guards: "iDeCoの掛金も先取りとして引く",
-    file: "core.js", from: '      rows.push({ key: "ideco", name: "iDeCoの掛金", amount: a.ideco.monthlyContribution });', to: "" },
+    file: "core.js", from: '    if (ide > 0) rows.push({ key: "ideco", name: "iDeCoの掛金", amount: ide });', to: "" },
   { name: "iDeCo・生命保険を渡さない", guards: "ライフプランへ渡す",
-    file: "core.js", from: "        insurancePolicies: a.insurancePolicies,\n        ideco: a.ideco,", to: "" },
+    file: "core.js", from: "        insurancePolicies: a.insurancePolicies,", to: "" },
   { name: "記録の選択に保険を残す", guards: "入力口はライフプラン欄だけ",
     file: "core.js", from: '    { k: "insure",   e: "🛟", n: "保険", hidden: true },', to: '    { k: "insure",   e: "🛟", n: "保険" },' },
   { name: "記録の選択に私年金を残す", guards: "入力口はライフプラン欄だけ",
@@ -93,10 +92,9 @@ const MUTATIONS = [
 
   /* ---- ライフプランへ渡す資産（金・銀行貯金・借入金・民間年金） ---- */
   { name: "渡す形の入れものを変える", guards: "ライフプランが受け取れる { inputs: ... } の形",
-    file: "core.js", from: "    return {\n      inputs: {\n        gold: a.gold,", to: "    return {\n      data: {\n        gold: a.gold," },
+    file: "core.js", from: '      source: "kakeibo",', to: '      source: "other",' },
   { name: "ライフプランの入力まで上書きする", guards: "渡すのは4つだけ",
-    file: "core.js", from: "        ideco: a.ideco,\n      },\n    };\n  }",
-    to: "        ideco: a.ideco,\n        currentAge: 0,\n      },\n    };\n  }" },
+    file: "core.js", from: "        insurancePolicies: a.insurancePolicies,\n      }),", to: "        insurancePolicies: a.insurancePolicies,\n        banksExtra: [{ x: 1 }],\n      })," },
   { name: "件数の上限を外す", guards: "1種類あたりの行数に上限がある",
     file: "core.js", from: "  const LP_MAX_ROWS = 20;", to: "  const LP_MAX_ROWS = 100000;" },
   { name: "マイナスの金額を受け入れる", guards: "読み取れない値・マイナスは0にする",
