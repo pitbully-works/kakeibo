@@ -138,8 +138,8 @@ test("ライフプランの「バックアップの読み込み」が受け取�
   /* 向こうは parsed.inputs があるかを見て取り込む */
   assert.ok(out.inputs, "inputs が無いと読み込んでもらえない");
   assert.deepEqual(Object.keys(out.inputs).sort(), [
-    "banks", "gold", "growthAllocation", "growthSchedule", "loans",
-    "privatePensionPlans", "tsumitateAllocation", "tsumitateSchedule",
+    "banks", "gold", "growthAllocation", "growthSchedule", "ideco", "insurancePolicies",
+    "loans", "lumpSums", "privatePensionPlans", "tsumitateAllocation", "tsumitateSchedule",
   ]);
 });
 
@@ -152,9 +152,9 @@ test("キー名は、ライフプラン側とまったく同じにする（言�
     ["contribFromAge", "contribToAge", "monthlyContribution", "monthlyPayout", "name", "payoutFromAge", "payoutToAge"]);
 });
 
-test("渡すのは4つだけ。ライフプランでしか入れない値を上書きしない", () => {
+test("ライフプランでしか入れない値は上書きしない", () => {
   const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: SAMPLE })).inputs;
-  for (const k of ["currentAge", "retireAge", "pensionMonthly", "tsumitateHoldings", "ideco", "insurancePolicies"]) {
+  for (const k of ["currentAge", "retireAge", "pensionMonthly", "tsumitateHoldings", "growthHoldings", "banksExtra"]) {
     assert.equal(k in out, false, `${k} まで渡すと、ライフプラン側の入力が消える`);
   }
 });
@@ -184,23 +184,50 @@ test("何も入れていないうちは、設定に持たせない（保存を�
   assert.equal("lp" in Core.normalizeSettings({ lp: { gold: { currentGrams: 1 } } }), true);
 });
 
-test("借入の毎月返済を入れても、今月の使えるお金は変わらない", () => {
-  /* ここが二重計上の分かれ目。実際に払ったお金は「記録」から入れる決めごと。 */
+test("貯まるものは先取り、出ていくものは支出（どちらも二重に引かない）", () => {
   const txs = [
     { id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 },
     { id: "2", date: "2026-08-06", type: "expense", cat: "food", amount: 50000 },
   ];
   const plain = Core.computeMonth(Core.normalizeSettings({}), txs, "2026-08");
   const withLp = Core.computeMonth(Core.normalizeSettings({ lp: SAMPLE }), txs, "2026-08");
-  assert.equal(withLp.usable, plain.usable, "ライフプラン用の資産が家計の計算に混ざっている");
-  assert.equal(withLp.spendTotal, plain.spendTotal);
+  /* 貯まるもの：銀行への入金5,000＋民間年金15,000＋金の積立10,000 */
+  const keep = 5000 + 15000 + 10000;
+  /* 出ていくもの：借入の返済32,200 */
+  const gone = 32200;
+  assert.equal(withLp.lpSetAsideSum, keep, "先取りの中身が違う");
+  assert.equal(withLp.lpSpendSum, gone, "支出の中身が違う");
+  assert.equal(withLp.setAside, plain.setAside + keep, "貯まるものが先取りに入っていない");
+  assert.equal(withLp.spendTotal, plain.spendTotal + gone, "出ていくものが支出に入っていない");
+  assert.equal(withLp.recurringSpend, plain.recurringSpend + gone, "毎月固定に入っていない");
+  /* 使えるお金からは、合わせて1回だけ引かれる */
+  assert.equal(withLp.available, plain.available - keep - gone, "二重に引かれている");
   assert.equal(withLp.incomeTotal, plain.incomeTotal);
 });
 
-test("月次スナップショットにも混ざらない", () => {
-  const a = Core.buildSnapshot(Core.normalizeSettings({}), [], "2026-08");
-  const b = Core.buildSnapshot(Core.normalizeSettings({ lp: SAMPLE }), [], "2026-08");
-  assert.deepEqual(b, a, "スナップショットの中身が変わっている");
+test("まとめに、先取りと毎月固定の支出が分けて出る", () => {
+  const app = bootApp({ state: { settings: { savingsTarget: 30000, lp: SAMPLE }, tx: [
+    { id: "1", date: new Date().toISOString().slice(0, 10), type: "income", cat: "salary", amount: 300000 }] } });
+  const out = app.run(`view="summary"; sumTab="month"; render(); document.getElementById("app").innerHTML`);
+  assert.match(out, /先取り（貯まるお金）/, "先取りの見出しが無い");
+  assert.match(out, /毎月固定（支出）/, "支出の見出しが無い");
+  assert.match(out, /金（きん）の積立/, "先取りの内わけが出ていない");
+  assert.match(out, /借入の返済/, "支出の内わけが出ていない");
+  assert.match(out, /記録からは入れません/, "二重にしない決めごとを書いていない");
+});
+
+test("一括投資は、かけいぼの計算にも月次スナップショットにも入らない", () => {
+  const lumps = { lumpSums: [{ age: 59, amount: 2280000 }] };
+  const txs = [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }];
+  const plain = Core.computeMonth(Core.normalizeSettings({}), txs, "2026-08");
+  const withLump = Core.computeMonth(Core.normalizeSettings({ lp: lumps }), txs, "2026-08");
+  assert.equal(withLump.available, plain.available, "一括投資が毎月の計算に入っている");
+  assert.deepEqual(
+    Core.buildSnapshot(Core.normalizeSettings({ lp: lumps }), [], "2026-08"),
+    Core.buildSnapshot(Core.normalizeSettings({}), [], "2026-08"));
+  /* ライフプランへは渡す */
+  assert.deepEqual(Core.buildLifePlanInputs(Core.normalizeSettings({ lp: lumps })).inputs.lumpSums,
+    [{ age: 59, amount: 2280000 }]);
 });
 
 test("入力口はここだけ（同じ欄をほかの画面に作らない）", () => {
@@ -219,6 +246,21 @@ const withLp = () => bootApp({ state: { settings: { lp: SAMPLE }, tx: [] } });
 
 /* テスト用の最小DOMは画面の中身を読み取らないので、描いたあとの入力欄には
    何も入っていない。実機では描いた値が入っているので、その状態を作ってから操作する。 */
+/* NISAの区間と銘柄も、描いたあとの入力欄の値を手で入れて実機と同じ状態にする */
+function fillNisaFields(app){
+  app.run(`["tsumitateSchedule:lp-ts","growthSchedule:lp-gs"].forEach((pair)=>{
+    const [key,id]=pair.split(":");
+    (state.settings.lp[key]||[]).forEach((r,i)=>{
+      document.getElementById(id+"-from-"+i).value = String(r.fromAge);
+      document.getElementById(id+"-to-"+i).value = String(r.toAge);
+      (r.funds||[]).forEach((f,n)=>{
+        document.getElementById(id+"-fn-"+i+"-"+n).value = f.name;
+        document.getElementById(id+"-fa-"+i+"-"+n).value = String(f.amount);
+      });
+    });
+  });`);
+}
+
 function fillBankFields(app){
   app.run(`state.settings.lp.banks.forEach((b,i)=>{
     document.getElementById("lp-b-name-"+i).value = b.name;
@@ -236,7 +278,10 @@ test("せっていには、合計と内訳ボタンだけを出す", () => {
   assert.match(out, /¥1,102,770/, "銀行の合計が出ていない");
   assert.match(out, /¥3,051,600/, "借入の合計が出ていない");
   /* NISA・金・銀行・借入・民間年金の5つ（NISAは先取りの欄からも開けるので6か所） */
-  assert.equal((out.match(/data-act="lp-open"/g) || []).length, 6, "内訳ボタンの数が合わない");
+  /* NISA・iDeCo・生命保険・金・銀行・借入・民間年金の7つ（NISAは先取りの欄からも開ける） */
+  assert.equal((out.match(/data-act="lp-open"/g) || []).length, 8, "内訳ボタンの数が合わない");
+  assert.match(out, /data-kind="ideco"/, "iDeCoの内訳ボタンが無い");
+  assert.match(out, /data-kind="insurance"/, "生命保険の内訳ボタンが無い");
   assert.match(out, /data-kind="nisa"/, "NISAの内訳ボタンが無い");
   /* 一覧の中に入力欄は出さない */
   assert.equal(out.includes('id="lp-b-bal-0"'), false, "せっていに内訳の入力欄が出ている");
@@ -338,9 +383,10 @@ test("せっていへ戻れる", () => {
    打てる場所を、いつでも1か所だけにするのがここの肝。
    ========================================================================= */
 const NISA = {
-  tsumitateSchedule: [{ fromAge: 57.75, toAge: 65, monthlyYen: 90000 }],
-  growthSchedule: [{ fromAge: 57.5, toAge: 65, monthlyYen: 10000 }],
-  tsumitateAllocation: [{ name: "全世界株式", amount: 40000 }, { name: "S&P500", amount: 40000 }],
+  /* 月額は銘柄の合計。打つのは銘柄名と金額だけ。 */
+  tsumitateSchedule: [{ fromAge: 57.75, toAge: 65, funds: [
+    { name: "全世界株式", amount: 40000 }, { name: "S&P500", amount: 40000 }, { name: "タワラ8", amount: 10000 }] }],
+  growthSchedule: [{ fromAge: 57.5, toAge: 65, funds: [{ name: "AI", amount: 10000 }] }],
 };
 const autoSettings = () => Core.normalizeSettings({ birth: "1968-11-13", nisaMonthly: 110000, lp: NISA });
 
@@ -422,9 +468,11 @@ test("いつ計算しても同じ答えになる（区切りの初日で見る�
 });
 
 test("NISAのスケジュールと銘柄も、ライフプランへそのまま渡す", () => {
-  const out = Core.buildLifePlanInputs(autoSettings()).inputs;
-  assert.deepEqual(out.tsumitateSchedule, [{ fromAge: 57.75, toAge: 65, monthlyYen: 90000 }]);
-  assert.deepEqual(out.tsumitateAllocation, [{ name: "全世界株式", amount: 40000 }, { name: "S&P500", amount: 40000 }]);
+  const out = Core.buildLifePlanInputs(autoSettings(), "2026-09-08").inputs;
+  assert.deepEqual(out.tsumitateSchedule, [{ fromAge: 57.75, toAge: 65, monthlyYen: 90000 }],
+    "月額は銘柄の合計になっていない");
+  assert.deepEqual(out.tsumitateAllocation, [
+    { name: "全世界株式", amount: 40000 }, { name: "S&P500", amount: 40000 }, { name: "タワラ8", amount: 10000 }]);
   assert.deepEqual(Object.keys(out.tsumitateSchedule[0]).sort(), ["fromAge", "monthlyYen", "toAge"]);
   assert.deepEqual(Object.keys(out.tsumitateAllocation[0]).sort(), ["amount", "name"]);
   /* 生年月日そのものは渡さない（ライフプラン側で入れる項目） */
@@ -440,10 +488,23 @@ test("せっていに生年月日の欄があり、なぜ要るかが書いて�
   assert.match(out, /年齢の区間/, "年齢の区間で決まることを説明していない");
 });
 
-test("生年月日を保存できる", () => {
+test("生年月日を保存できる（保存ボタンでも、内訳へ移るときでも）", () => {
   const app = bootApp({ state: { settings: {}, tx: [] } });
   app.run(`view="settings"; render(); document.getElementById("f-birth").value="1968-11-13"; saveSettings();`);
   assert.equal(app.run(`state.settings.birth`), "1968-11-13");
+  /* 内訳へ移るときの静かな保存でも拾う（ここが外れると、打ちかけた生年月日が消える） */
+  const app2 = bootApp({ state: { settings: {}, tx: [] } });
+  app2.run(`view="settings"; render(); document.getElementById("f-birth").value="1970-01-05"; saveSettingsQuiet();`);
+  assert.equal(app2.run(`state.settings.birth`), "1970-01-05", "内訳へ移るときに生年月日を捨てている");
+});
+
+test("せっていのNISAの欄は、いつでも打てない（入力口は内訳だけ）", () => {
+  /* 区間がまだ無い人でも、せっていの欄からは打てない。二重に書ける場所を作らないため。 */
+  const app = bootApp({ state: { settings: { nisaMonthly: 110000 }, tx: [] } });
+  const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
+  const field = out.slice(out.indexOf('id="f-nisa"') - 60, out.indexOf('id="f-nisa"') + 60);
+  assert.match(field, /readonly/, "内訳を入れる前でも打ててしまう");
+  assert.match(out, /打ち込む欄は/, "内訳だけが入力口だと伝えていない");
 });
 
 test("自動のときは、月額の欄が打てない（読み取り専用）", () => {
@@ -471,29 +532,41 @@ test("NISAの内訳を直して保存できる", () => {
   app.run(`view="lp"; lpKind="nisa"; render();
     document.getElementById("lp-ts-from-0").value="58";
     document.getElementById("lp-ts-to-0").value="65";
-    document.getElementById("lp-ts-yen-0").value="80000";
+    document.getElementById("lp-ts-fn-0-0").value="全世界株式";
+    document.getElementById("lp-ts-fa-0-0").value="30000";
+    document.getElementById("lp-ts-fn-0-1").value="S&P500";
+    document.getElementById("lp-ts-fa-0-1").value="20000";
+    document.getElementById("lp-ts-fn-0-2").value="タワラ8";
+    document.getElementById("lp-ts-fa-0-2").value="10000";
     document.getElementById("lp-gs-from-0").value="57.5";
     document.getElementById("lp-gs-to-0").value="65";
-    document.getElementById("lp-gs-yen-0").value="10000";
+    document.getElementById("lp-gs-fn-0-0").value="AI";
+    document.getElementById("lp-gs-fa-0-0").value="10000";
     lpSaveNisa();`);
-  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].monthlyYen`), 80000);
   assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].fromAge`), 58);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].monthlyYen`), 60000,
+    "月額が銘柄の合計になっていない");
 });
 
 test("NISAの内訳に、区間と銘柄の両方を足せる", () => {
   const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
   app.run(`view="lp"; lpKind="nisa"; render(); lpAddRow("tsumitateSchedule");`);
-  assert.equal(app.run(`state.settings.lp.tsumitateSchedule.length`), 2);
-  app.run(`lpAddRow("growthAllocation");`);
-  assert.equal(app.run(`state.settings.lp.growthAllocation.length`), 1);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule.length`), 2, "区間を足せていない");
+  app.run(`render(); lpAddFund("tsumitateSchedule", 1);`);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[1].funds.length`), 1, "銘柄を足せていない");
+  app.run(`render(); lpAddRow("lumpSums");`);
+  assert.equal(app.run(`state.settings.lp.lumpSums.length`), 1, "一括投資を足せていない");
 });
 
 test("NISAの内訳の行を、確かめてから消せる", () => {
   const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
-  app.run(`view="lp"; lpKind="nisa"; render(); confirm=()=>false; lpDeleteRow(0,"tsumitateAllocation");`);
-  assert.equal(app.run(`state.settings.lp.tsumitateAllocation.length`), 2, "確かめずに消している");
-  app.run(`confirm=()=>true; lpDeleteRow(0,"tsumitateAllocation");`);
-  assert.equal(app.run(`state.settings.lp.tsumitateAllocation.length`), 1);
+  app.run(`view="lp"; lpKind="nisa"; render();`);
+  fillNisaFields(app);
+  app.run(`confirm=()=>false; lpDeleteFund("tsumitateSchedule",0,0);`);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].funds.length`), 3, "確かめずに消している");
+  app.run(`confirm=()=>true; lpDeleteFund("tsumitateSchedule",0,0);`);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].funds.length`), 2);
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].monthlyYen`), 50000, "月額が合計し直されていない");
 });
 
 test("NISAの画面が白くならない", () => {
@@ -501,4 +574,99 @@ test("NISAの画面が白くならない", () => {
   const out = app.run(`view="lp"; lpKind="nisa"; render(); document.getElementById("app").innerHTML`);
   assert.ok(out.length > 300, "画面が空");
   assert.match(out, /生年月日/, "生年月日を入れる案内が無い");
+});
+
+/* =========================================================================
+   【7】iDeCo・生命保険
+   ========================================================================= */
+test("生命保険の保険料は、毎月固定の支出として数える", () => {
+  const ins = { insurancePolicies: [{ name: "医療共済", monthlyPremium: 15767, premiumFromAge: 46, premiumToAge: 65 }] };
+  const txs = [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }];
+  const plain = Core.computeMonth(Core.normalizeSettings({}), txs, "2026-08");
+  const withIns = Core.computeMonth(Core.normalizeSettings({ lp: ins }), txs, "2026-08");
+  assert.equal(withIns.spendTotal, plain.spendTotal + 15767, "支出に入っていない");
+  assert.equal(withIns.setAside, plain.setAside, "先取りにも入れていて二重になっている");
+});
+
+test("iDeCoの掛金は先取りとして引く（評価額は家計に混ぜない）", () => {
+  const d = { ideco: { monthlyContribution: 23000, currentValue: 500000, productName: "全世界株式" } };
+  const txs = [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }];
+  const plain = Core.computeMonth(Core.normalizeSettings({}), txs, "2026-08");
+  const withId = Core.computeMonth(Core.normalizeSettings({ lp: d }), txs, "2026-08");
+  /* 毎月ほんとうに出ていくお金なので、金や民間年金の掛金と同じ扱い */
+  assert.equal(withId.setAside, plain.setAside + 23000, "掛金が先取りに入っていない");
+  assert.equal(withId.available, plain.available - 23000, "使えるお金から引かれていない");
+  assert.equal(withId.spendTotal, plain.spendTotal, "支出にも足していて二重になっている");
+  /* 評価額（すでに積み上がった残高）は、毎月の計算には混ぜない */
+  const big = Core.computeMonth(Core.normalizeSettings({ lp: { ideco: { currentValue: 5000000 } } }), txs, "2026-08");
+  assert.equal(big.available, plain.available, "評価額が毎月の計算に混ざっている");
+  /* ライフプランへは渡す */
+  const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: d })).inputs;
+  assert.equal(out.ideco.monthlyContribution, 23000);
+  assert.equal(out.ideco.productName, "全世界株式");
+});
+
+test("生命保険とiDeCoも、ライフプランと同じキー名で渡す", () => {
+  const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: {
+    insurancePolicies: [{ name: "A", monthlyPremium: 1000, premiumFromAge: 46, premiumToAge: 65, coverageUntilAge: 82 }],
+    ideco: { monthlyContribution: 23000 },
+  } })).inputs;
+  assert.deepEqual(Object.keys(out.insurancePolicies[0]).sort(),
+    ["coverageUntilAge", "monthlyPremium", "name", "premiumFromAge", "premiumToAge"]);
+  assert.deepEqual(Object.keys(out.ideco).sort(),
+    ["currentValue", "endAge", "monthlyContribution", "payoutStartAge", "payoutYears", "principalTotal", "productName", "startAge"]);
+});
+
+test("iDeCoと生命保険の画面が白くならない", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  for (const kind of ["ideco", "insurance"]) {
+    const out = app.run(`view="lp"; lpKind="${kind}"; render(); document.getElementById("app").innerHTML`);
+    assert.ok(out.length > 300, `${kind} の画面が空`);
+  }
+});
+
+test("iDeCoを直して保存できる", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  app.run(`view="lp"; lpKind="ideco"; render();
+    document.getElementById("lp-id-monthly").value="23000";
+    document.getElementById("lp-id-name").value="全世界株式";
+    lpSaveIdeco();`);
+  assert.equal(app.run(`state.settings.lp.ideco.monthlyContribution`), 23000);
+  assert.equal(app.run(`state.settings.lp.ideco.productName`), "全世界株式");
+});
+
+test("生命保険を足して、直して、消せる", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  app.run(`view="lp"; lpKind="insurance"; render(); lpAddRow("insurancePolicies");`);
+  assert.equal(app.run(`state.settings.lp.insurancePolicies.length`), 1);
+  app.run(`render();
+    document.getElementById("lp-in-name-0").value="医療共済";
+    document.getElementById("lp-in-prem-0").value="15767";
+    lpSaveInsurance();`);
+  assert.equal(app.run(`state.settings.lp.insurancePolicies[0].monthlyPremium`), 15767);
+  app.run(`render();
+    document.getElementById("lp-in-name-0").value="医療共済";
+    document.getElementById("lp-in-prem-0").value="15767";
+    confirm=()=>true; lpDeleteRow(0, "insurancePolicies");`);
+  /* 最後の1件を消すと中身が空になるので、設定からは lp ごと消える（保存を太らせないため） */
+  assert.equal(app.run(`Core.normalizeLifePlanAssets(state.settings.lp).insurancePolicies.length`), 0);
+});
+
+test("ホームから、追加した項目それぞれへ入れに行ける", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  const out = app.run(`view="home"; render(); document.getElementById("app").innerHTML`);
+  for (const kind of ["pension", "insurance", "gold", "ideco", "loans", "banks"]) {
+    assert.match(out, new RegExp(`data-kind="${kind}"`), `ホームに ${kind} の入口が無い`);
+  }
+});
+
+test("記録の選択から、生命保険と私年金を外す（入力口はライフプラン欄だけ）", () => {
+  const pick = Core.EXP_PICK_CATS.map((c) => c.k);
+  assert.equal(pick.includes("insure"), false, "保険が記録の選択に残っている");
+  assert.equal(pick.includes("pension"), false, "私年金が記録の選択に残っている");
+  /* 過去に記録した分は、これまでどおり名前が出て集計にも入る */
+  assert.equal(Core.EXP_CATS.some((c) => c.k === "insure"), true, "過去の記録の名前が出せなくなっている");
+  const c = Core.computeMonth(Core.normalizeSettings({}),
+    [{ id: "1", date: "2026-08-05", type: "expense", cat: "insure", amount: 15767 }], "2026-08");
+  assert.equal(c.spendTotal, 15767, "過去の記録が集計から消えている");
 });

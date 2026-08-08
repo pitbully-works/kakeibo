@@ -42,7 +42,8 @@ test("保存に成功したら、設定が確定してホームへ戻る", () =>
   const app = bootApp({ state: baseState() });
   editSettings(app, { save: 50000, nisa: 20000, gname: "車", gtarget: 1000000, gcur: 100 });
   assert.equal(app.run("state.settings.savingsTarget"), 50000);
-  assert.equal(app.run("state.settings.nisaMonthly"), 20000);
+  /* NISA積立は「内訳」から自動計算に変わったので、せっていの欄では書き換わらない */
+  assert.equal(app.run("state.settings.nisaMonthly"), 33000, "読み取り専用の表示を書き戻している");
   assert.equal(app.run("view"), "home", "ホームへ戻っていない");
   assert.match(app.toastText(), /保存しました/);
   assert.ok(String(app.saved()).includes("50000"), "端末に保存されていない");

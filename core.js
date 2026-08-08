@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.5.0";
+  const APP_VERSION = "1.7.0";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -47,7 +47,9 @@
     { k: "gas",      e: "🔥", n: "ガス" },
     { k: "water",    e: "🚰", n: "水道" },
     { k: "comm",     e: "📱", n: "通信" },
-    { k: "insure",   e: "🛟", n: "保険" },
+    /* 生命保険は「ライフプランへ渡すデータ」に入力口を作ったので、記録の選択からは外す。
+       同じお金を2か所から入れられると二重になるため。過去の記録はそのまま残り、集計にも出る。 */
+    { k: "insure",   e: "🛟", n: "保険", hidden: true },
     { k: "transit",  e: "🚃", n: "交通" },
     { k: "car",      e: "🚗", n: "車" },
     { k: "medical",  e: "🏥", n: "医療・健康" },
@@ -55,7 +57,8 @@
     { k: "social",   e: "🤝", n: "交際費" },
     { k: "hobby",    e: "🎨", n: "趣味" },
     { k: "pet",      e: "🐶", n: "ペット" },
-    { k: "pension",  e: "💰", n: "私年金" },
+    /* 私年金も同じ理由で、記録の選択からは外す（民間年金の欄が入力口）。 */
+    { k: "pension",  e: "💰", n: "私年金", hidden: true },
     { k: "tax",      e: "📋", n: "税金" },
     { k: "subs",     e: "🔁", n: "サブスク" },
     { k: "fixother", e: "📦", n: "その他", hidden: true },
@@ -267,6 +270,46 @@
     });
   }
 
+  /* 一括投資。ライフプランの lumpSums と同じ形（年齢と金額）。
+     まとまったお金なので、毎月の家計には入れない。渡すだけ。 */
+  function normalizeLpLumps(list) {
+    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
+      const row = r || {};
+      return { age: lpAge(row.age), amount: lpNum(row.amount, 1e12) };
+    });
+  }
+
+  /* 生命保険。ライフプランの insurancePolicies と同じ形（保険料の期間と月額）。
+     出ていくお金なので、毎月固定の支出として数える。 */
+  function normalizeLpInsurance(list) {
+    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
+      const row = r || {};
+      return {
+        name: lpName(row.name),
+        premiumFromAge: lpAge(row.premiumFromAge),
+        premiumToAge: lpAge(row.premiumToAge),
+        monthlyPremium: lpNum(row.monthlyPremium, 1e9),
+        coverageUntilAge: lpAge(row.coverageUntilAge),
+      };
+    });
+  }
+
+  /* iDeCo。掛金は毎月出ていくお金なので、先取りとして数える（lpSetAsideItems を見よ）。
+     評価額・受取年齢などは、ライフプランへ渡すためだけに持つ。 */
+  function normalizeLpIdeco(raw) {
+    const i = raw || {};
+    return {
+      currentValue: lpNum(i.currentValue, 1e12),
+      principalTotal: lpNum(i.principalTotal, 1e12),
+      monthlyContribution: lpNum(i.monthlyContribution, 1e9),
+      startAge: lpAge(i.startAge),
+      endAge: lpAge(i.endAge),
+      productName: lpName(i.productName),
+      payoutStartAge: lpAge(i.payoutStartAge),
+      payoutYears: lpNum(i.payoutYears, 60),
+    };
+  }
+
   function normalizeLifePlanAssets(raw) {
     const a = raw || {};
     return {
@@ -277,8 +320,9 @@
       /* NISA積立。ライフプランと同じキー名にそろえる。 */
       tsumitateSchedule: normalizeLpSchedule(a.tsumitateSchedule),
       growthSchedule: normalizeLpSchedule(a.growthSchedule),
-      tsumitateAllocation: normalizeLpAllocation(a.tsumitateAllocation),
-      growthAllocation: normalizeLpAllocation(a.growthAllocation),
+      lumpSums: normalizeLpLumps(a.lumpSums),
+      insurancePolicies: normalizeLpInsurance(a.insurancePolicies),
+      ideco: normalizeLpIdeco(a.ideco),
     };
   }
 
@@ -318,27 +362,53 @@
     return (nt - bt) / (365.2425 * 24 * 3600 * 1000);
   }
 
-  /* 年齢の区間スケジュール。ライフプランの tsumitateSchedule と同じ形。 */
-  function normalizeLpSchedule(list) {
-    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
-      const row = r || {};
-      const from = lpAge(row.fromAge);
-      const to = lpAge(row.toAge);
-      return {
-        fromAge: from,
-        /* 終わりが始まりより前にならないようにする */
-        toAge: to < from ? from : to,
-        monthlyYen: lpNum(row.monthlyYen, 1e9),
-      };
-    });
-  }
-
   /* 銘柄別の内訳。ライフプランの tsumitateAllocation と同じ形。 */
   function normalizeLpAllocation(list) {
     return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
       const row = r || {};
       return { name: lpName(row.name), amount: lpNum(row.amount, 1e9) };
     });
+  }
+
+  /* 年齢の区間スケジュール。
+     月額は<b>銘柄の合計</b>で決める（打つ場所を1か所にするため）。
+     旧い保存データ（monthlyYen だけ持っていたもの）も読めるようにしてある。 */
+  function normalizeLpSchedule(list) {
+    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
+      const row = r || {};
+      const from = lpAge(row.fromAge);
+      const to = lpAge(row.toAge);
+      const funds = normalizeLpAllocation(row.funds);
+      const sum = funds.reduce(function (a, f) { return a + f.amount; }, 0);
+      return {
+        fromAge: from,
+        /* 終わりが始まりより前にならないようにする */
+        toAge: to < from ? from : to,
+        funds: funds,
+        /* 銘柄が入っていればその合計。まだ無ければ、旧データの月額をそのまま使う。 */
+        monthlyYen: funds.length ? sum : lpNum(row.monthlyYen, 1e9),
+      };
+    });
+  }
+
+  /* その年齢のときに積み立てている銘柄の内訳。
+     ライフプランの tsumitateAllocation は「いまの内訳」1つぶんなので、
+     いま動いている区間のものを渡す。動いていなければ、次に始まる区間のもの。 */
+  function lpAllocationAt(schedule, age) {
+    const rows = normalizeLpSchedule(schedule);
+    if (!rows.length) return [];
+    if (Number.isFinite(age)) {
+      const now = rows.filter(function (r) { return age >= r.fromAge && age <= r.toAge; });
+      if (now.length) {
+        const merged = [];
+        now.forEach(function (r) { r.funds.forEach(function (f) { merged.push(f); }); });
+        return merged;
+      }
+      const next = rows.filter(function (r) { return r.fromAge > age; })
+        .sort(function (a, b) { return a.fromAge - b.fromAge; })[0];
+      if (next) return next.funds;
+    }
+    return rows[0].funds;
   }
 
   /* ある年齢のときの月額。区間が重なっていれば足す（ライフプランと同じ数え方）。 */
@@ -391,12 +461,52 @@
     return { fromAge: fromAge, monthly: Math.round(monthly), startDate: start.toISOString().slice(0, 10) };
   }
 
+  /* この欄に入れた「毎月の金額」。
+     決めごと：ここに入れたものは<b>記録から入れない</b>。
+     毎月ひとりでに出ていくお金として、先取りに足す（NISA・貯金と同じ扱い）。
+     支出には足さない。両方に足すと二重に引かれてしまう。 */
+  const lpSum = function (rows) { return rows.reduce(function (s2, r) { return s2 + r.amount; }, 0); };
+
+  /* 貯まっていくお金 → 先取り。使えるお金から取り分けるが、支出ではない。 */
+  function lpSetAsideItems(settings) {
+    const a = normalizeLifePlanAssets((settings || {}).lp);
+    const rows = [];
+    if (a.gold.monthlyYen > 0) rows.push({ key: "gold", name: "金（きん）の積立", amount: a.gold.monthlyYen });
+    const bank = a.banks.reduce(function (s2, b) { return s2 + b.monthlyDeposit; }, 0);
+    if (bank > 0) rows.push({ key: "banks", name: "銀行への入金", amount: bank });
+    const pen = a.privatePensionPlans.reduce(function (s2, p) { return s2 + p.monthlyContribution; }, 0);
+    if (pen > 0) rows.push({ key: "pension", name: "民間年金の掛金", amount: pen });
+    /* iDeCoの掛金も、毎月ほんとうに出ていくお金なので先取りに入れる。
+       受給年齢まで引き出せないが、それは「使えるお金」から外す理由であって、
+       家計から出ていかない理由ではない。金や民間年金の掛金と同じ扱いにする。
+       ただし給与から天引きされていて、記録の給与が天引き後の手取りなら、
+       ここに入れると二重に引かれる。その場合は掛金を0のままにする。 */
+    if (a.ideco.monthlyContribution > 0) {
+      rows.push({ key: "ideco", name: "iDeCoの掛金", amount: a.ideco.monthlyContribution });
+    }
+    return rows;
+  }
+
+  /* 出ていって戻らないお金 → 毎月固定の支出。借入の返済と生命保険の保険料。 */
+  function lpSpendItems(settings) {
+    const a = normalizeLifePlanAssets((settings || {}).lp);
+    const rows = [];
+    const loan = a.loans.reduce(function (s2, l) { return s2 + l.monthlyPayment; }, 0);
+    if (loan > 0) rows.push({ key: "loans", name: "借入の返済", amount: loan });
+    const ins = a.insurancePolicies.reduce(function (s2, i) { return s2 + i.monthlyPremium; }, 0);
+    if (ins > 0) rows.push({ key: "insurance", name: "生命保険の保険料", amount: ins });
+    return rows;
+  }
+
+  function lpMonthlyItems(settings) { return lpSetAsideItems(settings).concat(lpSpendItems(settings)); }
+  function lpMonthlyTotal(settings) { return lpSum(lpMonthlyItems(settings)); }
+
   /* 中身が空かどうか。空なら設定に持たせない（端末の保存領域を無駄に使わないため）。 */
   function lpHasAny(assets) {
     const a = normalizeLifePlanAssets(assets);
     return a.banks.length > 0 || a.loans.length > 0 || a.privatePensionPlans.length > 0 ||
-      a.tsumitateSchedule.length > 0 || a.growthSchedule.length > 0 ||
-      a.tsumitateAllocation.length > 0 || a.growthAllocation.length > 0 ||
+      a.tsumitateSchedule.length > 0 || a.growthSchedule.length > 0 || a.lumpSums.length > 0 ||
+      a.insurancePolicies.length > 0 || a.ideco.monthlyContribution > 0 || a.ideco.currentValue > 0 ||
       a.gold.currentGrams > 0 || a.gold.pricePerGram > 0 || a.gold.monthlyYen > 0;
   }
 
@@ -419,18 +529,29 @@
      向こうの「バックアップの読み込み」がそのまま受け取れる { inputs: ... } にする。
      読み込み側は差分をかぶせる作りなので、ここで渡した4つだけが入れ替わり、
      年齢や年金など向こうで入れた値は消えない。 */
-  function buildLifePlanInputs(settings) {
-    const a = normalizeLifePlanAssets(settings && settings.lp);
+  function buildLifePlanInputs(settings, onDate) {
+    const s = settings || {};
+    const a = normalizeLifePlanAssets(s.lp);
+    /* 基準日。指定が無ければ今日（銘柄の内訳は「いま積み立てている区間」のものを渡す）。 */
+    const on = validateDateString(onDate) ? onDate : new Date().toISOString().slice(0, 10);
+    const age = ageFromBirth(s.birth, on);
+    /* ライフプラン側の区間は月額だけを持つので、銘柄は落として渡す */
+    const strip = function (r) { return { fromAge: r.fromAge, toAge: r.toAge, monthlyYen: r.monthlyYen }; };
     return {
       inputs: {
         gold: a.gold,
         banks: a.banks,
         loans: a.loans,
         privatePensionPlans: a.privatePensionPlans,
-        tsumitateSchedule: a.tsumitateSchedule,
-        growthSchedule: a.growthSchedule,
-        tsumitateAllocation: a.tsumitateAllocation,
-        growthAllocation: a.growthAllocation,
+        /* ライフプランは「区間＋月額」と「いまの銘柄の内訳」を別々に持つので、
+           こちらの区間（銘柄つき）から作って渡す。 */
+        tsumitateSchedule: a.tsumitateSchedule.map(strip),
+        growthSchedule: a.growthSchedule.map(strip),
+        tsumitateAllocation: lpAllocationAt(a.tsumitateSchedule, age),
+        growthAllocation: lpAllocationAt(a.growthSchedule, age),
+        lumpSums: a.lumpSums,
+        insurancePolicies: a.insurancePolicies,
+        ideco: a.ideco,
       },
     };
   }
@@ -462,11 +583,15 @@
 
     /* --- 支出：すべて「記録」から。固定費／変動費の区分は無い --- */
     const expRecs = month.filter(function (t) { return t.type === "expense"; });
-    const spendTotal = sum(expRecs, function (t) { return t.amount; });
+    /* ライフプラン欄の「出ていく毎月の金額」（借入の返済・生命保険）。
+       記録からは入れない決めごとなので、ここで毎月固定の支出として足す。 */
+    const lpSpend = lpSpendItems(s);
+    const lpSpendSum = lpSum(lpSpend);
+    const spendTotal = sum(expRecs, function (t) { return t.amount; }) + lpSpendSum;
 
     /* 「毎月固定」の印がついた分と、それ以外。どちらも同じように支出として引く。
        分けているのは、見せ方と、月末の見積もりを暴れさせないためだけ。 */
-    const recurringSpend = sum(expRecs.filter(isRecurring), function (t) { return t.amount; });
+    const recurringSpend = sum(expRecs.filter(isRecurring), function (t) { return t.amount; }) + lpSpendSum;
     const spotSpend = spendTotal - recurringSpend;
 
     /* --- 先取り（予定額） --- */
@@ -474,7 +599,12 @@
     /* NISAの先取り額。スケジュールがあればそこから、無ければ打ち込んだ月額。
        基準日は区切りの初日にして、いつ計算しても同じ答えになるようにする。 */
     const nisaPlanned = nisaPlannedOn(s, cycleRange(ym, s.cycleStart).from);
-    const setAside = savingsPlanned + nisaPlanned;
+    /* 貯まるもの（金・銀行・民間年金）は先取り。出ていくもの（借入・生命保険）は上で支出に足した。 */
+    const lpSetAside = lpSetAsideItems(s);
+    const lpSetAsideSum = lpSum(lpSetAside);
+    const lpMonthly = lpSetAside.concat(lpSpend);
+    const lpMonthlySum = lpSetAsideSum + lpSpendSum;
+    const setAside = savingsPlanned + nisaPlanned + lpSetAsideSum;
 
     /* --- 正式な計算式 --- */
     const available = incomeTotal - spendTotal - setAside;
@@ -515,6 +645,12 @@
       /* 先取り（予定額） */
       savingsPlanned: savingsPlanned,
       nisaPlanned: nisaPlanned,
+      lpMonthly: lpMonthly,
+      lpMonthlySum: lpMonthlySum,
+      lpSetAside: lpSetAside,
+      lpSetAsideSum: lpSetAsideSum,
+      lpSpend: lpSpend,
+      lpSpendSum: lpSpendSum,
       setAside: setAside,
       /* 結果 */
       available: available,
@@ -3076,6 +3212,14 @@
     ageFromBirth: ageFromBirth,
     normalizeLpSchedule: normalizeLpSchedule,
     normalizeLpAllocation: normalizeLpAllocation,
+    normalizeLpLumps: normalizeLpLumps,
+    lpAllocationAt: lpAllocationAt,
+    normalizeLpInsurance: normalizeLpInsurance,
+    normalizeLpIdeco: normalizeLpIdeco,
+    lpSetAsideItems: lpSetAsideItems,
+    lpSpendItems: lpSpendItems,
+    lpMonthlyItems: lpMonthlyItems,
+    lpMonthlyTotal: lpMonthlyTotal,
     scheduledMonthly: scheduledMonthly,
     nisaAuto: nisaAuto,
     nisaPlannedOn: nisaPlannedOn,
