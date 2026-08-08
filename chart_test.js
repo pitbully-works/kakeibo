@@ -210,7 +210,7 @@ test("グラフの目もりは core.js の計算を使っている（画面で�
    金額の目もり・日にちのラベル・色つき凡例が出ることを守る。 */
 function paceHtml(day) {
   const ym = new Date().toISOString().slice(0, 8);   // "YYYY-MM-"
-  const app = bootApp({ state: { settings: { savingsTarget: 120000 }, tx: [
+  const app = bootApp({ state: { settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 120000 }] } }, tx: [
     { id: "i", type: "income",  amount: 295535, cat: "salary", date: ym + "01" },
     { id: "a", type: "expense", amount: 135162, cat: "rent",   date: ym + "02", recurring: true },
     { id: "b", type: "expense", amount: 24647,  cat: "food",   date: ym + "05" },

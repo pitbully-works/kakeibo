@@ -13,7 +13,7 @@ const assert = require("node:assert/strict");
 const Core = require("./core.js");
 const { bootApp } = require("./boot-app.cjs");
 
-const S = { savingsTarget: 40000, nisaMonthly: 33000, currency: "JPY" };
+const S = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
 const YM = "2026-07";
 const tx = (id, amount, cat, date, recurring) => {
   const t = { id, type: "expense", amount, cat, date };

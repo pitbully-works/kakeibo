@@ -13,7 +13,7 @@ const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 const appSrc = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].pop()[1];
 
 const STATE = () => ({
-  settings: { savingsTarget: 40000, nisaMonthly: 33000 },
+  settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
   tx: [
     { id: "e1", type: "expense", amount: 1200, cat: "food", date: "2026-07-25", memo: "スーパー" },
     { id: "e2", type: "expense", amount: 800, cat: "eatout", date: "2026-07-25" },

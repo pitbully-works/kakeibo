@@ -178,11 +178,11 @@ test("何も入れていなければ、渡すものが無い（落ちない）",
    【4】二重入力にしない・家計の計算に混ぜない
    ========================================================================= */
 test("設定に保存され、バックアップでも往復する", () => {
-  const s = Core.normalizeSettings({ savingsTarget: 30000, lp: SAMPLE });
+  const s = Core.normalizeSettings({ goalTarget: 30000, lp: SAMPLE });
   assert.equal(s.lp.banks.length, 2);
   const again = Core.normalizeSettings(JSON.parse(JSON.stringify(s)));
   assert.deepEqual(again.lp, s.lp);
-  assert.equal(again.savingsTarget, 30000, "ほかの設定が消えている");
+  assert.equal(again.goalTarget, 30000, "ほかの設定が消えている");
 });
 
 test("何も入れていないうちは、設定に持たせない（保存を太らせない）", () => {
@@ -214,7 +214,7 @@ test("貯まるものは先取り、出ていくものは支出（どちらも�
 });
 
 test("まとめに、先取りと毎月固定の支出が分けて出る", () => {
-  const app = bootApp({ state: { settings: { savingsTarget: 30000, lp: SAMPLE }, tx: [
+  const app = bootApp({ state: { settings: { lp: SAMPLE }, tx: [
     { id: "1", date: new Date().toISOString().slice(0, 10), type: "income", cat: "salary", amount: 300000 }] } });
   const out = app.run(`view="summary"; sumTab="month"; render(); document.getElementById("app").innerHTML`);
   assert.match(out, /先取り（貯まるお金）/, "先取りの見出しが無い");
@@ -285,9 +285,9 @@ test("せっていには、合計と内訳ボタンだけを出す", () => {
   assert.match(out, /¥4,992,000/, "金の評価額が出ていない");
   assert.match(out, /¥1,102,770/, "銀行の合計が出ていない");
   assert.match(out, /¥3,051,600/, "借入の合計が出ていない");
-  /* NISA・金・銀行・借入・民間年金の5つ（NISAは先取りの欄からも開けるので6か所） */
-  /* NISA・iDeCo・生命保険・金・銀行・借入・民間年金の7つ（NISAは先取りの欄からも開ける） */
-  assert.equal((out.match(/data-act="lp-open"/g) || []).length, 8, "内訳ボタンの数が合わない");
+  /* NISA・金・銀行・借入・iDeCo・生命保険・民間年金の7つ。
+     先取りの欄は廃止したので、NISAを開ける場所もここ1か所だけ。 */
+  assert.equal((out.match(/data-act="lp-open"/g) || []).length, 7, "内訳ボタンの数が合わない");
   assert.match(out, /data-kind="ideco"/, "iDeCoの内訳ボタンが無い");
   assert.match(out, /data-kind="insurance"/, "生命保険の内訳ボタンが無い");
   assert.match(out, /data-kind="nisa"/, "NISAの内訳ボタンが無い");
@@ -319,9 +319,9 @@ test("内訳を開く道すじが、書きかけを保存してから移って�
 test("内訳を開くとき、せっていの書きかけを取りこぼさない", () => {
   const app = bootApp({ state: { settings: {}, tx: [] } });
   app.run(`view="settings"; render();
-    document.getElementById("f-save").value="30000";
+    document.getElementById("f-gtarget").value="30000";
     saveSettingsQuiet();`);
-  assert.equal(app.run(`state.settings.savingsTarget`), 30000, "書きかけが消えている");
+  assert.equal(app.run(`state.settings.goalTarget`), 30000, "書きかけが消えている");
 });
 
 test("内訳を直して保存できる", () => {
@@ -460,7 +460,13 @@ test("「いつから いくら」が分かる", () => {
   const next = Core.nisaUpcoming(autoSettings(), "2026-08-08");
   assert.equal(next.fromAge, 57.75);
   assert.equal(next.monthly, 90000);
-  assert.equal(next.startDate, "2026-08-13");
+  /* 開始日は「その年齢に達する最初の日」。判定に使う ageFromBirth とそろえる。
+     2026-08-13 は 57.7479歳でまだ 57.75 に届かず、積立は始まらない。
+     以前はここだけ経過日数の近似で出していたため、1日前を出していた。 */
+  assert.equal(next.startDate, "2026-08-14");
+  const before = Core.nisaPlannedOn(autoSettings(), "2026-08-13");
+  const on = Core.nisaPlannedOn(autoSettings(), next.startDate);
+  assert.equal(on - before, next.monthly, "出した開始日に、その区間ぶんが増えていない");
   /* すべて始まっていれば、これから始まるものは無い */
   assert.equal(Core.nisaUpcoming(autoSettings(), "2026-09-08"), null);
   assert.equal(Core.nisaUpcoming(Core.normalizeSettings({ nisaMonthly: 1 }), "2026-08-08"), null);
@@ -506,33 +512,32 @@ test("生年月日を保存できる（保存ボタンでも、内訳へ移る�
   assert.equal(app2.run(`state.settings.birth`), "1970-01-05", "内訳へ移るときに生年月日を捨てている");
 });
 
-test("せっていのNISAの欄は、いつでも打てない（入力口は内訳だけ）", () => {
-  /* 区間がまだ無い人でも、せっていの欄からは打てない。二重に書ける場所を作らないため。 */
+test("せっていにNISAを打ち込む欄は無い（入力口は内訳だけ）", () => {
+  /* 区間がまだ無い人でも、せっていからは打てない。二重に書ける場所を作らないため。 */
   const app = bootApp({ state: { settings: { nisaMonthly: 110000 }, tx: [] } });
   const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
-  const field = out.slice(out.indexOf('id="f-nisa"') - 60, out.indexOf('id="f-nisa"') + 60);
-  assert.match(field, /readonly/, "内訳を入れる前でも打ててしまう");
-  assert.match(out, /打ち込む欄は/, "内訳だけが入力口だと伝えていない");
+  assert.equal(out.includes('id="f-nisa"'), false, "廃止したNISAの欄が残っている");
+  assert.match(out, /data-kind="nisa"/, "内訳へ行くボタンが無い");
 });
 
-test("自動のときは、月額の欄が打てない（読み取り専用）", () => {
+test("せっていの一覧には、いまのNISAの月額が出る", () => {
   const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
   const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
-  const field = out.slice(out.indexOf('id="f-nisa"') - 60, out.indexOf('id="f-nisa"') + 60);
-  assert.match(field, /readonly/, "自動なのに打ててしまう");
+  assert.match(out, /NISA積立/, "NISAの行が無い");
+  assert.match(out, /\/月/, "毎月いくらとして出ていない");
 });
 
-test("自動のときは、月額の欄の値で上書きしない", () => {
+test("せっていから、NISAの月額を書き換えられない", () => {
   const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
-  app.run(`view="settings"; render(); document.getElementById("f-nisa").value="999999"; saveSettings();`);
-  assert.notEqual(app.run(`state.settings.nisaMonthly`), 999999, "読み取り専用の表示を書き戻している");
+  app.run(`view="settings"; render(); saveSettings();`);
+  assert.notEqual(app.run(`state.settings.nisaMonthly`), 999999);
 });
 
 test("開始前は0で、いつから幾らになるかを画面に出す", () => {
   const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: { tsumitateSchedule: [{ fromAge: 90, toAge: 95, monthlyYen: 90000 }] } }, tx: [] } });
   const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
-  assert.match(out, /まだ積立の期間に入っていない/, "0である理由を伝えていない");
-  assert.match(out, /から 月¥90,000/, "いつから幾らかを出していない");
+  assert.match(out, /まだ積立の期間に入っていません/, "0である理由を伝えていない");
+  assert.match(out, /90歳から 月¥90,000/, "いつから幾らかを出していない");
 });
 
 test("NISAの内訳を直して保存できる", () => {

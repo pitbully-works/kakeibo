@@ -65,13 +65,10 @@
   /* dream strip */
   .dreamlbl{text-align:center;font-size:10px;color:#9aa6a3;margin:16px 0 6px;letter-spacing:.05em}
   .dreamlbl i{display:block;font-style:normal;font-size:9px;margin-top:3px;letter-spacing:0}
-  /* タイルは9枚ある。1行に詰めると1枚ぶんが指より細くなり、文字が縦に潰れる。
-     幅を決めて横スクロールにする。右端が半分見えることで「まだ続く」と分かる。 */
-  .dreamstrip{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
-    -webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;
-    padding:2px 2px 8px;margin:0 -2px;scrollbar-width:none}
-  .dreamstrip::-webkit-scrollbar{display:none}
-  .ds{flex:0 0 92px;scroll-snap-align:start;border-radius:14px;padding:11px 8px 12px;text-align:center;background:var(--card);border:1px solid var(--line);
+  /* タイルは8枚。1行に詰めると指より細くなって文字が潰れ、
+     横スクロールにすると隠れた分に気づけない。4枚ずつ2段にして全部見せる。 */
+  .dreamstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .ds{min-width:0;border-radius:14px;padding:11px 6px 12px;text-align:center;background:var(--card);border:1px solid var(--line);
     transition:transform .12s cubic-bezier(.2,.7,.3,1)}
   .ds:active{transform:scale(.97)}
   .ds .tapin{font-size:9px;color:#a7b2af;margin-top:5px}
@@ -795,7 +792,8 @@ function renderHome(){
   const goalTile = c.goalPct!==null
     ? `<button class="ds gold" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||"目標")}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div></button>`
     : `<button class="ds gold" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">設定する</div><div class="tapin">タップで入力</div></button>`;
-  const nisaTile = `<button class="ds blue" data-go="settings" data-focus="f-nisa"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(c.nisaPlanned)}/月</div><div class="tapin">タップで入力</div></button>`;
+  /* NISAは内訳（年齢の区間と銘柄）が唯一の入力口。設定の古い欄ではなくそこへ飛ばす。 */
+  const nisaTile = `<button class="ds blue" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(c.nisaPlanned)}/月</div><div class="tapin">タップで入力</div></button>`;
   /* ライフプランへ渡す項目も、ホームからそのまま入れに行けるようにする。
      出す数字は「毎月いくら」。残高を出していたため、毎月の積立額を入れても
      ここが動かず「反映されない」ように見えていた。残高は内訳の画面で見る。 */
@@ -808,10 +806,9 @@ function renderHome(){
     lpTile("insurance","🛟","生命保険", lpMon("insurance")),
     lpTile("gold","🪙","金（きん）", lpMon("gold")),
     lpTile("ideco","🏛","iDeCo", lpMon("ideco")),
-    lpTile("loans","💳","借入返済", lpMon("loans")),
+    lpTile("loans","💳","借入金", lpMon("loans")),
     lpTile("banks","🏦","銀行貯金", lpMon("banks")),
   ].join("");
-  const saveTile = `<button class="ds green" data-go="settings" data-focus="f-save"><div class="di">🐷</div><div class="dk">先取り貯金</div><div class="dv mono">${yen(c.savingsPlanned)}/月</div><div class="tapin">タップで入力</div></button>`;
 
   return `<div class="screen">
     <div class="greet">
@@ -827,8 +824,8 @@ function renderHome(){
       ${mini}
     </div>
     ${taskCard()}
-    <div class="dreamlbl">― あなたの夢の進み ―<i>金額はどれも毎月ぶん・よこにスクロールできます →</i></div>
-    <div class="dreamstrip">${goalTile}${nisaTile}${saveTile}${lpTiles}</div>
+    <div class="dreamlbl">― あなたの夢の進み ―<i>金額はどれも毎月ぶんです</i></div>
+    <div class="dreamstrip">${goalTile}${nisaTile}${lpTiles}</div>
     <button class="recordbtn" data-act="open-record">📸 記録する</button>
     ${monthPlanCard()}
     ${lifePlanCard()}
@@ -910,10 +907,9 @@ function lpMonthlyCard(c){
   const note = `<div class="calcnote" style="margin:0 0 8px">毎月ひとりでに出ていくお金です。
       <b>記録からは入れません</b>（二重に引かれてしまうため）。</div>`;
   let html = "";
-  if(setAside.length || c.savingsPlanned || c.nisaPlanned){
+  if(setAside.length || c.nisaPlanned){
     html += `<div class="stitle">先取り（貯まるお金）</div>
       <div class="barlist">${note}
-        ${c.savingsPlanned?line("先取り貯金", c.savingsPlanned):""}
         ${c.nisaPlanned?line("NISA積立", c.nisaPlanned):""}
         ${setAside.map(r=>line(r.name, r.amount)).join("")}
         <div class="krow" style="border-top:1px solid var(--line2);margin-top:6px;padding-top:8px">
@@ -1651,50 +1647,12 @@ function ageLabel(birth){
   return m>0 ? `${y}歳${m}ヶ月` : `${y}歳`;
 }
 
-/* NISA積立の欄。
-   スケジュールと生年月日がそろっていれば「自動計算の表示＋内訳ボタン」、
-   そろっていなければ、これまでどおり打ち込む欄。
-   打てる場所を、いつでも1か所だけにするための出し分け。 */
-function nisaSettingHtml(s){
-  if(!Core.nisaAuto(s)){
-    return `<div class="field"><label>NISA 積立（月・予定額）</label>
-      <div class="row"><span class="yen">¥</span><input class="mono" id="f-nisa" value="${s.nisaMonthly||0}" readonly></div>
-      <div class="fhelp">打ち込む欄は<b>内訳ひとつだけ</b>にしました。
-        下のボタンから、年齢の区間と銘柄を入れてください。ここはその合計です</div>
-      <button class="lpbtn" style="width:100%;margin-top:8px" data-act="lp-open" data-kind="nisa">NISAの内訳を入れる</button></div>`;
-  }
-  const from = Core.cycleRange(curYM(), s.cycleStart).from;
-  const now = Core.nisaPlannedOn(s, from);
-  const next = Core.nisaUpcoming(s, from);
-  const note = now>0
-    ? `いまは <b>${escapeHtml(ageLabel(s.birth))}</b>。スケジュールから自動で計算しています`
-    : (next
-        ? `いまは <b>${escapeHtml(ageLabel(s.birth))}</b>。まだ積立の期間に入っていないので <b>¥0</b> です。<br>
-           <b>${escapeHtml(mdLabel(next.startDate))}（${next.fromAge}歳）から 月${yen(next.monthly)}</b> を先取りします`
-        : `いまは <b>${escapeHtml(ageLabel(s.birth))}</b>。積立の期間はすべて終わっています`);
-  return `<div class="field"><label>NISA 積立（月・予定額）</label>
-    <div class="row"><span class="yen">¥</span><input class="mono" id="f-nisa" value="${now}" readonly></div>
-    <div class="fhelp">${note}</div>
-    <button class="lpbtn" style="width:100%;margin-top:8px" data-act="lp-open" data-kind="nisa">NISAの内訳を見る・直す</button></div>`;
-}
-
 function renderSettings(){
   const s=state.settings;
   const u=Core.storageUsage(state);
   const mb=b=>{ const m=b/1024/1024; return m>=0.1 ? m.toFixed(1)+"MB" : Math.max(1,Math.round(b/1024))+"KB"; };
   return `<div class="screen">
-    <div class="stitle" style="margin-top:6px">先取り（月・予定額）</div>
-    <div class="calcnote" style="margin:0 0 10px">
-      入力口は<b>「記録」ひとつだけ</b>です。給料も、家賃も、電気代も、
-      買いものも、すべて記録から入れてください。<br>
-      ここに入れるのは<b>まだ出ていないお金</b>——先に取り分ける貯金とNISAだけです。
-    </div>
-    <div class="field"><label>先取り貯金（月・予定額）</label><div class="row"><span class="yen">¥</span>
-      <input class="mono" id="f-save" inputmode="numeric" value="${s.savingsTarget||""}" placeholder="0"></div>
-      <div class="fhelp">先に貯める予定の分。使えるお金から先に取り分けます</div></div>
-    ${nisaSettingHtml(s)}
-
-    <div class="stitle">生年月日</div>
+    <div class="stitle" style="margin-top:6px">生年月日</div>
     <div class="calcnote" style="margin:0 0 10px">
       <b>なぜ必要か。</b>ライフプランの積立は「57歳9ヶ月〜65歳・月9万円」のように<b>年齢の区間</b>で決めます。
       いま何歳かが分からないと、どの区間にいるかを決められず、今月いくら先取りするのかも出せません。<br>
@@ -2291,11 +2249,10 @@ function togglePlan(date, id){
    画面は動かさず、うまくいかなければ何もしない（元の値のまま）。 */
 function saveSettingsQuiet(){
   const g=id=>{ const el=$(id); return el?el.value:null; };
-  if(g("f-save")===null) return;              // 設定の画面にいないときは何もしない
+  if(g("f-birth")===null) return;             // 設定の画面にいないときは何もしない
   const num=v=>{ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; };
   const before = JSON.parse(JSON.stringify(state.settings));
   const s=Object.assign({}, state.settings);
-  s.savingsTarget=num(g("f-save"));
   /* NISAの月額は内訳から自動計算。読み取り専用の表示なので書き戻さない */
   s.birth=Core.normalizeBirth(g("f-birth"));
   s.goalName=(g("f-gname")||"").slice(0,24);
@@ -2313,7 +2270,6 @@ function saveSettings(){
   const before = JSON.parse(JSON.stringify(state.settings));
 
   const s=Object.assign({}, state.settings);
-  s.savingsTarget=num(g("f-save"));
   /* NISAの月額は内訳から自動計算。読み取り専用の表示なので書き戻さない */
   s.birth=Core.normalizeBirth(g("f-birth"));
   s.goalName=(g("f-gname")||"").slice(0,24);
@@ -3085,6 +3041,19 @@ function lpSave(next){
   return true;
 }
 
+/* NISAの行に出す短い説明。
+   「いま0円なのはなぜか」「いつから幾らになるか」は、
+   廃止した先取りの欄に出していた案内。内訳が唯一の入力口になったので、
+   この一覧の行へ移した。 */
+function nisaNote(s, on){
+  if(!Core.nisaAuto(s)) return "生年月日と区間を入れると自動計算";
+  const now = Core.nisaPlannedOn(s, on);
+  if(now > 0) return `いまは ${ageLabel(s.birth)}。区間から自動で計算しています`;
+  const next = Core.nisaUpcoming(s, on);
+  if(next) return `まだ積立の期間に入っていません。${next.fromAge}歳から 月${yen(next.monthly)}`;
+  return `いまは ${ageLabel(s.birth)}。積立の期間はすべて終わっています`;
+}
+
 /* ---------- 設定に出す一覧（合計と内訳ボタンだけ） ---------- */
 function lpSummaryHtml(){
   const a = lpAssets();
@@ -3108,8 +3077,7 @@ function lpSummaryHtml(){
     <b>毎月の家計の計算には入りません。</b>実際に払ったお金は、これまでどおり「記録」から入れてください。
   </div>
   <div class="barlist">
-    ${row("nisa","📈","NISA積立", yen(Core.nisaPlannedOn(state.settings, on))+"/月",
-      Core.nisaAuto(state.settings) ? `つみたて${a.tsumitateSchedule.length}区間・成長${a.growthSchedule.length}区間` : "生年月日と区間を入れると自動計算")}
+    ${row("nisa","📈","NISA積立", yen(Core.nisaPlannedOn(state.settings, on))+"/月", nisaNote(state.settings, on))}
     ${row("gold","🪙","金（きん）", mon("gold"), `いま ${a.gold.currentGrams||0}g・評価 ${yen(Core.lpGoldValue(a.gold))}`)}
     ${row("banks","🏦","銀行貯金", mon("banks"), `${a.banks.length}件・残高 ${yen(Core.lpBanksTotal(a.banks))}`)}
     ${row("loans","💳","借入金", mon("loans"), `${a.loans.length}件・残り ${yen(Core.lpLoansTotal(a.loans))}`)}

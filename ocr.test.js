@@ -217,7 +217,7 @@ test("追加カテゴリの記録が正しく計算に入る", () => {
     { id:"b", type:"expense", amount:8000, cat:"clothes", date:"2026-07-03" },
     { id:"c", type:"expense", amount:5000, cat:"pet", date:"2026-07-04" },
   ];
-  const c = Core.computeMonth({ savingsTarget:0, nisaMonthly:0 }, tx, "2026-07");
+  const c = Core.computeMonth({ nisaMonthly:0 }, tx, "2026-07");
   assert.equal(c.spendTotal, 13000, "追加カテゴリの支出が集計されていない");
 });
 
@@ -237,7 +237,7 @@ test("旧固定費の見出し文言が消えている", () => {
 });
 
 test("fixother のデータは引き続き支出として集計される", () => {
-  const c = Core.computeMonth({ savingsTarget:0, nisaMonthly:0 },
+  const c = Core.computeMonth({ nisaMonthly:0 },
     [{ id:"x", type:"expense", amount:35000, cat:"fixother", date:"2026-07-01" }], "2026-07");
   assert.equal(c.spendTotal, 35000, "旧固定費データが集計から漏れている");
   assert.equal(c.byCat.fixother, 35000);

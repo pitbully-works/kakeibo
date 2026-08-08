@@ -66,7 +66,7 @@ function bootApp(stored) {
 
 const YM = new Date().toISOString().slice(0, 7);
 const D = (n) => `${YM}-${String(n).padStart(2, "0")}`;
-const SETTINGS = { savingsTarget: 40000, nisaMonthly: 33000, currency: "JPY" };
+const SETTINGS = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
 const yen = (n) => "¥" + Math.round(n).toLocaleString("en-US");
 /* 給与の入力口は「記録」だけ */
 const SALARY = { id: "s", type: "income", amount: 290000, cat: "salary", date: D(25) };
@@ -165,7 +165,7 @@ test("書き出したJSONが、画面と同じ金額になっている", () => {
 
 test("旧保存データ（支出が合計欄）を読んでも落ちない", () => {
   const old = {
-    settings: { incomeNet: 290000, fixedCost: 98000, fixed: { rent: 60000 }, savingsTarget: 40000, nisaMonthly: 33000 },
+    settings: { incomeNet: 290000, fixedCost: 98000, fixed: { rent: 60000 }, lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
     tx: [SALARY, ...FIXED98],
   };
   const { app, html: out } = bootApp(old);
@@ -182,7 +182,8 @@ test("せってい画面に給料・支出の入力欄が無い（入力口は�
   assert.equal(h.includes('id="f-income"'), false, "設定に手取り収入欄が残っている");
   assert.equal(h.includes('id="f-fx-'), false, "設定に支出の予定額欄が残っている");
   assert.equal(h.includes("家賃・住居"), false, "設定に支出の項目が残っている");
-  assert.ok(h.includes('id="f-save"') && h.includes('id="f-nisa"'), "先取りの欄が無い");
+  assert.equal(h.includes('id="f-save"'), false, "廃止した先取り貯金の欄が残っている");
+  assert.equal(h.includes('id="f-nisa"'), false, "廃止したNISA積立の欄が残っている");
 });
 
 test("給与未記録の月は、金額を出さずに記録をうながす", () => {
@@ -211,13 +212,16 @@ test("ホームの日付が大きく表示される", () => {
   assert.ok(out().includes(`${d.getMonth() + 1}月${d.getDate()}日`), "今日の日付が出ていない");
 });
 
-test("目標・NISA・貯金のタイルから設定の入力欄へジャンプできる", () => {
+test("タイルから、それぞれの入力口へジャンプできる", () => {
   const { app, html: out } = bootApp({ settings: SETTINGS, tx: [SALARY] });
   app.setView("home");
   const h = out();
-  for (const id of ["f-nisa", "f-save"]) {
-    assert.ok(h.includes(`data-focus="${id}"`), `${id} へのジャンプが無い`);
-  }
+  /* NISAの入力口は「内訳」だけ。設定の古い欄へは飛ばさない。 */
+  assert.match(h, /data-act="lp-open" data-kind="nisa"/, "NISAが内訳へ飛ばない");
+  assert.equal(h.includes('data-focus="f-nisa"'), false, "廃止したNISAの欄へ飛んでいる");
+  assert.equal(h.includes('data-focus="f-save"'), false, "廃止した先取り貯金の欄へ飛んでいる");
+  ["gold", "banks", "loans", "ideco", "insurance", "pension"].forEach((k) =>
+    assert.ok(h.includes(`data-kind="${k}"`), `${k} のタイルが無い`));
   assert.ok(h.includes('data-focus="f-gname"') || h.includes('data-focus="f-gcur"'), "目標へのジャンプが無い");
   const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "index.html"), "utf8");
   assert.match(src, /function focusField\(id\)/, "ジャンプ後にフォーカスする処理が無い");

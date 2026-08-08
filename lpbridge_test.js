@@ -286,9 +286,17 @@ test("注記どおり、終了年齢の誕生日を過ぎたら掛金は止ま�
   assert.strictEqual(Core.lpMonthlyOf(s, "pension", 60.01), 0);
 });
 
-test("ホームのタイルは横スクロールできる形になっている", () => {
+test("ホームのタイルは、隠れずに全部見える2段の並びになっている", () => {
   const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
-  const css = html.slice(html.indexOf(".dreamstrip{"), html.indexOf(".dreamstrip{") + 400);
-  assert.match(css, /overflow-x:auto/, "横スクロールになっていない");
-  assert.match(html, /\.ds\{flex:0 0 /, "タイルの幅が決まっていない（詰めると潰れる）");
+  const css = html.slice(html.indexOf(".dreamstrip{"), html.indexOf(".dreamstrip{") + 200);
+  assert.match(css, /grid-template-columns:repeat\(4,1fr\)/, "4枚ずつの並びになっていない");
+  assert.equal(/overflow-x:auto/.test(css), false, "横スクロールが残っている（隠れた分に気づけない）");
+});
+
+test("タイルは8枚。先取り貯金のタイルは無い（銀行貯金と二重だったため）", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-20", cycleStart: 20 } } });
+  const html = app.run(`renderHome()`);
+  const strip = html.slice(html.indexOf("dreamstrip"));
+  assert.strictEqual((strip.match(/class="ds/g) || []).length, 8, "タイルの数が合わない");
+  assert.equal(strip.includes("先取り貯金"), false, "廃止した先取り貯金のタイルが残っている");
 });

@@ -14,7 +14,7 @@ const Core = require("./core.js");
 const { bootApp } = require("./boot-app.cjs");
 
 /* ---------- 共通の材料（固定の月。実行日に左右されない） ---------- */
-const S = { savingsTarget: 40000, nisaMonthly: 33000, currency: "JPY" };
+const S = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
 const tx = (id, type, amount, cat, date) => ({ id, type, amount, cat, date });
 
 /* 2026-07 … 当月 ／ 2026-06 … 先月 ／ 2026-05 … 先々月 */

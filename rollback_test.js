@@ -17,7 +17,7 @@ const appSrc = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/scrip
 
 const PHOTO = "data:image/jpeg;base64," + "A".repeat(400);
 const baseState = () => ({
-  settings: { savingsTarget: 40000, nisaMonthly: 33000, goalName: "旅行", goalTarget: 300000, goalCurrent: 50000, currency: "JPY" },
+  settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, goalName: "旅行", goalTarget: 300000, goalCurrent: 50000, currency: "JPY" },
   tx: [
     { id: "t1", type: "expense", amount: 1200, cat: "food", date: "2026-07-01", memo: "スーパー", photo: PHOTO },
     { id: "t2", type: "income", amount: 290000, cat: "salary", date: "2026-07-25", memo: "", photo: null },
@@ -28,8 +28,6 @@ const baseState = () => ({
 function editSettings(app, values) {
   app.run(`view="settings"; render();`);
   app.run(`
-    document.getElementById("f-save").value=${JSON.stringify(String(values.save))};
-    document.getElementById("f-nisa").value=${JSON.stringify(String(values.nisa))};
     document.getElementById("f-gname").value=${JSON.stringify(values.gname || "")};
     document.getElementById("f-gtarget").value=${JSON.stringify(String(values.gtarget || 0))};
     document.getElementById("f-gcur").value=${JSON.stringify(String(values.gcur || 0))};
@@ -40,19 +38,20 @@ function editSettings(app, values) {
 /* ---------- 1. 設定保存 ---------- */
 test("保存に成功したら、設定が確定してホームへ戻る", () => {
   const app = bootApp({ state: baseState() });
-  editSettings(app, { save: 50000, nisa: 20000, gname: "車", gtarget: 1000000, gcur: 100 });
-  assert.equal(app.run("state.settings.savingsTarget"), 50000);
-  /* NISA積立は「内訳」から自動計算に変わったので、せっていの欄では書き換わらない */
-  assert.equal(app.run("state.settings.nisaMonthly"), 33000, "読み取り専用の表示を書き戻している");
+  editSettings(app, { gname: "車", gtarget: 1000000, gcur: 100 });
+  assert.equal(app.run("state.settings.goalTarget"), 1000000);
+  /* 先取り貯金・NISA積立の欄は廃止した（銀行貯金・NISAの内訳が唯一の入力口）。
+     せってい画面からは書き換わらない。 */
+  assert.equal(app.run("state.settings.nisaMonthly"), 33000, "廃止した欄から書き戻している");
   assert.equal(app.run("view"), "home", "ホームへ戻っていない");
   assert.match(app.toastText(), /保存しました/);
-  assert.ok(String(app.saved()).includes("50000"), "端末に保存されていない");
+  assert.ok(String(app.saved()).includes("1000000"), "端末に保存されていない");
 });
 
 test("保存に失敗したら、変更前の設定へ完全に戻る", () => {
   const app = bootApp({ state: baseState(), storageFull: true });
-  editSettings(app, { save: 50000, nisa: 20000 });
-  assert.equal(app.run("state.settings.savingsTarget"), 40000, "設定がメモリ上だけ変わっている");
+  editSettings(app, { gtarget: 1000000 });
+  assert.equal(app.run("state.settings.goalTarget"), 300000, "設定がメモリ上だけ変わっている");
   assert.equal(app.run("state.settings.nisaMonthly"), 33000);
   assert.equal(app.run("state.settings.goalName"), "旅行", "他の項目まで巻き添えで消えている");
 });

@@ -18,7 +18,7 @@ const { bootApp } = require("./boot-app.cjs");
 
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 
-const S = { savingsTarget: 40000, nisaMonthly: 33000, currency: "JPY" };
+const S = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
 const YM = new Date().toISOString().slice(0, 7);
 const SALARY = { id: "s1", type: "income", amount: 300000, cat: "salary", date: `${YM}-10` };
 const STATE = { settings: S, tx: [SALARY], health: {}, diary: {} };
@@ -108,7 +108,11 @@ test("アプリ情報はせっていだけに出す（ホームには出さな�
 
 test("せっていの保存欄・データの書き出しは、そのまま残っている", () => {
   const h = screen("settings");
-  assert.ok(h.includes('id="f-save"') && h.includes('id="f-nisa"'), "先取りの入力欄が消えている");
+  /* 先取り貯金・NISA積立の欄は廃止した（銀行貯金・NISAの内訳が唯一の入力口）。
+     消したままであることを、ここで固定する。 */
+  assert.equal(h.includes('id="f-save"'), false, "廃止した先取り貯金の欄が残っている");
+  assert.equal(h.includes('id="f-nisa"'), false, "廃止したNISA積立の欄が残っている");
+  assert.ok(h.includes('data-act="lp-open"'), "ライフプラン欄の内訳ボタンが消えている");
   assert.ok(h.includes('data-act="save-settings"'), "保存ボタンが消えている");
   assert.ok(h.includes('data-act="export-snapshot"'), "ライフプラン用の書き出しが消えている");
 });

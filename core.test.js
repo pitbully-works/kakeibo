@@ -13,7 +13,7 @@ const YM = "2026-07";
 const D = (n) => `${YM}-${String(n).padStart(2, "0")}`;
 
 /* 設定に持つのは先取りだけ */
-const BASE = { savingsTarget: 40000, nisaMonthly: 33000, currency: "JPY" };
+const BASE = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
 
 const exp = (amount, cat, day = 5) => ({ id: `e${amount}${cat}${day}`, type: "expense", amount, cat, date: D(day) });
 const inc = (amount, cat, day = 25) => ({ id: `i${amount}${cat}${day}`, type: "income", amount, cat, date: D(day) });
@@ -56,7 +56,11 @@ test("さらに臨時収入50,000を追加 → 使える額は149,000", () => {
 test("正式な計算式が恒等式として成立する", () => {
   const txs = [SALARY, ...FIXED98, exp(20000, "food"), exp(3000, "eatout"), inc(50000, "bonus")];
   const c = Core.computeMonth(BASE, txs, YM);
-  assert.equal(c.available, c.incomeTotal - c.spendTotal - c.savingsPlanned - c.nisaPlanned);
+  assert.equal(c.available, c.incomeTotal - c.spendTotal - c.setAside);
+  /* 先取りは NISA と、ライフプラン欄（金・銀行・iDeCo・民間年金）だけ。
+     「先取り貯金」の欄は銀行貯金と二重だったので廃止した。 */
+  assert.equal(c.setAside, c.nisaPlanned + c.lpMonthly.filter((r) =>
+    ["gold", "banks", "ideco", "pension"].includes(r.key)).reduce((t, r) => t + r.amount, 0));
   assert.equal(c.spendTotal, /*removed*/0 + c.spendTotal);
   assert.equal(c.incomeTotal, c.incomeRegular + c.incomeExtra);
 });
@@ -107,7 +111,7 @@ test("旧データに固定費の予定額が残っていても、支出には�
 });
 
 test("同じカテゴリを複数回記録したら、そのまま合算される", () => {
-  const c = Core.computeMonth({ savingsTarget:0, nisaMonthly:0 }, [
+  const c = Core.computeMonth({ nisaMonthly:0 }, [
     { id:"a", type:"expense", amount:5000, cat:"rent", date:"2026-07-01" },
     { id:"b", type:"expense", amount:3000, cat:"rent", date:"2026-07-15" },
   ], "2026-07");
@@ -122,7 +126,7 @@ test("支出はすべて合算される（固定費／変動費の区分は無�
     { id:"p", type:"expense", amount:8000, cat:"power", date:"2026-07-02" },
     { id:"f", type:"expense", amount:20000, cat:"food", date:"2026-07-05" },
   ];
-  const c = Core.computeMonth({ savingsTarget:40000, nisaMonthly:33000 }, tx, "2026-07");
+  const c = Core.computeMonth({ lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly:33000 }, tx, "2026-07");
   assert.equal(c.spendTotal, 88000, "支出合計が合わない");
   assert.equal(c.available, 290000 - 88000 - 73000);
   assert.equal(c.byCat.rent, 60000);
@@ -131,7 +135,7 @@ test("支出はすべて合算される（固定費／変動費の区分は無�
 });
 
 test("記録していないカテゴリは内わけに出てこない", () => {
-  const c = Core.computeMonth({ savingsTarget:0, nisaMonthly:0 },
+  const c = Core.computeMonth({ nisaMonthly:0 },
     [{ id:"f", type:"expense", amount:1000, cat:"food", date:"2026-07-01" }], "2026-07");
   assert.equal(c.byCat.food, 1000);
   assert.equal("rent" in c.byCat, false, "記録の無いカテゴリが出ている");
@@ -194,7 +198,7 @@ test("貯金・NISAは予定額だと分かる構造で出力される", () => {
 });
 
 test("連携JSONは支出合計を持ち、固定費の予定額キーは持たない", () => {
-  const snap = Core.buildSnapshot({ savingsTarget:40000, nisaMonthly:33000 },
+  const snap = Core.buildSnapshot({ lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly:33000 },
     [{ id:"r", type:"expense", amount:60000, cat:"rent", date:"2026-07-01" }], "2026-07");
   assert.equal(snap.spend_total, 60000);
   assert.equal(snap.fixed_cost, 0, "固定費の区分が残っている");

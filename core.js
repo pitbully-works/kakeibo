@@ -178,7 +178,6 @@
   function normalizeSettings(raw) {
     const s = raw || {};
     const out = {
-      savingsTarget: num(s.savingsTarget),
       nisaMonthly: num(s.nisaMonthly),
       goalName: String(s.goalName || "").slice(0, 24),
       goalTarget: num(s.goalTarget),
@@ -362,16 +361,73 @@
     return validateDateString(s) ? s : "";
   }
 
-  /* 生年月日と基準日から、小数の年齢を出す。
-     ライフプランと同じ 365.2425日/年 で数える。決められなければ null。 */
+  /* 誕生日の応当日。○年後の同じ月日を返す。
+     2月29日生まれのように、その年に同じ日が無いときは、その月の末日にする。
+     （日本の満年齢の数え方にならい、うるう年でない年の2月29日生まれは
+       2月28日を応当日として、その日に1つ年をとる扱いにする。） */
+  function lastDayOfMonth(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
+  function anniversaryUTC(by, bm, bd, years) {
+    const y = by + years;
+    return Date.UTC(y, bm - 1, Math.min(bd, lastDayOfMonth(y, bm)));
+  }
+
+  /* ageFromBirth の逆。「その年齢になる日」を暦で出す。決められなければ ""。
+
+     考え方は ageFromBirth と対（つい）にする。
+       ・満年の分は応当日で進める（2月29日生まれは末日へ寄せる）
+       ・小数の分は、その年の誕生日から次の誕生日までを日数で割る
+
+     返すのは「その年齢に達する最初の日」。切り上げるのはそのため。
+     切り捨てると、まだその年齢になっていない日を返してしまう。
+     57.5歳のような小数の年齢にも使う。 */
+  function dateAtAge(birth, age) {
+    const b = normalizeBirth(birth);
+    const a = Number(age);
+    if (!b || !Number.isFinite(a) || a < 0) return "";
+    const by = Number(b.slice(0, 4)), bm = Number(b.slice(5, 7)), bd = Number(b.slice(8, 10));
+    const whole = Math.floor(a);
+    const from = anniversaryUTC(by, bm, bd, whole);
+    const to = anniversaryUTC(by, bm, bd, whole + 1);
+    const days = (to - from) / 864e5;
+    /* ごく小さな計算誤差で1日ずれないよう、ほんの少しだけ余裕を見て切り上げる */
+    const add = Math.ceil((a - whole) * days - 1e-9);
+    return new Date(from + add * 864e5).toISOString().slice(0, 10);
+  }
+
+  /* 生年月日と基準日から、小数の年齢を出す。決められなければ null。
+
+     【なぜ経過日数÷365.2425 をやめたか】
+     日数を平均年長で割ると、誕生日ちょうどでも 60.001... のような値になり、
+     「終了年齢ちょうどは有効（age <= 終了年齢）」という決めごとの境目を
+     こちら側の誤差で踏み越えてしまう。
+     そこで暦で数える。まず満何年かを出し、そのうえで
+     「前の誕生日から次の誕生日までの、どこまで来たか」を小数にする。
+
+       ・誕生日の前日 → 満年齢より小さい
+       ・誕生日の当日 → ちょうど整数
+       ・誕生日の翌日 → 満年齢より大きい
+
+     小数を残すのは、NISAの区間（57.5歳＝57歳6ヶ月）のように
+     年の途中を指す入力があるため。整数の満年齢だけにはしない。 */
   function ageFromBirth(birth, onDate) {
     const b = normalizeBirth(birth);
     const d = validateDateString(onDate) ? onDate : null;
     if (!b || !d) return null;
-    const bt = Date.parse(b + "T00:00:00Z");
-    const nt = Date.parse(d + "T00:00:00Z");
+    const by = Number(b.slice(0, 4)), bm = Number(b.slice(5, 7)), bd = Number(b.slice(8, 10));
+    const nt = Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
+    const bt = Date.UTC(by, bm - 1, bd);
     if (!Number.isFinite(bt) || !Number.isFinite(nt) || nt < bt) return null;
-    return (nt - bt) / (365.2425 * 24 * 3600 * 1000);
+
+    /* 満何年か。応当日が基準日より後なら、まだその年齢になっていない。 */
+    let years = Number(d.slice(0, 4)) - by;
+    if (anniversaryUTC(by, bm, bd, years) > nt) years -= 1;
+    if (years < 0) years = 0;
+
+    const from = anniversaryUTC(by, bm, bd, years);       // 直前の誕生日
+    const to = anniversaryUTC(by, bm, bd, years + 1);     // 次の誕生日
+    const span = to - from;
+    if (!(span > 0)) return years;                        // 念のため（0除算を作らない）
+    return years + (nt - from) / span;
   }
 
   /* 銘柄別の内訳。ライフプランの tsumitateAllocation と同じ形。 */
@@ -466,11 +522,9 @@
     const monthly = rows.reduce(function (sum, r) {
       return r.fromAge === fromAge ? sum + r.monthlyYen : sum;
     }, 0);
-    /* その年齢になる日 */
-    const b = normalizeBirth(s.birth);
-    const bt = new Date(b + "T00:00:00Z");
-    const start = new Date(bt.getTime() + fromAge * 365.2425 * 24 * 3600 * 1000);
-    return { fromAge: fromAge, monthly: Math.round(monthly), startDate: start.toISOString().slice(0, 10) };
+    /* その年齢になる日。判定に使う ageFromBirth と同じ暦の数え方で出す。
+       ここだけ経過日数の近似で出していたため、1日前の日付を出していた。 */
+    return { fromAge: fromAge, monthly: Math.round(monthly), startDate: dateAtAge(s.birth, fromAge) };
   }
 
   /* この欄に入れた「毎月の金額」。
@@ -749,7 +803,6 @@
     const spotSpend = spendTotal - recurringSpend;
 
     /* --- 先取り（予定額） --- */
-    const savingsPlanned = s.savingsTarget;
     /* NISAの先取り額。スケジュールがあればそこから、無ければ打ち込んだ月額。
        基準日は区切りの初日にして、いつ計算しても同じ答えになるようにする。 */
     const nisaPlanned = nisaPlannedOn(s, cycleRange(ym, s.cycleStart).from);
@@ -758,7 +811,7 @@
     const lpSetAsideSum = lpSum(lpSetAside);
     const lpMonthly = lpSetAside.concat(lpSpend);
     const lpMonthlySum = lpSetAsideSum + lpSpendSum;
-    const setAside = savingsPlanned + nisaPlanned + lpSetAsideSum;
+    const setAside = nisaPlanned + lpSetAsideSum;
 
     /* --- 正式な計算式 --- */
     const available = incomeTotal - spendTotal - setAside;
@@ -797,7 +850,6 @@
       recurringSpend: recurringSpend,   // うち「毎月固定」の印がついたもの
       spotSpend: spotSpend,             // それ以外
       /* 先取り（予定額） */
-      savingsPlanned: savingsPlanned,
       nisaPlanned: nisaPlanned,
       lpMonthly: lpMonthly,
       lpMonthlySum: lpMonthlySum,
@@ -3271,10 +3323,15 @@
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
     const accounts = [];
-    if (c.savingsPlanned > 0) {
+    /* 「先取り貯金」の欄は廃止した。貯金の予定額は、ライフプラン欄の
+       銀行貯金（毎月の入金）から出す。書ける場所をひとつにするため。 */
+    const bankPlanned = c.lpMonthly.reduce(function (t, r) {
+      return r.key === "banks" ? t + r.amount : t;
+    }, 0);
+    if (bankPlanned > 0) {
       accounts.push({
         type: "CASH_SAVINGS", local: "貯金",
-        basis: "planned", planned_contribution: c.savingsPlanned,
+        basis: "planned", planned_contribution: bankPlanned,
       });
     }
     if (c.nisaPlanned > 0) {
@@ -3364,6 +3421,7 @@
     normalizeLpPensions: normalizeLpPensions,
     normalizeBirth: normalizeBirth,
     ageFromBirth: ageFromBirth,
+    dateAtAge: dateAtAge,
     normalizeLpSchedule: normalizeLpSchedule,
     normalizeLpAllocation: normalizeLpAllocation,
     normalizeLpLumps: normalizeLpLumps,

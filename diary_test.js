@@ -118,7 +118,7 @@ test("日記の保存も失敗時に巻き戻す作りになっている", () =>
 
 test("既存の家計簿・健康データを壊していない", () => {
   const app = bootApp({ state: {
-    settings: { savingsTarget: 40000, nisaMonthly: 33000 },
+    settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
     tx: [{ id: "s", type: "income", amount: 290000, cat: "salary", date: "2026-07-25" }],
     health: { "2026-07-25": { weight: 62 } }, diary: {},
   }});

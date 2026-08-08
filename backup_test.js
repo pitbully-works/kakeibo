@@ -20,7 +20,7 @@ const tx = (o) => Object.assign(
 
 /* ---------- 1. 書き出す形 ---------- */
 test("書き出しには version と exportedAt が入る", () => {
-  const b = Core.buildBackup({ settings: { savingsTarget: 1000 }, tx: [tx({})] });
+  const b = Core.buildBackup({ settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 1000 }] } }, tx: [tx({})] });
   assert.equal(b.version, Core.BACKUP_VERSION);
   assert.match(b.exportedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(typeof b.settings, "object");
@@ -36,27 +36,27 @@ test("書き出しに高解像度の写真は入らない", () => {
 test("現行形式（version付き）を読み込める", () => {
   const json = JSON.stringify({
     version: 1, exportedAt: "2026-07-24T00:00:00.000Z",
-    settings: { savingsTarget: 40000, nisaMonthly: 33000 },
+    settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
     tx: [tx({}), tx({ id: "x2", type: "income", amount: 290000, cat: "salary", date: "2026-07-25" })],
   });
   const r = Core.normalizeBackup(Core.parseBackupJson(json));
   assert.equal(r.version, 1);
   assert.equal(r.tx.length, 2);
-  assert.equal(r.settings.savingsTarget, 40000);
+  assert.equal(r.settings.lp.banks[0].monthlyDeposit, 40000);
   assert.equal(r.dropped, 0);
 });
 
 test("旧形式（version無し・state をそのまま書き出したもの）も読み込める", () => {
-  const json = JSON.stringify({ settings: { savingsTarget: 25000 }, tx: [tx({})] });
+  const json = JSON.stringify({ settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 25000 }] } }, tx: [tx({})] });
   const r = Core.normalizeBackup(Core.parseBackupJson(json));
   assert.equal(r.version, 0, "旧形式と判別できていない");
   assert.equal(r.tx.length, 1);
-  assert.equal(r.settings.savingsTarget, 25000);
+  assert.equal(r.settings.lp.banks[0].monthlyDeposit, 25000);
 });
 
 test("復元したデータで、計算結果が正しく出る", () => {
   const json = JSON.stringify({
-    settings: { savingsTarget: 40000, nisaMonthly: 33000 },
+    settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
     tx: [
       tx({ id: "s", type: "income", amount: 290000, cat: "salary", date: "2026-07-25" }),
       tx({ id: "r", type: "expense", amount: 60000, cat: "rent", date: "2026-07-01" }),
@@ -238,7 +238,7 @@ test("書き出しは新形式（version付き）で行う", () => {
 /* ---------- 7. 書き出し → 読み込み で完全に戻ることの確認 ---------- */
 test("書き出したものを読み込むと、元と同じ状態になる", () => {
   const original = {
-    settings: { savingsTarget: 40000, nisaMonthly: 33000, goalName: "旅行", goalTarget: 300000, goalCurrent: 50000, currency: "JPY" },
+    settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, goalName: "旅行", goalTarget: 300000, goalCurrent: 50000, currency: "JPY" },
     tx: [
       tx({ id: "a", type: "income", amount: 290000, cat: "salary", date: "2026-07-25", memo: "給料" }),
       tx({ id: "b", type: "expense", amount: 60000, cat: "rent", date: "2026-07-01", memo: "家賃" }),
@@ -262,7 +262,7 @@ test("書き出したものを読み込むと、元と同じ状態になる", ()
 
 test("復元後、ホームとまとめの金額が一致する", () => {
   const text = JSON.stringify(Core.buildBackup({
-    settings: { savingsTarget: 40000, nisaMonthly: 33000 },
+    settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
     tx: [
       tx({ id: "a", type: "income", amount: 290000, cat: "salary", date: "2026-07-25" }),
       tx({ id: "b", type: "expense", amount: 60000, cat: "rent", date: "2026-07-01" }),
@@ -276,7 +276,7 @@ test("復元後、ホームとまとめの金額が一致する", () => {
 /* ---------- 固定費区分の廃止（Ver.2）: 旧データの互換 ---------- */
 test("旧固定費カテゴリの記録は、通常の支出として残る", () => {
   const oldBackup = {
-    settings: { savingsTarget: 40000, nisaMonthly: 33000 },
+    settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
     tx: [
       { id:"1", type:"expense", amount:60000, cat:"rent",  date:"2026-07-01" },
       { id:"2", type:"expense", amount:8000,  cat:"power", date:"2026-07-02" },
@@ -301,7 +301,7 @@ test("電気・ガス・水道は個別カテゴリのまま保持される", ()
     { type:"expense", amount:3000, cat:"gas",   date:"2026-07-01" },
     { type:"expense", amount:2000, cat:"water", date:"2026-07-01" },
   ]});
-  const c = Core.computeMonth({savingsTarget:0,nisaMonthly:0}, r.tx, "2026-07");
+  const c = Core.computeMonth({nisaMonthly:0}, r.tx, "2026-07");
   assert.equal(c.byCat.power, 8000, "電気が個別に残っていない");
   assert.equal(c.byCat.gas, 3000, "ガスが個別に残っていない");
   assert.equal(c.byCat.water, 2000, "水道が個別に残っていない");
@@ -314,7 +314,7 @@ test("旧固定費データを含む月の計算が、区分廃止でも変わ�
     { id:"p", type:"expense", amount:8000,   cat:"power",  date:"2026-07-02" },  // 旧固定費
     { id:"f", type:"expense", amount:20000,  cat:"food",   date:"2026-07-05" },  // 旧変動費
   ];
-  const c = Core.computeMonth({ savingsTarget:40000, nisaMonthly:33000 }, tx, "2026-07");
+  const c = Core.computeMonth({ lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly:33000 }, tx, "2026-07");
   assert.equal(c.spendTotal, 88000, "支出合計が合わない");
   assert.equal(c.available, 290000 - 88000 - 73000, "残額計算が変わっている");
   // 二重計上が無いこと：byCat の合計 = spendTotal
@@ -323,7 +323,7 @@ test("旧固定費データを含む月の計算が、区分廃止でも変わ�
 });
 
 test("固定費・変動費に分ける情報は、もう計算結果に無い", () => {
-  const c = Core.computeMonth({savingsTarget:0,nisaMonthly:0},
+  const c = Core.computeMonth({nisaMonthly:0},
     [{id:"r",type:"expense",amount:1000,cat:"rent",date:"2026-07-01"}], "2026-07");
   assert.equal("fixedSpend" in c, false, "固定費合計が残っている");
   assert.equal("variableSpend" in c, false, "変動費合計が残っている");
