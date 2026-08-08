@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.3.0";
+  const APP_VERSION = "1.4.0";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -174,7 +174,7 @@
      「記録」はそのまま通常の支出として残る。 */
   function normalizeSettings(raw) {
     const s = raw || {};
-    return {
+    const out = {
       savingsTarget: num(s.savingsTarget),
       nisaMonthly: num(s.nisaMonthly),
       goalName: String(s.goalName || "").slice(0, 24),
@@ -182,6 +182,134 @@
       goalCurrent: num(s.goalCurrent),
       currency: s.currency || "JPY",
       cycleStart: normalizeCycleStart(s.cycleStart),
+    };
+    /* ライフプランへ渡す資産。ここだけが入力口で、家計の計算には入れない。
+       まだ何も入れていないうちは、設定に持たせない（保存を無駄に太らせないため）。 */
+    const lp = normalizeLifePlanAssets(s.lp);
+    if (lpHasAny(lp)) out.lp = lp;
+    return out;
+  }
+
+  /* =======================================================================
+     ライフプランへ渡す資産（金・銀行貯金・借入金・民間年金）
+     -----------------------------------------------------------------------
+     ねらいは「ライフプランアプリへ入れ直す手間をなくす」こと。
+     そのため、キー名も並びも **ライフプラン側の inputs にそのまま合わせる**。
+     ここで名前を言い換えると、渡すたびに対応表が要り、ズレの元になる。
+
+     二重入力にしないための決めごと：
+       ・この4つは家計簿のほかの画面には無い。ここだけが入力口。
+       ・毎月の記録（支出・収入）とは別物。使えるお金の計算には一切入れない。
+         例）借入の毎月返済は、実際に払ったときに「記録」から入れる。
+            ここに入れる monthlyPayment は、ライフプランが将来を見通すための
+            予定額であって、今月の家計には足さない。
+     ======================================================================= */
+
+  const LP_MAX_ROWS = 20;        // 1種類あたりの行数の上限
+  const LP_MAX_NAME = 24;        // 名前の長さ
+
+  const lpNum = (v, max) => {
+    const n = Number(String(v == null ? "" : v).replace(/[^\d.-]/g, ""));
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.min(n, max === undefined ? 1e12 : max);
+  };
+  const lpName = (v) => String(v == null ? "" : v).slice(0, LP_MAX_NAME);
+  /* 年齢は0〜120。ライフプラン側と同じく小数（57.5＝57歳6ヶ月）を許す。 */
+  const lpAge = (v) => Math.round(lpNum(v, 120) * 12) / 12;
+
+  function normalizeLpGold(raw) {
+    const g = raw || {};
+    return {
+      currentGrams: lpNum(g.currentGrams, 1e6),
+      pricePerGram: lpNum(g.pricePerGram, 1e7),
+      monthlyYen: lpNum(g.monthlyYen, 1e9),
+    };
+  }
+
+  function normalizeLpBanks(list) {
+    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (b) {
+      const r = b || {};
+      return {
+        name: lpName(r.name),
+        balance: lpNum(r.balance, 1e12),
+        monthlyDeposit: lpNum(r.monthlyDeposit, 1e9),
+        interestPct: lpNum(r.interestPct, 100),
+      };
+    });
+  }
+
+  function normalizeLpLoans(list) {
+    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (l) {
+      const r = l || {};
+      return {
+        name: lpName(r.name),
+        principal: lpNum(r.principal, 1e12),
+        annualRatePct: lpNum(r.annualRatePct, 100),
+        monthlyPayment: lpNum(r.monthlyPayment, 1e9),
+      };
+    });
+  }
+
+  function normalizeLpPensions(list) {
+    return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (p) {
+      const r = p || {};
+      return {
+        name: lpName(r.name),
+        contribFromAge: lpAge(r.contribFromAge),
+        contribToAge: lpAge(r.contribToAge),
+        monthlyContribution: lpNum(r.monthlyContribution, 1e9),
+        payoutFromAge: lpAge(r.payoutFromAge),
+        payoutToAge: lpAge(r.payoutToAge),
+        monthlyPayout: lpNum(r.monthlyPayout, 1e9),
+      };
+    });
+  }
+
+  function normalizeLifePlanAssets(raw) {
+    const a = raw || {};
+    return {
+      gold: normalizeLpGold(a.gold),
+      banks: normalizeLpBanks(a.banks),
+      loans: normalizeLpLoans(a.loans),
+      privatePensionPlans: normalizeLpPensions(a.privatePensionPlans),
+    };
+  }
+
+  /* 中身が空かどうか。空なら設定に持たせない（端末の保存領域を無駄に使わないため）。 */
+  function lpHasAny(assets) {
+    const a = normalizeLifePlanAssets(assets);
+    return a.banks.length > 0 || a.loans.length > 0 || a.privatePensionPlans.length > 0 ||
+      a.gold.currentGrams > 0 || a.gold.pricePerGram > 0 || a.gold.monthlyYen > 0;
+  }
+
+  /* ---- 設定の一覧に出す「合計」 ---- */
+  function lpGoldValue(gold) {
+    const g = normalizeLpGold(gold);
+    return Math.round(g.currentGrams * g.pricePerGram);
+  }
+  function lpBanksTotal(list) {
+    return normalizeLpBanks(list).reduce(function (s, b) { return s + b.balance; }, 0);
+  }
+  function lpLoansTotal(list) {
+    return normalizeLpLoans(list).reduce(function (s, l) { return s + l.principal; }, 0);
+  }
+  function lpPensionMonthly(list) {
+    return normalizeLpPensions(list).reduce(function (s, p) { return s + p.monthlyContribution; }, 0);
+  }
+
+  /* ライフプランアプリへ渡す形。
+     向こうの「バックアップの読み込み」がそのまま受け取れる { inputs: ... } にする。
+     読み込み側は差分をかぶせる作りなので、ここで渡した4つだけが入れ替わり、
+     年齢や年金など向こうで入れた値は消えない。 */
+  function buildLifePlanInputs(settings) {
+    const a = normalizeLifePlanAssets(settings && settings.lp);
+    return {
+      inputs: {
+        gold: a.gold,
+        banks: a.banks,
+        loans: a.loans,
+        privatePensionPlans: a.privatePensionPlans,
+      },
     };
   }
 
@@ -2814,6 +2942,18 @@
     CYCLE_START_MIN: CYCLE_START_MIN,
     CYCLE_START_MAX: CYCLE_START_MAX,
     normalizeSettings: normalizeSettings,
+    LP_MAX_ROWS: LP_MAX_ROWS,
+    normalizeLifePlanAssets: normalizeLifePlanAssets,
+    normalizeLpGold: normalizeLpGold,
+    normalizeLpBanks: normalizeLpBanks,
+    normalizeLpLoans: normalizeLpLoans,
+    normalizeLpPensions: normalizeLpPensions,
+    lpHasAny: lpHasAny,
+    lpGoldValue: lpGoldValue,
+    lpBanksTotal: lpBanksTotal,
+    lpLoansTotal: lpLoansTotal,
+    lpPensionMonthly: lpPensionMonthly,
+    buildLifePlanInputs: buildLifePlanInputs,
     computeMonth: computeMonth,
     weekSpent: weekSpent,
     buildSnapshot: buildSnapshot,

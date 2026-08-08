@@ -497,6 +497,27 @@
   .pdbtns .ed{background:#fff;color:var(--green-d);border-color:#bfe0d3}
   .pdbtns .de{background:#fff;color:var(--terra);border-color:#f0d0c4}
   .pedit{padding:10px 13px 13px;background:#fbfcfb;border-top:1px solid var(--line2)}
+  /* ライフプランへ渡す資産の一覧と内訳 */
+  .lprow{display:flex;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line2)}
+  .lprow:last-of-type{border-bottom:0}
+  .lpi{font-size:20px;line-height:1;flex:none}
+  .lpmid{flex:1;min-width:0}
+  .lpmid b{display:block;font-size:13.5px;font-weight:800}
+  .lpmid i{display:block;font-style:normal;font-size:11px;color:var(--sub);font-weight:700}
+  .lpv{font-size:14px;font-weight:800;white-space:nowrap}
+  .lpbtn{flex:none;padding:8px 13px;border-radius:11px;font-size:12.5px;font-weight:800;
+    color:var(--green-d);background:var(--green-l);border:1px solid #cfe4d9}
+  .lpcard{border:1px solid var(--line2);border-radius:13px;padding:11px 12px;margin-bottom:10px;background:#fbfcfb}
+  .lpcard-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .lpcard-h b{font-size:13px;font-weight:800}
+  .lpdel{flex:none;padding:6px 10px;border-radius:9px;font-size:12.5px;background:#fff;border:1px solid #f0d0c4;color:var(--terra)}
+  .lpgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .lpgrid label{display:block;font-size:11px;color:var(--sub);font-weight:700}
+  .lpgrid input{width:100%;box-sizing:border-box;margin-top:3px;font:inherit;font-size:14px;
+    padding:9px;border:1px solid var(--line2);border-radius:10px;background:#fff;color:var(--ink)}
+  .lptotal{text-align:right;font-size:12.5px;color:var(--sub);font-weight:700;margin:6px 0 10px}
+  .lptotal b{font-size:16px;color:var(--ink);margin-left:6px}
+
   .hidden{display:none !important}
 </style>
 </head>
@@ -618,6 +639,7 @@ function render(){
   else if(view==="health") app.innerHTML=renderHealth();
   else if(view==="calc") app.innerHTML=renderSci();
   else if(view==="pulse") app.innerHTML=renderPulse();
+  else if(view==="lp") app.innerHTML=renderLp();
   else if(view==="settings") app.innerHTML=renderSettings();
   window.scrollTo(0,0);
 }
@@ -1610,6 +1632,7 @@ function renderSettings(){
       この端末に保存できるのは<b>およそ5MB</b>までです。${u.nearLimit?"<b style=\"color:var(--terra)\">空きが少なくなっています。</b>":""}
     </div>
     <button class="btn-ghost" data-act="export-snapshot">📤 ライフプラン用データを書き出す</button>
+    ${lpSummaryHtml()}
     <button class="btn-quiet" data-act="export-backup">📥 バックアップを書き出す（JSON）</button>
     <button class="btn-quiet" data-act="import-backup">📤 バックアップを読み込む（JSON）</button>
     <button class="btn-quiet" data-act="purge-photos">🗑 写真をすべて消す（記録は残ります）</button>
@@ -2162,6 +2185,22 @@ function togglePlan(date, id){
   state.plans[date]=state.plans[date].map(p=> p.id===id ? Object.assign({}, p, {done:!p.done}) : p);
   if(!save()){ state.plans=before; toast("保存できませんでした"); }
   render();
+}
+
+/* 内訳の画面へ移るとき、設定の書きかけを消さないための静かな保存。
+   画面は動かさず、うまくいかなければ何もしない（元の値のまま）。 */
+function saveSettingsQuiet(){
+  const g=id=>{ const el=$(id); return el?el.value:null; };
+  if(g("f-save")===null) return;              // 設定の画面にいないときは何もしない
+  const num=v=>{ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; };
+  const before = JSON.parse(JSON.stringify(state.settings));
+  const s=Object.assign({}, state.settings);
+  s.savingsTarget=num(g("f-save"));
+  s.nisaMonthly=num(g("f-nisa")); s.goalName=(g("f-gname")||"").slice(0,24);
+  s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));
+  s.cycleStart=Core.normalizeCycleStart(g("f-cycle"));
+  state.settings = Core.normalizeSettings(s);
+  if(!save()) state.settings = before;
 }
 
 function saveSettings(){
@@ -2907,6 +2946,239 @@ document.addEventListener("touchend",(e)=>{
   view=next; render();
 },{passive:true});
 
+/* =========================================================================
+   ライフプランへ渡す資産（金・銀行貯金・借入金・民間年金）
+   -------------------------------------------------------------------------
+   ・入力口はここだけ。家計簿のほかの画面には同じ欄を作らない。
+   ・毎月の記録（収入・支出）とは完全に別。使えるお金の計算には入れない。
+     借入の返済も、実際に払った月に「記録」から入れる。ここの毎月返済額は
+     ライフプランが将来を見通すための予定額で、今月の家計には足さない。
+   ・数の決め方と形は core.js（normalizeLifePlanAssets）が唯一の正。
+   ========================================================================= */
+const LP_KINDS = ["gold", "banks", "loans", "pension"];
+let lpKind = "gold";     // 内訳画面で開いている種類
+
+/* いまの設定にある資産（未入力なら空の形） */
+function lpAssets(){ return Core.normalizeLifePlanAssets(state.settings.lp); }
+
+/* 設定に戻さず、その場で保存する。失敗したら完全に元へ戻す。 */
+function lpSave(next){
+  const before = JSON.parse(JSON.stringify(state.settings));
+  state.settings = Core.normalizeSettings(Object.assign({}, state.settings, { lp: next }));
+  if(!save()){
+    state.settings = before;
+    toast("保存できませんでした");
+    return false;
+  }
+  return true;
+}
+
+/* ---------- 設定に出す一覧（合計と内訳ボタンだけ） ---------- */
+function lpSummaryHtml(){
+  const a = lpAssets();
+  const row = (kind, icon, label, value, sub) => `<div class="lprow">
+    <span class="lpi">${icon}</span>
+    <span class="lpmid"><b>${label}</b><i>${escapeHtml(sub)}</i></span>
+    <span class="lpv mono">${value}</span>
+    <button class="lpbtn" data-act="lp-open" data-kind="${kind}">内訳</button>
+  </div>`;
+  return `<div class="stitle">ライフプランへ渡すデータ</div>
+  <div class="calcnote" style="margin:0 0 10px">
+    ライフプランアプリへ入れ直す手間をなくすための欄です。<br>
+    <b>毎月の家計の計算には入りません。</b>実際に払ったお金は、これまでどおり「記録」から入れてください。
+  </div>
+  <div class="barlist">
+    ${row("gold","🪙","金（きん）", yen(Core.lpGoldValue(a.gold)), `${a.gold.currentGrams||0}g × ${yen(a.gold.pricePerGram)}`)}
+    ${row("banks","🏦","銀行貯金", yen(Core.lpBanksTotal(a.banks)), `${a.banks.length}件`)}
+    ${row("loans","💳","借入金", yen(Core.lpLoansTotal(a.loans)), `${a.loans.length}件`)}
+    ${row("pension","📜","民間年金", yen(Core.lpPensionMonthly(a.privatePensionPlans))+"/月", `${a.privatePensionPlans.length}件`)}
+    <button class="btn-ghost" data-act="lp-export" style="margin-top:10px">📤 ライフプランへ渡す</button>
+  </div>`;
+}
+
+/* ---------- 内訳の画面 ---------- */
+const LP_TITLES = { gold:"🪙 金（きん）", banks:"🏦 銀行貯金", loans:"💳 借入金", pension:"📜 民間年金" };
+
+function renderLp(){
+  const a = lpAssets();
+  const tabs = LP_KINDS.map(k=>`<button data-act="lp-tab" data-kind="${k}" class="rgbtn${lpKind===k?" on":""}">${LP_TITLES[k].slice(2)}</button>`).join("");
+  const body = lpKind==="gold" ? lpGoldHtml(a.gold)
+    : lpKind==="banks" ? lpBanksHtml(a.banks)
+    : lpKind==="loans" ? lpLoansHtml(a.loans)
+    : lpPensionHtml(a.privatePensionPlans);
+  return `<div class="screen">
+    <div class="stitle" style="margin-top:6px">${LP_TITLES[lpKind]}</div>
+    <div class="rangebar" style="display:flex;gap:6px;margin:0 0 12px">${tabs}</div>
+    ${body}
+    <button class="btn-quiet" data-act="lp-back" style="margin-top:14px">← せっていへ戻る</button>
+  </div>`;
+}
+
+function lpGoldHtml(g){
+  return `<div class="barlist">
+    <div class="field"><label>いま持っている量</label><div class="row">
+      <input class="mono" id="lp-g-grams" inputmode="decimal" value="${g.currentGrams||""}" placeholder="0"><span class="yen">g</span></div></div>
+    <div class="field"><label>1グラムの値段</label><div class="row"><span class="yen">¥</span>
+      <input class="mono" id="lp-g-price" inputmode="numeric" value="${g.pricePerGram||""}" placeholder="0"></div></div>
+    <div class="field"><label>毎月の積立額</label><div class="row"><span class="yen">¥</span>
+      <input class="mono" id="lp-g-monthly" inputmode="numeric" value="${g.monthlyYen||""}" placeholder="0"></div>
+      <div class="fhelp">これから毎月いくら買う予定か。実際に買ったお金は「記録」から入れてください</div></div>
+    <div class="lptotal">いまの評価額 <b class="mono">${yen(Core.lpGoldValue(g))}</b></div>
+    <button class="btn-main" data-act="lp-save-gold">この内容で保存する</button>
+  </div>`;
+}
+
+function lpBanksHtml(list){
+  const rows = list.map((b,i)=>`<div class="lpcard">
+    <div class="lpcard-h"><b>${escapeHtml(b.name)||"（名前なし）"}</b>
+      <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
+    <div class="lpgrid">
+      <label>銀行名<input id="lp-b-name-${i}" value="${escapeAttr(b.name)}" placeholder="○○銀行"></label>
+      <label>残高（円）<input class="mono" id="lp-b-bal-${i}" inputmode="numeric" value="${b.balance||""}" placeholder="0"></label>
+      <label>毎月の入金（円）<input class="mono" id="lp-b-mon-${i}" inputmode="numeric" value="${b.monthlyDeposit||""}" placeholder="0"></label>
+      <label>年利（％）<input class="mono" id="lp-b-int-${i}" inputmode="decimal" value="${b.interestPct||""}" placeholder="0"></label>
+    </div></div>`).join("");
+  return `<div class="barlist">
+    ${rows || `<div class="empty"><span class="e">🏦</span>まだ入っていません</div>`}
+    <div class="lptotal">合計 <b class="mono">${yen(Core.lpBanksTotal(list))}</b></div>
+    <button class="btn-main" data-act="lp-save-banks">この内容で保存する</button>
+    <button class="btn-quiet" data-act="lp-add">＋ 銀行を足す</button>
+  </div>`;
+}
+
+function lpLoansHtml(list){
+  const rows = list.map((l,i)=>`<div class="lpcard">
+    <div class="lpcard-h"><b>${escapeHtml(l.name)||"（名前なし）"}</b>
+      <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
+    <div class="lpgrid">
+      <label>借入の名前<input id="lp-l-name-${i}" value="${escapeAttr(l.name)}" placeholder="車のローン"></label>
+      <label>残っている元金（円）<input class="mono" id="lp-l-pri-${i}" inputmode="numeric" value="${l.principal||""}" placeholder="0"></label>
+      <label>年利（％）<input class="mono" id="lp-l-rate-${i}" inputmode="decimal" value="${l.annualRatePct||""}" placeholder="0"></label>
+      <label>毎月の返済（円）<input class="mono" id="lp-l-pay-${i}" inputmode="numeric" value="${l.monthlyPayment||""}" placeholder="0"></label>
+    </div></div>`).join("");
+  return `<div class="barlist">
+    ${rows || `<div class="empty"><span class="e">💳</span>まだ入っていません</div>`}
+    <div class="lptotal">残り合計 <b class="mono">${yen(Core.lpLoansTotal(list))}</b></div>
+    <div class="fhelp" style="margin:2px 0 8px">毎月の返済は、実際に払った月に「記録」からも入れてください。ここの金額は将来の見通し用で、今月の家計には足しません。</div>
+    <button class="btn-main" data-act="lp-save-loans">この内容で保存する</button>
+    <button class="btn-quiet" data-act="lp-add">＋ 借入を足す</button>
+  </div>`;
+}
+
+function lpPensionHtml(list){
+  const rows = list.map((p,i)=>`<div class="lpcard">
+    <div class="lpcard-h"><b>${escapeHtml(p.name)||"（名前なし）"}</b>
+      <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
+    <div class="lpgrid">
+      <label>年金の名前<input id="lp-p-name-${i}" value="${escapeAttr(p.name)}" placeholder="○○年金共済"></label>
+      <label>毎月の掛金（円）<input class="mono" id="lp-p-mon-${i}" inputmode="numeric" value="${p.monthlyContribution||""}" placeholder="0"></label>
+      <label>掛ける 開始年齢<input class="mono" id="lp-p-cf-${i}" inputmode="decimal" value="${p.contribFromAge||""}" placeholder="35"></label>
+      <label>掛ける 終了年齢<input class="mono" id="lp-p-ct-${i}" inputmode="decimal" value="${p.contribToAge||""}" placeholder="60"></label>
+      <label>もらう 開始年齢<input class="mono" id="lp-p-pf-${i}" inputmode="decimal" value="${p.payoutFromAge||""}" placeholder="60"></label>
+      <label>もらう 終了年齢<input class="mono" id="lp-p-pt-${i}" inputmode="decimal" value="${p.payoutToAge||""}" placeholder="70"></label>
+      <label>毎月もらう額（円）<input class="mono" id="lp-p-pay-${i}" inputmode="numeric" value="${p.monthlyPayout||""}" placeholder="0"></label>
+    </div></div>`).join("");
+  return `<div class="barlist">
+    ${rows || `<div class="empty"><span class="e">📜</span>まだ入っていません</div>`}
+    <div class="lptotal">毎月の掛金 合計 <b class="mono">${yen(Core.lpPensionMonthly(list))}</b></div>
+    <button class="btn-main" data-act="lp-save-pension">この内容で保存する</button>
+    <button class="btn-quiet" data-act="lp-add">＋ 年金を足す</button>
+  </div>`;
+}
+
+/* ---------- 画面の値を読んで保存する ---------- */
+const lpVal = (id) => { const el=$(id); return el?el.value:""; };
+
+function lpSaveGold(){
+  const a = lpAssets();
+  a.gold = { currentGrams: lpVal("lp-g-grams"), pricePerGram: lpVal("lp-g-price"), monthlyYen: lpVal("lp-g-monthly") };
+  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+}
+function lpSaveBanks(){
+  const a = lpAssets();
+  a.banks = a.banks.map((b,i)=>({
+    name: lpVal(`lp-b-name-${i}`), balance: lpVal(`lp-b-bal-${i}`),
+    monthlyDeposit: lpVal(`lp-b-mon-${i}`), interestPct: lpVal(`lp-b-int-${i}`),
+  }));
+  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+}
+function lpSaveLoans(){
+  const a = lpAssets();
+  a.loans = a.loans.map((l,i)=>({
+    name: lpVal(`lp-l-name-${i}`), principal: lpVal(`lp-l-pri-${i}`),
+    annualRatePct: lpVal(`lp-l-rate-${i}`), monthlyPayment: lpVal(`lp-l-pay-${i}`),
+  }));
+  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+}
+function lpSavePension(){
+  const a = lpAssets();
+  a.privatePensionPlans = a.privatePensionPlans.map((p,i)=>({
+    name: lpVal(`lp-p-name-${i}`), monthlyContribution: lpVal(`lp-p-mon-${i}`),
+    contribFromAge: lpVal(`lp-p-cf-${i}`), contribToAge: lpVal(`lp-p-ct-${i}`),
+    payoutFromAge: lpVal(`lp-p-pf-${i}`), payoutToAge: lpVal(`lp-p-pt-${i}`),
+    monthlyPayout: lpVal(`lp-p-pay-${i}`),
+  }));
+  if(lpSave(a)){ render(); toast("保存しました ✓"); }
+}
+
+/* 行を足す。書きかけを消さないよう、いま画面にある値をそのまま保存してから足す。 */
+function lpAddRow(){
+  if(lpKind==="banks"){ lpSaveBanksQuiet(); }
+  else if(lpKind==="loans"){ lpSaveLoansQuiet(); }
+  else if(lpKind==="pension"){ lpSavePensionQuiet(); }
+  const a = lpAssets();
+  const key = lpKind==="banks" ? "banks" : lpKind==="loans" ? "loans" : "privatePensionPlans";
+  if(a[key].length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
+  a[key] = a[key].concat([{ name:"" }]);
+  if(lpSave(a)) render();
+}
+/* 「足す」「消す」の前に、書きかけを取りこぼさないための静かな保存 */
+function lpSaveBanksQuiet(){ const a=lpAssets(); a.banks=a.banks.map((b,i)=>({
+  name:lpVal(`lp-b-name-${i}`), balance:lpVal(`lp-b-bal-${i}`),
+  monthlyDeposit:lpVal(`lp-b-mon-${i}`), interestPct:lpVal(`lp-b-int-${i}`) })); lpSave(a); }
+function lpSaveLoansQuiet(){ const a=lpAssets(); a.loans=a.loans.map((l,i)=>({
+  name:lpVal(`lp-l-name-${i}`), principal:lpVal(`lp-l-pri-${i}`),
+  annualRatePct:lpVal(`lp-l-rate-${i}`), monthlyPayment:lpVal(`lp-l-pay-${i}`) })); lpSave(a); }
+function lpSavePensionQuiet(){ const a=lpAssets(); a.privatePensionPlans=a.privatePensionPlans.map((p,i)=>({
+  name:lpVal(`lp-p-name-${i}`), monthlyContribution:lpVal(`lp-p-mon-${i}`),
+  contribFromAge:lpVal(`lp-p-cf-${i}`), contribToAge:lpVal(`lp-p-ct-${i}`),
+  payoutFromAge:lpVal(`lp-p-pf-${i}`), payoutToAge:lpVal(`lp-p-pt-${i}`),
+  monthlyPayout:lpVal(`lp-p-pay-${i}`) })); lpSave(a); }
+
+function lpDeleteRow(i){
+  const idx = Number(i);
+  const key = lpKind==="banks" ? "banks" : lpKind==="loans" ? "loans" : "privatePensionPlans";
+  const a0 = lpAssets();
+  const target = a0[key][idx];
+  if(!target) return;
+  if(typeof confirm==="function" && !confirm(`「${target.name||"（名前なし）"}」を消しますか？`)) return;
+  if(lpKind==="banks") lpSaveBanksQuiet();
+  else if(lpKind==="loans") lpSaveLoansQuiet();
+  else lpSavePensionQuiet();
+  const a = lpAssets();
+  a[key] = a[key].filter((_,n)=>n!==idx);
+  if(lpSave(a)){ render(); toast("消しました ✓"); }
+}
+
+/* ---------- ライフプランへ渡す ---------- */
+function lpExport(){
+  const text = JSON.stringify(Core.buildLifePlanInputs(state.settings), null, 2);
+  /* ライフプラン側は文字を貼りつけて読み込む作りなので、まずコピーを試す。
+     コピーできない端末では、これまでどおりファイルに書き出す。 */
+  const done = () => toast("コピーしました。ライフプランの「バックアップの読み込み」に貼りつけてください");
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done, ()=>{
+        downloadText(`lifeplan-assets-${todayISO()}.json`, text);
+        toast("ファイルに書き出しました");
+      });
+      return;
+    }
+  }catch(e){ /* コピーできない端末は下のファイル書き出しへ */ }
+  downloadText(`lifeplan-assets-${todayISO()}.json`, text);
+  toast("ファイルに書き出しました");
+}
+
 /* ---------- イベント（委譲） ---------- */
 /* バックグラウンドから戻ったとき：日をまたいでいたら画面を今日に合わせる。
    日記や設定などの入力途中の下書きを消さないよう、
@@ -2993,6 +3265,20 @@ function handleAct(a,e){
   }
   if(a==="save-settings") return saveSettings();
   if(a==="export-snapshot") return exportSnapshot();
+  /* --- ライフプランへ渡す資産 --- */
+  if(a==="lp-open"){ const el=e&&e.target&&e.target.closest("[data-kind]");
+    saveSettingsQuiet();                       // 書きかけの設定を取りこぼさない
+    lpKind=(el&&el.dataset.kind)||"gold"; view="lp"; render(); return; }
+  if(a==="lp-tab"){ const el=e&&e.target&&e.target.closest("[data-kind]");
+    lpKind=(el&&el.dataset.kind)||"gold"; render(); return; }
+  if(a==="lp-back"){ view="settings"; render(); return; }
+  if(a==="lp-add") return lpAddRow();
+  if(a==="lp-del"){ const el=e&&e.target&&e.target.closest("[data-i]"); if(el) lpDeleteRow(el.dataset.i); return; }
+  if(a==="lp-save-gold") return lpSaveGold();
+  if(a==="lp-save-banks") return lpSaveBanks();
+  if(a==="lp-save-loans") return lpSaveLoans();
+  if(a==="lp-save-pension") return lpSavePension();
+  if(a==="lp-export") return lpExport();
   if(a==="export-backup") return exportBackup();
   if(a==="purge-photos") return purgePhotos();
   if(a==="import-backup") return pickBackup();

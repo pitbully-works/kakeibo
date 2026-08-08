@@ -23,6 +23,27 @@ const dir = __dirname;
 
 /* 変異の一覧。それぞれ「守りたい振る舞い」に1対1で対応させる。 */
 const MUTATIONS = [
+  /* ---- ライフプランへ渡す資産（金・銀行貯金・借入金・民間年金） ---- */
+  { name: "渡す形の入れものを変える", guards: "ライフプランが受け取れる { inputs: ... } の形",
+    file: "core.js", from: "    return {\n      inputs: {\n        gold: a.gold,", to: "    return {\n      data: {\n        gold: a.gold," },
+  { name: "ライフプランの入力まで上書きする", guards: "渡すのは4つだけ",
+    file: "core.js", from: "        privatePensionPlans: a.privatePensionPlans,\n      },\n    };\n  }",
+    to: "        privatePensionPlans: a.privatePensionPlans,\n        currentAge: 0,\n      },\n    };\n  }" },
+  { name: "件数の上限を外す", guards: "1種類あたりの行数に上限がある",
+    file: "core.js", from: "  const LP_MAX_ROWS = 20;", to: "  const LP_MAX_ROWS = 100000;" },
+  { name: "マイナスの金額を受け入れる", guards: "読み取れない値・マイナスは0にする",
+    file: "core.js", from: "    if (!Number.isFinite(n) || n < 0) return 0;", to: "    if (!Number.isFinite(n)) return 0;" },
+  { name: "金の評価額を足し算にする", guards: "金は「量 × 1グラムの値段」",
+    file: "core.js", from: "    return Math.round(g.currentGrams * g.pricePerGram);", to: "    return Math.round(g.currentGrams + g.pricePerGram);" },
+  { name: "空でも設定に持たせる", guards: "何も入れていないうちは設定に持たせない",
+    file: "core.js", from: "    if (lpHasAny(lp)) out.lp = lp;", to: "    out.lp = lp;" },
+  { name: "保存に失敗しても巻き戻さない", guards: "失敗したら元の値へ完全に戻す",
+    file: "index.html", from: "    state.settings = before;\n    toast(\"保存できませんでした\");", to: '    toast("保存できませんでした");' },
+  { name: "内訳へ移るときに書きかけを捨てる", guards: "せっていの書きかけを取りこぼさない",
+    file: "index.html", from: "    saveSettingsQuiet();                       // 書きかけの設定を取りこぼさない", to: "" },
+  { name: "確かめずに行を消す", guards: "消す前に確かめる",
+    file: "index.html", from: '  if(typeof confirm==="function" && !confirm(`「${target.name||"（名前なし）"}」を消しますか？`)) return;', to: "" },
+
   /* ---- 日記の日付えらび・写真ボタン ---- */
   { name: "書きかけを確かめずに捨てる", guards: "日付を変える前に確かめる",
     file: "index.html", from: '  if(dirty && typeof confirm==="function" && !confirm("書きかけの内容は保存されません。日付を変えますか？")){',
@@ -158,7 +179,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v33";', to: 'const CACHE = "kakeibo-v32";' },
+    file: "sw.js", from: 'const CACHE = "kakeibo-v34";', to: 'const CACHE = "kakeibo-v33";' },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
   { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
