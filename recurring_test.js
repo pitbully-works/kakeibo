@@ -13,7 +13,7 @@ const assert = require("node:assert/strict");
 const Core = require("./core.js");
 const { bootApp } = require("./boot-app.cjs");
 
-const S = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
+const S = { birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] }, currency: "JPY" };
 const YM = "2026-07";
 const tx = (id, amount, cat, date, recurring) => {
   const t = { id, type: "expense", amount, cat, date };
@@ -268,8 +268,7 @@ test("記録をなおすとき、印の状態がそのまま出る", () => {
   const state = {
     settings: S,
     tx: [{ id: "r1", type: "expense", amount: 60000, cat: "rent", date: D(1), memo: "", recurring: true }],
-    health: {}, diary: {},
-  };
+    health: {}, diary: {} };
   const app = bootApp({ state });
   app.run(`openRecord("r1");`);
   assert.equal(app.run(`sheetState.recurring`), true);
@@ -280,8 +279,7 @@ test("印を外して更新すると、記録からも消える", async () => {
   const state = {
     settings: S,
     tx: [{ id: "r1", type: "expense", amount: 60000, cat: "rent", date: D(1), memo: "", recurring: true }],
-    health: {}, diary: {},
-  };
+    health: {}, diary: {} };
   const app = bootApp({ state });
   app.run(`openRecord("r1"); handleAct("toggle-recurring");`);
   app.run(`
@@ -302,8 +300,7 @@ test("まとめ画面に、毎月固定とそれ以外の内わけが出る", ()
       { id: "r", type: "expense", amount: 60000, cat: "rent", date: D(1), recurring: true },
       { id: "f", type: "expense", amount: 8000, cat: "food", date: D(3) },
     ],
-    health: {}, diary: {},
-  };
+    health: {}, diary: {} };
   const app = bootApp({ state });
   app.run(`__kakeibo.setView("summary");`);
   const html = app.el("app").innerHTML;
@@ -385,8 +382,7 @@ const liveState = (extra) => ({
     { id: "L2", type: "expense", amount: 12000, cat: "power", date: P(6), recurring: true },
     { id: "L3", type: "expense", amount: 8000, cat: "food", date: P(7) },
   ].concat(extra || []),
-  health: {}, diary: {},
-});
+  health: {}, diary: {} });
 const openSummary = (app) => { app.run(`confirm=()=>true; __kakeibo.setView("summary"); __kakeibo.setTab("month");`); };
 
 test("まとめ画面に「まとめて入れる」カードが出る", () => {

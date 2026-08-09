@@ -18,7 +18,7 @@ const { bootApp } = require("./boot-app.cjs");
 
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 
-const S = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
+const S = { birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] }, currency: "JPY" };
 const YM = new Date().toISOString().slice(0, 7);
 const SALARY = { id: "s1", type: "income", amount: 300000, cat: "salary", date: `${YM}-10` };
 const STATE = { settings: S, tx: [SALARY], health: {}, diary: {} };

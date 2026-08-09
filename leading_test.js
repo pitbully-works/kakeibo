@@ -25,8 +25,7 @@ function pass(text, confidence) {
     context: Core.totalHint(d),
     truncated: !!Core.truncatedLeading(d),
     detail: d,
-    source: "ocr",
-  }));
+    source: "ocr" }));
 }
 
 /* ---------- 1. まず、正しく読めたときは何も壊さない ---------- */

@@ -17,12 +17,11 @@ const appSrc = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/scrip
 
 const PHOTO = "data:image/jpeg;base64," + "A".repeat(400);
 const baseState = () => ({
-  settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, goalName: "旅行", goalTarget: 300000, goalCurrent: 50000, currency: "JPY" },
+  settings: { birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] }, goalName: "旅行", goalTarget: 300000, goalCurrent: 50000, currency: "JPY" },
   tx: [
     { id: "t1", type: "expense", amount: 1200, cat: "food", date: "2026-07-01", memo: "スーパー", photo: PHOTO },
     { id: "t2", type: "income", amount: 290000, cat: "salary", date: "2026-07-25", memo: "", photo: null },
-  ],
-});
+  ] });
 
 /* 設定画面を開いて値を入れ、保存する */
 function editSettings(app, values) {
@@ -42,7 +41,10 @@ test("保存に成功したら、設定が確定してホームへ戻る", () =>
   assert.equal(app.run("state.settings.goalTarget"), 1000000);
   /* 先取り貯金・NISA積立の欄は廃止した（銀行貯金・NISAの内訳が唯一の入力口）。
      せってい画面からは書き換わらない。 */
-  assert.equal(app.run("state.settings.nisaMonthly"), 33000, "廃止した欄から書き戻している");
+  /* NISAの入力口は内訳だけ。せってい画面を保存しても、区間と銘柄は変わらない。
+     （テスト用の簡易DOMは type="date" の値を返さないため、
+       生年月日ではなく区間そのもので確かめる） */
+  assert.equal(app.run("state.settings.lp.tsumitateSchedule[0].monthlyYen"), 33000, "NISAの区間が書き換わっている");
   assert.equal(app.run("view"), "home", "ホームへ戻っていない");
   assert.match(app.toastText(), /保存しました/);
   assert.ok(String(app.saved()).includes("1000000"), "端末に保存されていない");
@@ -52,7 +54,6 @@ test("保存に失敗したら、変更前の設定へ完全に戻る", () => {
   const app = bootApp({ state: baseState(), storageFull: true });
   editSettings(app, { gtarget: 1000000 });
   assert.equal(app.run("state.settings.goalTarget"), 300000, "設定がメモリ上だけ変わっている");
-  assert.equal(app.run("state.settings.nisaMonthly"), 33000);
   assert.equal(app.run("state.settings.goalName"), "旅行", "他の項目まで巻き添えで消えている");
 });
 

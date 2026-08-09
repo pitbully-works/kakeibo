@@ -47,7 +47,7 @@
     { k: "gas",      e: "🔥", n: "ガス" },
     { k: "water",    e: "🚰", n: "水道" },
     { k: "comm",     e: "📱", n: "通信" },
-    /* 生命保険は「ライフプランへ渡すデータ」に入力口を作ったので、記録の選択からは外す。
+    /* 各種保険は「ライフプランへ渡すデータ」に入力口を作ったので、記録の選択からは外す。
        同じお金を2か所から入れられると二重になるため。過去の記録はそのまま残り、集計にも出る。 */
     { k: "insure",   e: "🛟", n: "保険", hidden: true },
     { k: "transit",  e: "🚃", n: "交通" },
@@ -178,7 +178,6 @@
   function normalizeSettings(raw) {
     const s = raw || {};
     const out = {
-      nisaMonthly: num(s.nisaMonthly),
       goalName: String(s.goalName || "").slice(0, 24),
       goalTarget: num(s.goalTarget),
       goalCurrent: num(s.goalCurrent),
@@ -290,7 +289,7 @@
     });
   }
 
-  /* 生命保険。ライフプランの insurancePolicies と同じ形（保険料の期間と月額）。
+  /* 各種保険。ライフプランの insurancePolicies と同じ形（保険料の期間と月額）。
      出ていくお金なので、毎月固定の支出として数える。 */
   function normalizeLpInsurance(list) {
     return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
@@ -500,9 +499,13 @@
      基準日はその区切りの初日にする（「いま」に依らず、いつ計算しても同じ答えになる）。 */
   function nisaPlannedOn(settings, onDate) {
     const s = settings || {};
-    if (!nisaAuto(s)) return num(s.nisaMonthly);
+    /* NISAの月額を決めるのは「区間と銘柄」だけ。
+       以前は区間が無いときに、昔せっていで打ち込んだ月額を出していた。
+       その欄は廃止したので、画面に出るのに直せない金額が残ってしまう。
+       出どころをひとつにして、区間が無ければ0にする。 */
+    if (!nisaAuto(s)) return 0;
     const age = ageFromBirth(s.birth, onDate);
-    if (age === null) return num(s.nisaMonthly);
+    if (age === null) return 0;
     const lp = s.lp || {};
     return Math.round(scheduledMonthly(lp.tsumitateSchedule, age) + scheduledMonthly(lp.growthSchedule, age));
   }
@@ -587,7 +590,7 @@
     return rows;
   }
 
-  /* 出ていって戻らないお金 → 毎月固定の支出。借入の返済と生命保険の保険料。 */
+  /* 出ていって戻らないお金 → 毎月固定の支出。借入の返済と各種保険の保険料。 */
   function lpSpendItems(settings, age) {
     const a = normalizeLifePlanAssets((settings || {}).lp);
     const rows = [];
@@ -595,7 +598,7 @@
     if (loan > 0) rows.push({ key: "loans", name: "借入の返済", amount: loan });
     /* 保険料を払う期間の中にある契約だけを足す（保障が続く年齢とは別物） */
     const ins = lpActiveSum(a.insurancePolicies, "premiumFromAge", "premiumToAge", "monthlyPremium", age);
-    if (ins > 0) rows.push({ key: "insurance", name: "生命保険の保険料", amount: ins });
+    if (ins > 0) rows.push({ key: "insurance", name: "各種保険の保険料", amount: ins });
     return rows;
   }
 
@@ -789,7 +792,7 @@
 
     /* --- 支出：すべて「記録」から。固定費／変動費の区分は無い --- */
     const expRecs = month.filter(function (t) { return t.type === "expense"; });
-    /* ライフプラン欄の「出ていく毎月の金額」（借入の返済・生命保険）。
+    /* ライフプラン欄の「出ていく毎月の金額」（借入の返済・各種保険）。
        記録からは入れない決めごとなので、ここで毎月固定の支出として足す。 */
     /* その月の年齢（区切りの初日で見る）。生年月日が無ければ null。 */
     const lpAgeNow = ageFromBirth(s.birth, cycleRange(ym, s.cycleStart).from);
@@ -806,7 +809,7 @@
     /* NISAの先取り額。スケジュールがあればそこから、無ければ打ち込んだ月額。
        基準日は区切りの初日にして、いつ計算しても同じ答えになるようにする。 */
     const nisaPlanned = nisaPlannedOn(s, cycleRange(ym, s.cycleStart).from);
-    /* 貯まるもの（金・銀行・民間年金）は先取り。出ていくもの（借入・生命保険）は上で支出に足した。 */
+    /* 貯まるもの（金・銀行・民間年金）は先取り。出ていくもの（借入・各種保険）は上で支出に足した。 */
     const lpSetAside = lpSetAsideItems(s, lpAgeNow);
     const lpSetAsideSum = lpSum(lpSetAside);
     const lpMonthly = lpSetAside.concat(lpSpend);

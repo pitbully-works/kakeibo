@@ -33,8 +33,7 @@ const SAMPLE = {
   privatePensionPlans: [
     { name: "JA年金共済", contribFromAge: 35, contribToAge: 60, monthlyContribution: 15000,
       payoutFromAge: 60, payoutToAge: 70, monthlyPayout: 42500 },
-  ],
-};
+  ] };
 
 /* =========================================================================
    【1】数の整え方
@@ -61,8 +60,7 @@ test("何も渡さなくても、空の形が返る（落ちない）", () => {
 test("文字や記号が混ざっていても、数として読み取る", () => {
   const a = Core.normalizeLifePlanAssets({
     gold: { currentGrams: "208", pricePerGram: "24,000", monthlyYen: "¥10000" },
-    banks: [{ name: "A", balance: "501,192" }],
-  });
+    banks: [{ name: "A", balance: "501,192" }] });
   assert.equal(a.gold.currentGrams, 208);
   assert.equal(a.gold.pricePerGram, 24000);
   assert.equal(a.gold.monthlyYen, 10000);
@@ -72,8 +70,7 @@ test("文字や記号が混ざっていても、数として読み取る", () =>
 test("読み取れない値・マイナスは0にする", () => {
   const a = Core.normalizeLifePlanAssets({
     gold: { currentGrams: "あいうえお", pricePerGram: -500, monthlyYen: NaN },
-    loans: [{ name: "A", principal: -100 }],
-  });
+    loans: [{ name: "A", principal: -100 }] });
   assert.equal(a.gold.currentGrams, 0);
   assert.equal(a.gold.pricePerGram, 0);
   assert.equal(a.gold.monthlyYen, 0);
@@ -82,8 +79,7 @@ test("読み取れない値・マイナスは0にする", () => {
 
 test("年齢は0〜120で、ヶ月（小数）も入れられる", () => {
   const a = Core.normalizeLifePlanAssets({
-    privatePensionPlans: [{ name: "A", contribFromAge: 57.5, contribToAge: 999, payoutFromAge: -3 }],
-  });
+    privatePensionPlans: [{ name: "A", contribFromAge: 57.5, contribToAge: 999, payoutFromAge: -3 }] });
   assert.equal(a.privatePensionPlans[0].contribFromAge, 57.5);
   assert.equal(a.privatePensionPlans[0].contribToAge, 120);
   assert.equal(a.privatePensionPlans[0].payoutFromAge, 0);
@@ -285,11 +281,11 @@ test("せっていには、合計と内訳ボタンだけを出す", () => {
   assert.match(out, /¥4,992,000/, "金の評価額が出ていない");
   assert.match(out, /¥1,102,770/, "銀行の合計が出ていない");
   assert.match(out, /¥3,051,600/, "借入の合計が出ていない");
-  /* NISA・金・銀行・借入・iDeCo・生命保険・民間年金の7つ。
+  /* NISA・金・銀行・借入・iDeCo・各種保険・民間年金の7つ。
      先取りの欄は廃止したので、NISAを開ける場所もここ1か所だけ。 */
   assert.equal((out.match(/data-act="lp-open"/g) || []).length, 7, "内訳ボタンの数が合わない");
   assert.match(out, /data-kind="ideco"/, "iDeCoの内訳ボタンが無い");
-  assert.match(out, /data-kind="insurance"/, "生命保険の内訳ボタンが無い");
+  assert.match(out, /data-kind="insurance"/, "各種保険の内訳ボタンが無い");
   assert.match(out, /data-kind="nisa"/, "NISAの内訳ボタンが無い");
   /* 一覧の中に入力欄は出さない */
   assert.equal(out.includes('id="lp-b-bal-0"'), false, "せっていに内訳の入力欄が出ている");
@@ -394,9 +390,8 @@ const NISA = {
   /* 月額は銘柄の合計。打つのは銘柄名と金額だけ。 */
   tsumitateSchedule: [{ fromAge: 57.75, toAge: 65, funds: [
     { name: "全世界株式", amount: 40000 }, { name: "S&P500", amount: 40000 }, { name: "タワラ8", amount: 10000 }] }],
-  growthSchedule: [{ fromAge: 57.5, toAge: 65, funds: [{ name: "AI", amount: 10000 }] }],
-};
-const autoSettings = () => Core.normalizeSettings({ birth: "1968-11-13", nisaMonthly: 110000, lp: NISA });
+  growthSchedule: [{ fromAge: 57.5, toAge: 65, funds: [{ name: "AI", amount: 10000 }] }] };
+const autoSettings = () => Core.normalizeSettings({ birth: "1968-11-13", lp: NISA });
 
 test("生年月日から、ライフプランと同じ年齢の出し方をする", () => {
   const a = Core.ageFromBirth("1968-11-13", "2026-08-08");
@@ -443,17 +438,29 @@ test("終わりが始まりより前の区間は、始まりにそろえる", ()
 test("打てる場所は1か所だけ（自動か手入力かが切り替わる）", () => {
   assert.equal(Core.nisaAuto(autoSettings()), true, "そろっているのに自動になっていない");
   /* 生年月日が無ければ手入力のまま */
-  assert.equal(Core.nisaAuto(Core.normalizeSettings({ nisaMonthly: 110000, lp: NISA })), false);
+  assert.equal(Core.nisaAuto(Core.normalizeSettings({ lp: NISA })), false);
   /* 区間が無ければ手入力のまま */
-  assert.equal(Core.nisaAuto(Core.normalizeSettings({ birth: "1968-11-13", nisaMonthly: 110000 })), false);
+  assert.equal(Core.nisaAuto(Core.normalizeSettings({ birth: "1968-11-13" })), false);
 });
 
-test("前から使っている人の金額が、ある日いきなり0にならない", () => {
-  /* 生年月日も区間も入れていない人は、これまでどおり打ち込んだ月額を使う */
+test("昔せっていで打ち込んだ月額は、もう使わない（直せない金額を残さない）", () => {
+  /* せっていのNISA欄を廃止したあと、その値を出し続けると
+     画面に出ているのに直せない金額になってしまう。
+     月額を決めるのは「区間と銘柄」だけにする。 */
   const old = Core.normalizeSettings({ nisaMonthly: 110000 });
-  assert.equal(Core.nisaPlannedOn(old, "2026-08-08"), 110000);
+  assert.equal(old.nisaMonthly, undefined, "旧データが保存の形に残っている");
+  assert.equal(Core.nisaPlannedOn(old, "2026-08-08"), 0, "直せない金額が出ている");
+  /* 保存の形を通さず、旧データをそのまま渡しても使わない。
+     月額の出どころは「区間と銘柄」だけ、という決めごとをここで固定する。 */
+  assert.equal(Core.nisaPlannedOn({ nisaMonthly: 110000 }, "2026-08-08"), 0, "旧データを拾っている");
+  assert.equal(Core.nisaPlannedOn({ nisaMonthly: 110000, birth: "1968-11-13" }, "2026-08-08"), 0);
   const c = Core.computeMonth(old, [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }], "2026-08");
-  assert.equal(c.nisaPlanned, 110000);
+  assert.equal(c.nisaPlanned, 0);
+});
+
+test("区間を入れれば、その金額がそのまま使われる", () => {
+  const s = Core.normalizeSettings({ birth: "1968-11-13", lp: NISA });
+  assert.ok(Core.nisaPlannedOn(s, "2026-08-08") > 0, "区間から計算されていない");
 });
 
 test("「いつから いくら」が分かる", () => {
@@ -469,7 +476,7 @@ test("「いつから いくら」が分かる", () => {
   assert.equal(on - before, next.monthly, "出した開始日に、その区間ぶんが増えていない");
   /* すべて始まっていれば、これから始まるものは無い */
   assert.equal(Core.nisaUpcoming(autoSettings(), "2026-09-08"), null);
-  assert.equal(Core.nisaUpcoming(Core.normalizeSettings({ nisaMonthly: 1 }), "2026-08-08"), null);
+  assert.equal(Core.nisaUpcoming(Core.normalizeSettings({}), "2026-08-08"), null);
 });
 
 test("いつ計算しても同じ答えになる（区切りの初日で見る）", () => {
@@ -514,7 +521,7 @@ test("生年月日を保存できる（保存ボタンでも、内訳へ移る�
 
 test("せっていにNISAを打ち込む欄は無い（入力口は内訳だけ）", () => {
   /* 区間がまだ無い人でも、せっていからは打てない。二重に書ける場所を作らないため。 */
-  const app = bootApp({ state: { settings: { nisaMonthly: 110000 }, tx: [] } });
+  const app = bootApp({ state: { settings: {}, tx: [] } });
   const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
   assert.equal(out.includes('id="f-nisa"'), false, "廃止したNISAの欄が残っている");
   assert.match(out, /data-kind="nisa"/, "内訳へ行くボタンが無い");
@@ -530,7 +537,10 @@ test("せっていの一覧には、いまのNISAの月額が出る", () => {
 test("せっていから、NISAの月額を書き換えられない", () => {
   const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: NISA }, tx: [] } });
   app.run(`view="settings"; render(); saveSettings();`);
-  assert.notEqual(app.run(`state.settings.nisaMonthly`), 999999);
+  /* テスト用の簡易DOMは type="date" の値を返さないため、
+     生年月日ではなく、内訳の区間そのものが残ることで確かめる */
+  assert.equal(app.run(`state.settings.lp.tsumitateSchedule[0].monthlyYen`), 90000, "内訳の金額が書き換わっている");
+  assert.equal(app.run(`state.settings.lp.growthSchedule[0].monthlyYen`), 10000);
 });
 
 test("開始前は0で、いつから幾らになるかを画面に出す", () => {
@@ -590,9 +600,9 @@ test("NISAの画面が白くならない", () => {
 });
 
 /* =========================================================================
-   【7】iDeCo・生命保険
+   【7】iDeCo・各種保険
    ========================================================================= */
-test("生命保険の保険料は、毎月固定の支出として数える", () => {
+test("各種保険の保険料は、毎月固定の支出として数える", () => {
   const ins = { insurancePolicies: [{ name: "医療共済", monthlyPremium: 15767, premiumFromAge: 46, premiumToAge: 65 }] };
   const txs = [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }];
   const plain = Core.computeMonth(Core.normalizeSettings({}), txs, "2026-08");
@@ -619,18 +629,17 @@ test("iDeCoの掛金は先取りとして引く（評価額は家計に混ぜな
   assert.equal(out.ideco.productName, "全世界株式");
 });
 
-test("生命保険とiDeCoも、ライフプランと同じキー名で渡す", () => {
+test("各種保険とiDeCoも、ライフプランと同じキー名で渡す", () => {
   const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: {
     insurancePolicies: [{ name: "A", monthlyPremium: 1000, premiumFromAge: 46, premiumToAge: 65, coverageUntilAge: 82 }],
-    ideco: { monthlyContribution: 23000 },
-  } })).inputs;
+    ideco: { monthlyContribution: 23000 } } })).inputs;
   assert.deepEqual(Object.keys(out.insurancePolicies[0]).sort(),
     ["coverageUntilAge", "monthlyPremium", "name", "premiumFromAge", "premiumToAge"]);
   assert.deepEqual(Object.keys(out.ideco).sort(),
     ["currentValue", "endAge", "monthlyContribution", "payoutStartAge", "payoutYears", "principalTotal", "productName", "startAge"]);
 });
 
-test("iDeCoと生命保険の画面が白くならない", () => {
+test("iDeCoと各種保険の画面が白くならない", () => {
   const app = bootApp({ state: { settings: {}, tx: [] } });
   for (const kind of ["ideco", "insurance"]) {
     const out = app.run(`view="lp"; lpKind="${kind}"; render(); document.getElementById("app").innerHTML`);
@@ -648,7 +657,7 @@ test("iDeCoを直して保存できる", () => {
   assert.equal(app.run(`state.settings.lp.ideco.productName`), "全世界株式");
 });
 
-test("生命保険を足して、直して、消せる", () => {
+test("各種保険を足して、直して、消せる", () => {
   const app = bootApp({ state: { settings: {}, tx: [] } });
   app.run(`view="lp"; lpKind="insurance"; render(); lpAddRow("insurancePolicies");`);
   assert.equal(app.run(`state.settings.lp.insurancePolicies.length`), 1);
@@ -673,7 +682,7 @@ test("ホームから、追加した項目それぞれへ入れに行ける", ()
   }
 });
 
-test("記録の選択から、生命保険と私年金を外す（入力口はライフプラン欄だけ）", () => {
+test("記録の選択から、各種保険と私年金を外す（入力口はライフプラン欄だけ）", () => {
   const pick = Core.EXP_PICK_CATS.map((c) => c.k);
   assert.equal(pick.includes("insure"), false, "保険が記録の選択に残っている");
   assert.equal(pick.includes("pension"), false, "私年金が記録の選択に残っている");
@@ -687,7 +696,7 @@ test("記録の選択から、生命保険と私年金を外す（入力口は�
 /* =========================================================================
    【8】払う期間の中だけを家計から引く
    -------------------------------------------------------------------------
-   【不具合】iDeCo・民間年金・生命保険について、開始年齢・終了年齢を見ずに
+   【不具合】iDeCo・民間年金・各種保険について、開始年齢・終了年齢を見ずに
    月額を足していた。払い終わった保険料や、まだ始まっていない掛金まで
    毎月引かれていた。考え方は NISA のスケジュール判定と同じにそろえる。
 
@@ -697,8 +706,7 @@ test("記録の選択から、生命保険と私年金を外す（入力口は�
 const PERIOD = (over = {}) => Object.assign({
   privatePensionPlans: [{ name: "年金共済", monthlyContribution: 15000, contribFromAge: 35, contribToAge: 60 }],
   insurancePolicies: [{ name: "医療共済", monthlyPremium: 15767, premiumFromAge: 46, premiumToAge: 63 }],
-  ideco: { monthlyContribution: 23000, startAge: 50, endAge: 65 },
-}, over);
+  ideco: { monthlyContribution: 23000, startAge: 50, endAge: 65 } }, over);
 const TXS = [{ id: "1", date: "2026-08-05", type: "income", cat: "salary", amount: 300000 }];
 /* 1968-11-13生まれ → 2026-08-01時点で約57.72歳 */
 const atAge = (lp, birth) => Core.computeMonth(Core.normalizeSettings({ birth: birth, lp: lp }), TXS, "2026-08");
@@ -786,8 +794,7 @@ test("おかしな値が入っていても、家計全体にNaNが伝わらな�
       { name: "C", monthlyPremium: NaN, premiumFromAge: undefined, premiumToAge: "" },
     ],
     ideco: { monthlyContribution: -1, startAge: 200, endAge: 0 },
-    privatePensionPlans: [{ name: "D", monthlyContribution: 1e20, contribFromAge: 0, contribToAge: 0 }],
-  };
+    privatePensionPlans: [{ name: "D", monthlyContribution: 1e20, contribFromAge: 0, contribToAge: 0 }] };
   const c = atAge(lp, "1968-11-13");
   for (const k of ["available", "setAside", "spendTotal", "lpSetAsideSum", "lpSpendSum"]) {
     assert.ok(Number.isFinite(c[k]), `${k} が数でなくなっている: ${c[k]}`);

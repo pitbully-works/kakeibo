@@ -131,7 +131,7 @@ test("iDeCo：終了年齢65の掛金も、誕生日ちょうどは有効", () =
   assert.strictEqual(monthlyAt(lp, BIRTH, "2016-09-15", "ideco"), 23000);
 });
 
-test("生命保険：払い終わり年齢65の保険料も、誕生日ちょうどは有効", () => {
+test("各種保険：払い終わり年齢65の保険料も、誕生日ちょうどは有効", () => {
   const lp = { insurancePolicies: [
     { name: "○○生命", monthlyPremium: 8000, premiumFromAge: 46, premiumToAge: 65, coverageUntilAge: 82 },
   ] };
@@ -144,8 +144,7 @@ test("NISA：区間の終わりの年齢ちょうどまで積み立てる", () =
     birth: BIRTH,
     lp: { tsumitateSchedule: [
       { fromAge: 57, toAge: 60, funds: [{ name: "全世界株式", amount: 90000 }] },
-    ] },
-  });
+    ] } });
   assert.strictEqual(Core.nisaPlannedOn(s, "2026-09-14"), 90000);
   assert.strictEqual(Core.nisaPlannedOn(s, "2026-09-15"), 90000, "誕生日ちょうどで止まっている");
   assert.strictEqual(Core.nisaPlannedOn(s, "2026-09-16"), 0);
@@ -156,8 +155,7 @@ test("NISA：区間の始まりの年齢ちょうどから積み立てる", () =
     birth: BIRTH,
     lp: { tsumitateSchedule: [
       { fromAge: 60, toAge: 65, funds: [{ name: "全世界株式", amount: 90000 }] },
-    ] },
-  });
+    ] } });
   assert.strictEqual(Core.nisaPlannedOn(s, "2026-09-14"), 0);
   assert.strictEqual(Core.nisaPlannedOn(s, "2026-09-15"), 90000, "誕生日ちょうどから始まっていない");
 });
@@ -167,8 +165,7 @@ test("NISA：年の途中で区切る区間（57.5歳＝57歳6ヶ月）も動く
     birth: BIRTH,
     lp: { tsumitateSchedule: [
       { fromAge: 57.5, toAge: 65, funds: [{ name: "全世界株式", amount: 90000 }] },
-    ] },
-  });
+    ] } });
   assert.strictEqual(Core.nisaPlannedOn(s, "2024-02-15"), 0, "57歳5ヶ月で始まっている");
   assert.strictEqual(Core.nisaPlannedOn(s, "2024-04-15"), 90000, "57歳7ヶ月で始まっていない");
 });
@@ -293,8 +290,7 @@ test("開始日は、年齢の判定と食い違わない（近似で1日ずれ�
     birth: BIRTH,
     lp: { tsumitateSchedule: [
       { fromAge: 60, toAge: 65, funds: [{ name: "全世界株式", amount: 90000 }] },
-    ] },
-  });
+    ] } });
   const up = Core.nisaUpcoming(s, "2026-01-01");
   assert.strictEqual(up.fromAge, 60);
   assert.strictEqual(up.monthly, 90000);
@@ -309,8 +305,7 @@ test("小数の区間でも、出した開始日から積立が始まる", () =>
     birth: "1968-11-13",
     lp: { tsumitateSchedule: [
       { fromAge: 57.5, toAge: 65, funds: [{ name: "全世界株式", amount: 90000 }] },
-    ] },
-  });
+    ] } });
   const up = Core.nisaUpcoming(s, "2025-12-01");
   assert.strictEqual(Core.nisaPlannedOn(s, up.startDate), 90000, "出した開始日にまだ始まっていない");
   const prev = new Date(Date.parse(up.startDate) - 864e5).toISOString().slice(0, 10);

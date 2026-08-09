@@ -13,7 +13,7 @@ const assert = require("node:assert/strict");
 const Core = require("./core.js");
 const { bootApp } = require("./boot-app.cjs");
 
-const S = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
+const S = { birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] }, currency: "JPY" };
 const TODAY = "2026-07-16";
 const exp = (id, amount, cat, date, recurring) => {
   const t = { id, type: "expense", amount, cat, date };
@@ -31,8 +31,7 @@ const CLEAN = stateOf({
     exp("r6", 60000, "rent", "2026-06-01", true),
     exp("r7", 60000, "rent", "2026-07-01", true),
     exp("f", 3000, "food", "2026-07-15"),
-  ],
-});
+  ] });
 
 test("やることが無い日は、1件も出ない", () => {
   assert.deepEqual(keys(CLEAN), []);
@@ -156,8 +155,7 @@ test("やることは、多くても2件まで", () => {
   const st = stateOf({
     tx: [salary("s6", "2026-06-01"), exp("r6", 60000, "rent", "2026-06-01", true), exp("f", 3000, "food", "2026-07-01")],
     diary: habitDiary,
-    health: { "2026-07-13": { weight: 62 }, "2026-07-14": { weight: 62 }, "2026-07-15": { weight: 62 } },
-  });
+    health: { "2026-07-13": { weight: 62 }, "2026-07-14": { weight: 62 }, "2026-07-15": { weight: 62 } } });
   const all = Core.todayTasks(st, TODAY);
   assert.equal(all.length, 2, "3件以上出ている: " + all.length);
   assert.deepEqual(all.map((t) => t.key), ["carry", "salary"], "優先順がちがう");
@@ -181,8 +179,7 @@ const liveState = {
     { id: "p1", type: "expense", amount: 60000, cat: "rent", date: PREV + "-05", recurring: true },
     { id: "p2", type: "expense", amount: 3000, cat: "food", date: PREV + "-06" },
   ],
-  health: {}, diary: {},
-};
+  health: {}, diary: {} };
 const homeHtml = (state) => {
   const app = bootApp({ state: state });
   app.run(`__kakeibo.setView("home")`);

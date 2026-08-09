@@ -116,8 +116,7 @@ test("いま見ている画面のタブに、色つきの台と印をつける",
     classList: { toggle: (c, on) => marks.push([nav, c, on]) },
     attrs: {},
     setAttribute(k, v) { this.attrs[k] = v; },
-    removeAttribute(k) { delete this.attrs[k]; },
-  });
+    removeAttribute(k) { delete this.attrs[k]; } });
   const app = bootApp({ state: { settings: {}, tx: [] } });
   const here = btn("home"), other = btn("calc");
   app.run(`(b)=>navMark(b,true)`)(here);

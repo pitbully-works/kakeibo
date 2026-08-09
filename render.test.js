@@ -22,8 +22,7 @@ function makeEl(id) {
     id, innerHTML: "", textContent: "", value: "", dataset: {},
     classList: { add() {}, remove() {}, toggle() {} },
     addEventListener() {}, appendChild() {}, click() {}, focus() {}, remove() {},
-    closest: () => null, querySelectorAll: () => [],
-  };
+    closest: () => null, querySelectorAll: () => [] };
   return el;
 }
 
@@ -37,23 +36,20 @@ function bootApp(stored) {
     console,
     localStorage: {
       getItem: (k) => (k in store ? store[k] : null),
-      setItem: (k, v) => { store[k] = String(v); },
-    },
+      setItem: (k, v) => { store[k] = String(v); } },
     document: {
       getElementById: get,
       querySelectorAll: () => [],
       addEventListener() {},
       createElement: () => makeEl("tmp"),
-      head: makeEl("head"), body: makeEl("body"),
-    },
+      head: makeEl("head"), body: makeEl("body") },
     navigator: {},
     window: {},
     scrollTo() {},
     setTimeout: () => 0,
     clearTimeout() {},
     Blob: function () {}, URL: { createObjectURL: () => "blob:", revokeObjectURL() {} },
-    FileReader: function () {},
-  };
+    FileReader: function () {} };
   sandbox.window = sandbox;
   sandbox.self = sandbox;
   sandbox.window.scrollTo = sandbox.scrollTo;
@@ -66,7 +62,7 @@ function bootApp(stored) {
 
 const YM = new Date().toISOString().slice(0, 7);
 const D = (n) => `${YM}-${String(n).padStart(2, "0")}`;
-const SETTINGS = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
+const SETTINGS = { birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] }, currency: "JPY" };
 const yen = (n) => "¥" + Math.round(n).toLocaleString("en-US");
 /* 給与の入力口は「記録」だけ */
 const SALARY = { id: "s", type: "income", amount: 290000, cat: "salary", date: D(25) };
@@ -96,8 +92,7 @@ test("データありでも3画面が描画される", () => {
       SALARY, ...FIXED98,
       { id: "a", type: "expense", amount: 20000, cat: "food", date: D(5) },
       { id: "b", type: "income", amount: 50000, cat: "bonus", date: D(25) },
-    ],
-  };
+    ] };
   const { app, html: out } = bootApp(state);
   for (const v of ["home", "summary", "settings"]) {
     app.setView(v);
@@ -122,8 +117,7 @@ test("ホームとまとめに、同じ「のこり」が表示される", () =>
       SALARY, ...FIXED98,
       { id: "a", type: "expense", amount: 20000, cat: "food", date: D(5) },
       { id: "b", type: "income", amount: 50000, cat: "bonus", date: D(25) },
-    ],
-  };
+    ] };
   const { app, html: out } = bootApp(state);
   const c = Core.computeMonth(SETTINGS, state.tx, YM);
   assert.equal(c.available, 149000);
@@ -165,9 +159,8 @@ test("書き出したJSONが、画面と同じ金額になっている", () => {
 
 test("旧保存データ（支出が合計欄）を読んでも落ちない", () => {
   const old = {
-    settings: { incomeNet: 290000, fixedCost: 98000, fixed: { rent: 60000 }, lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
-    tx: [SALARY, ...FIXED98],
-  };
+    settings: { incomeNet: 290000, fixedCost: 98000, fixed: { rent: 60000 }, birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] } },
+    tx: [SALARY, ...FIXED98] };
   const { app, html: out } = bootApp(old);
   app.setView("home");
   assert.ok(out().includes(yen(119000)), "旧設定値が計算に混ざっている");

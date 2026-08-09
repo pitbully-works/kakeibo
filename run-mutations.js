@@ -23,11 +23,11 @@ const dir = __dirname;
 
 /* 変異の一覧。それぞれ「守りたい振る舞い」に1対1で対応させる。 */
 const MUTATIONS = [
-  /* ---- 先取りと支出の分け方・iDeCo・生命保険 ---- */
+  /* ---- 先取りと支出の分け方・iDeCo・各種保険 ---- */
   { name: "借入を先取りに戻す", guards: "出ていくお金は支出として数える",
     file: "core.js", from: '    if (loan > 0) rows.push({ key: "loans", name: "借入の返済", amount: loan });', to: "" },
-  { name: "生命保険を支出に入れない", guards: "保険料は毎月固定の支出",
-    file: "core.js", from: '    if (ins > 0) rows.push({ key: "insurance", name: "生命保険の保険料", amount: ins });', to: "" },
+  { name: "各種保険を支出に入れない", guards: "保険料は毎月固定の支出",
+    file: "core.js", from: '    if (ins > 0) rows.push({ key: "insurance", name: "各種保険の保険料", amount: ins });', to: "" },
   { name: "出ていくお金を毎月固定に数えない", guards: "毎月固定に入る",
     file: "core.js", from: "    const recurringSpend = sum(expRecs.filter(isRecurring), function (t) { return t.amount; }) + lpSpendSum;",
     to: "    const recurringSpend = sum(expRecs.filter(isRecurring), function (t) { return t.amount; });" },
@@ -36,7 +36,7 @@ const MUTATIONS = [
     to: "    const setAside = nisaPlanned + lpSetAsideSum + lpSpendSum;" },
   { name: "iDeCoの掛金を先取りに入れない", guards: "iDeCoの掛金も先取りとして引く",
     file: "core.js", from: '    if (ide > 0) rows.push({ key: "ideco", name: "iDeCoの掛金", amount: ide });', to: "" },
-  { name: "iDeCo・生命保険を渡さない", guards: "ライフプランへ渡す",
+  { name: "iDeCo・各種保険を渡さない", guards: "ライフプランへ渡す",
     file: "core.js", from: "        insurancePolicies: a.insurancePolicies,", to: "" },
   { name: "記録の選択に保険を残す", guards: "入力口はライフプラン欄だけ",
     file: "core.js", from: '    { k: "insure",   e: "🛟", n: "保険", hidden: true },', to: '    { k: "insure",   e: "🛟", n: "保険" },' },
@@ -78,8 +78,6 @@ const MUTATIONS = [
     file: "core.js", from: "        toAge: to < from ? from : to,", to: "        toAge: to," },
   { name: "生年月日が無くても自動にする", guards: "そろっていないうちは手入力のまま",
     file: "core.js", from: "    return !!normalizeBirth(s.birth) && hasSchedule;", to: "    return hasSchedule;" },
-  { name: "前から使っている人の月額を捨てる", guards: "ある日いきなり0にならない",
-    file: "core.js", from: "    if (!nisaAuto(s)) return num(s.nisaMonthly);", to: "    if (!nisaAuto(s)) return 0;" },
   { name: "NISAのスケジュールを渡さない", guards: "スケジュールと銘柄もライフプランへ渡す",
     file: "core.js", from: "        tsumitateSchedule: a.tsumitateSchedule.map(strip),\n        growthSchedule: a.growthSchedule.map(strip),", to: "" },
   { name: "生年月日を拾わない", guards: "生年月日を保存できる",
@@ -150,6 +148,42 @@ const MUTATIONS = [
   { name: "開始日で満年の分を進めない", guards: "開始日はその年齢の誕生日",
     file: "core.js", from: "    const from = anniversaryUTC(by, bm, bd, whole);\n    const to = anniversaryUTC(by, bm, bd, whole + 1);\n    const days = (to - from) / 864e5;",
     to: "    const from = anniversaryUTC(by, bm, bd, 0);\n    const to = anniversaryUTC(by, bm, bd, 1);\n    const days = (to - from) / 864e5;" },
+
+  { name: "旧データのNISA月額を使い続ける", guards: "直せない金額を画面に出さない",
+    file: "core.js", from: "    if (!nisaAuto(s)) return 0;", to: "    if (!nisaAuto(s)) return num(s.nisaMonthly);" },
+  { name: "書き出しでコピーを試さない", guards: "iPhoneでも書き出せる",
+    file: "index.html", from: "    if(navigator.clipboard && navigator.clipboard.writeText){\n      navigator.clipboard.writeText(text).then(()=>toast(doneMsg), toFile);",
+    to: "    if(false){\n      navigator.clipboard.writeText(text).then(()=>toast(doneMsg), toFile);" },
+  { name: "コピーに失敗してもファイルへ落とさない", guards: "どちらかで必ず書き出せる",
+    file: "index.html", from: "      navigator.clipboard.writeText(text).then(()=>toast(doneMsg), toFile);",
+    to: "      navigator.clipboard.writeText(text).then(()=>toast(doneMsg));" },
+
+  { name: "バックアップで共有シートを試さない", guards: "iPhoneでもファイルとして残せる",
+    file: "index.html", from: "    if(navigator.share && navigator.canShare && typeof File === \"function\"){",
+    to: "    if(false){" },
+  { name: "共有を取り消してもダウンロードへ落とさない", guards: "どちらかで必ず書き出せる",
+    file: "index.html", from: "          .then(()=>toast(doneMsg), toDownload);     // 取り消し・失敗ならダウンロードへ",
+    to: "          .then(()=>toast(doneMsg));" },
+  { name: "バックアップをコピーだけにする（ファイルで戻せない）", guards: "バックアップはファイルで残す",
+    file: "index.html", from: "  saveFile(`kakeibo-backup-${todayISO()}.json`,",
+    to: "  shareText(`kakeibo-backup-${todayISO()}.json`," },
+
+  /* ---- 画面の決めごと ---- */
+  { name: "内訳のカードを入口カードと同じ名前に戻す", guards: "内訳の入力が縦に潰れない",
+    file: "index.html", from: "  .lpseg{display:block;border:1px solid var(--line2)",
+    to: "  .lpseg{border:1px solid var(--line2)" },
+  { name: "目標タイルの色分けをやめる", guards: "目標と先取りを見分けられる",
+    file: "index.html", from: '? `<button class="ds goal" data-go="settings" data-focus="f-gcur">',
+    to: '? `<button class="ds" data-go="settings" data-focus="f-gcur">' },
+  { name: "先取りタイルの文言を戻す", guards: "先取りは固定金額を入れる場所だと分かる",
+    file: "index.html", from: '<div class="dv mono">${value}</div><div class="tapin">固定金額入力</div>',
+    to: '<div class="dv mono">${value}</div><div class="tapin">タップで入力</div>' },
+  { name: "初期化のたずねを一度だけにする", guards: "取り返しのつかない操作は二度たずねる",
+    file: "index.html", from: '  if(!confirm("本当に、すべて消して最初から始めますか？")) return;',
+    to: '  if(false) return;' },
+  { name: "初期化に失敗しても元へ戻さない", guards: "保存できなければデータはそのまま",
+    file: "index.html", from: "    state = before;                                 // 消える前へ完全に戻す",
+    to: "    /* 戻さない */" },
 
   /* ---- 年齢の境目（誕生日ちょうど） ---- */
   { name: "年齢を経過日数の近似に戻す", guards: "誕生日ちょうどはきっちり整数",

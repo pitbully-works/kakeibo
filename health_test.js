@@ -166,10 +166,9 @@ test("健康の保存も失敗時に巻き戻す作りになっている", () =>
 
 test("既存の家計簿データを壊していない（健康は別領域）", () => {
   const app = bootApp({ state: {
-    settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
+    settings: { birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] } },
     tx: [{ id: "s", type: "income", amount: 290000, cat: "salary", date: "2026-07-25" }],
-    health: {},
-  }});
+    health: {} }});
   app.run(`view="health"; render(); document.getElementById("h-weight").value="62"; saveHealth();`);
   // 家計簿の記録は無傷
   assert.equal(app.run(`state.tx.length`), 1);

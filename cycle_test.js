@@ -14,7 +14,7 @@ const assert = require("node:assert/strict");
 const Core = require("./core.js");
 const { bootApp } = require("./boot-app.cjs");
 
-const S = (cycleStart) => ({ nisaMonthly: 0, currency: "JPY", cycleStart: cycleStart });
+const S = (cycleStart) => ({ currency: "JPY", cycleStart: cycleStart });
 const exp = (id, amount, date) => ({ id, type: "expense", amount, cat: "food", date });
 const salary = (id, amount, date) => ({ id, type: "income", amount, cat: "salary", date });
 

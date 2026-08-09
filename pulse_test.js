@@ -35,8 +35,7 @@ function frames(opts) {
       r: off ? 60 : 200, g: g, b: 60,
       bright: off ? 60 : 129,
       sd: off ? 60 : 5,
-      redRatio: off ? 0.9 : 1.5,
-    });
+      redRatio: off ? 0.9 : 1.5 });
   }
   return out;
 }
@@ -217,8 +216,7 @@ test("保存できないときに出す文言は、いつも同じ1つ", () => {
 const rec = (over) => Object.assign({
   id: "a1", date: "2026-08-03", time: "21:20", ts: "2026-08-03 21:20:31",
   bpm: 72, stars: 4, quality: 0.8, kept: 8, wins: 9, spread: 2, fps: 30,
-  cond: "rest", device: "iPhone 18.0 390x844", cam: "640×480", torch: true,
-}, over || {});
+  cond: "rest", device: "iPhone 18.0 390x844", cam: "640×480", torch: true }, over || {});
 
 test("正常な1件は、そのまま整えて受け入れる", () => {
   const r = Core.normalizePulseEntry(rec());
@@ -315,8 +313,7 @@ test("CSVの中の引用符でも列がずれない", () => {
    ========================================================================= */
 const someState = () => ({
   settings: {}, tx: [], health: {},
-  pulse: [rec({ id: "p1", date: "2026-08-03", time: "21:20", bpm: 72 })],
-});
+  pulse: [rec({ id: "p1", date: "2026-08-03", time: "21:20", bpm: 72 })] });
 
 test("心拍の画面が白画面にならず、心拍数・日時・測定品質が出る", () => {
   const app = bootApp({ state: someState() });

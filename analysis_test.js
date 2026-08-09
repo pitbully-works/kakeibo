@@ -14,7 +14,7 @@ const Core = require("./core.js");
 const { bootApp } = require("./boot-app.cjs");
 
 /* ---------- 共通の材料（固定の月。実行日に左右されない） ---------- */
-const S = { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000, currency: "JPY" };
+const S = { birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] }, currency: "JPY" };
 const tx = (id, type, amount, cat, date) => ({ id, type, amount, cat, date });
 
 /* 2026-07 … 当月 ／ 2026-06 … 先月 ／ 2026-05 … 先々月 */
@@ -294,8 +294,7 @@ const LIVE = {
     tx("h1", "expense", 60000, "rent", D(1)),
     tx("h2", "expense", 30000, "food", D(3)),
   ],
-  health: {}, diary: {},
-};
+  health: {}, diary: {} };
 const yen = (n) => "¥" + Math.round(n).toLocaleString("en-US");
 
 function showAnalysis(state) {

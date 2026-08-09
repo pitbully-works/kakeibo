@@ -75,6 +75,11 @@
   .ds .di{font-size:18px}
   .ds .dk{font-size:10.5px;color:var(--sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ds .dv{font-size:13px;font-weight:800;white-space:nowrap;margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+  /* 目標は「貯める先」、ほかは「毎月の固定額」で種類が違う。ひと目で分かるよう色を変える。 */
+  .ds.goal{background:var(--gold-l,#fdf6e6);border-color:var(--gold,#e7c06f)}
+  .ds.goal .dk{color:var(--gold-d)}
+  .ds.goal .dv{color:var(--gold-d)}
+  .ds.goal .tapin{color:var(--gold-d)}
   .ds.gold .dv{color:var(--gold-d)}.ds.blue .dv{color:#2f7fad}.ds.green .dv{color:var(--green-d)}
   .ds .track{height:5px;background:#ecefed;border-radius:3px;overflow:hidden;margin-top:7px}
   .ds .track>i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#e7c06f,var(--gold));transition:width .5s cubic-bezier(.2,.7,.3,1)}
@@ -510,9 +515,12 @@
   .lpv{font-size:14px;font-weight:800;white-space:nowrap}
   .lpbtn{flex:none;padding:8px 13px;border-radius:11px;font-size:12.5px;font-weight:800;
     color:var(--green-d);background:var(--green-l);border:1px solid #cfe4d9}
-  .lpcard{border:1px solid var(--line2);border-radius:13px;padding:11px 12px;margin-bottom:10px;background:#fbfcfb}
-  .lpcard-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-  .lpcard-h b{font-size:13px;font-weight:800}
+  /* 内訳の入力カード。ホームの入口カード（.lpcard）とは別物。
+     同じ名前にしていたため、あちらの display:flex が残って
+     見出し・入力欄・合計が横一列に潰れていた。名前を分ける。 */
+  .lpseg{display:block;border:1px solid var(--line2);border-radius:13px;padding:11px 12px;margin-bottom:10px;background:#fbfcfb}
+  .lpseg-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .lpseg-h b{font-size:13px;font-weight:800}
   .lpdel{flex:none;padding:6px 10px;border-radius:9px;font-size:12.5px;background:#fff;border:1px solid #f0d0c4;color:var(--terra)}
   .lpgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .lpgrid label{display:block;font-size:11px;color:var(--sub);font-weight:700}
@@ -521,6 +529,8 @@
   .lptotal{text-align:right;font-size:12.5px;color:var(--sub);font-weight:700;margin:6px 0 10px}
   .lptotal b{font-size:16px;color:var(--ink);margin-left:6px}
 
+  /* 取り返しのつかない操作は、見た目でも他と区別する */
+  .btn-quiet.danger{color:var(--terra);border-color:#f0d0c4}
   .hidden{display:none !important}
 </style>
 </head>
@@ -790,20 +800,20 @@ function renderHome(){
 
   // 夢の帯（タップで、それぞれの入力欄へジャンプ）
   const goalTile = c.goalPct!==null
-    ? `<button class="ds gold" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||"目標")}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div></button>`
-    : `<button class="ds gold" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">設定する</div><div class="tapin">タップで入力</div></button>`;
+    ? `<button class="ds goal" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||"目標")}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div><div class="tapin">目標記入</div></button>`
+    : `<button class="ds goal" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">未設定</div><div class="tapin">目標記入</div></button>`;
   /* NISAは内訳（年齢の区間と銘柄）が唯一の入力口。設定の古い欄ではなくそこへ飛ばす。 */
-  const nisaTile = `<button class="ds blue" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(c.nisaPlanned)}/月</div><div class="tapin">タップで入力</div></button>`;
+  const nisaTile = `<button class="ds blue" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(c.nisaPlanned)}/月</div><div class="tapin">固定金額入力</div></button>`;
   /* ライフプランへ渡す項目も、ホームからそのまま入れに行けるようにする。
      出す数字は「毎月いくら」。残高を出していたため、毎月の積立額を入れても
      ここが動かず「反映されない」ように見えていた。残高は内訳の画面で見る。 */
   const lpAge = Core.ageFromBirth(state.settings.birth, Core.cycleRange(curYM(), cycleStart()).from);
   const lpMon = (kind) => yen(Core.lpMonthlyOf(state.settings, kind, lpAge))+"/月";
   const lpTile = (kind, icon, label, value) =>
-    `<button class="ds" data-act="lp-open" data-kind="${kind}"><div class="di">${icon}</div><div class="dk">${label}</div><div class="dv mono">${value}</div><div class="tapin">タップで入力</div></button>`;
+    `<button class="ds" data-act="lp-open" data-kind="${kind}"><div class="di">${icon}</div><div class="dk">${label}</div><div class="dv mono">${value}</div><div class="tapin">固定金額入力</div></button>`;
   const lpTiles = [
     lpTile("pension","📜","民間年金", lpMon("pension")),
-    lpTile("insurance","🛟","生命保険", lpMon("insurance")),
+    lpTile("insurance","🛟","各種保険", lpMon("insurance")),
     lpTile("gold","🪙","金（きん）", lpMon("gold")),
     lpTile("ideco","🏛","iDeCo", lpMon("ideco")),
     lpTile("loans","💳","借入金", lpMon("loans")),
@@ -1694,6 +1704,9 @@ function renderSettings(){
     <button class="btn-quiet" data-act="export-backup">📥 バックアップを書き出す（JSON）</button>
     <button class="btn-quiet" data-act="import-backup">📤 バックアップを読み込む（JSON）</button>
     <button class="btn-quiet" data-act="purge-photos">🗑 写真をすべて消す（記録は残ります）</button>
+    <button class="btn-quiet danger" data-act="reset-all">⚠️ すべて初期設定に戻す</button>
+    <div class="fhelp" style="margin:-4px 0 4px">設定・記録・日記・健康・予定など、この端末のデータをすべて消して、
+      最初の状態に戻します。<b>元に戻せません。</b>先にバックアップを書き出してください。</div>
 
     <div class="savebar">
       <button class="btn-primary" data-act="save-settings">保存する</button>
@@ -2292,8 +2305,9 @@ function buildSnapshot(){
 }
 function exportSnapshot(){
   const snap=buildSnapshot(); const text=JSON.stringify(snap,null,2);
-  downloadText(`lifeplan-snapshot-${snap.year_month}.json`, text);
-  toast("連携データを書き出しました 📤");
+  shareText(`lifeplan-snapshot-${snap.year_month}.json`, text,
+    "コピーしました。ライフプランに貼りつけてください 📤",
+    "ファイルに書き出しました 📤");
 }
 function purgePhotos(){
   const n=state.tx.filter(t=>t.photo).length;
@@ -2308,8 +2322,8 @@ function purgePhotos(){
   render(); toast(`写真${n}枚を消しました（記録は残っています）`);
 }
 function exportBackup(){
-  downloadText(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(Core.buildBackup(state), null, 2));
-  toast("バックアップを書き出しました");
+  saveFile(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(Core.buildBackup(state), null, 2),
+    "application/json", "バックアップを書き出しました");
 }
 
 /* --- バックアップの読み込み（復元） --- */
@@ -2357,6 +2371,44 @@ function onBackupPicked(file){
   };
   reader.readAsText(file);
 }
+/* 文字を渡す。
+   iPhone（iOS Safari）は <a download> でファイルを保存できず、
+   押しても何も起きないように見える。まずクリップボードへコピーし、
+   コピーできない端末だけ、これまでどおりファイルに書き出す。
+   done / fallbackMsg は、呼ぶ側の言葉づかいに合わせるため受け取る。 */
+function shareText(name, text, doneMsg, fileMsg){
+  const toFile = () => { downloadText(name, text); toast(fileMsg); };
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(()=>toast(doneMsg), toFile);
+      return;
+    }
+  }catch(e){ /* コピーできない端末は下へ */ }
+  toFile();
+}
+
+/* ファイルとして残す。
+   バックアップは「読み込む」がファイル選びなので、文字のコピーでは戻せない。
+   ところが iPhone は <a download> でファイルを保存できず、押しても何も残らない。
+   そこで、まず共有シート（「ファイルに保存」が選べる）を試し、
+   使えない端末ではこれまでどおりのダウンロードにする。
+   共有はタップの中でしか呼べないので、ボタンからそのまま呼ぶこと。 */
+function saveFile(name, text, mime, doneMsg){
+  const type = mime || "application/json";
+  const toDownload = () => { downloadText(name, text, type); toast(doneMsg); };
+  try{
+    if(navigator.share && navigator.canShare && typeof File === "function"){
+      const file = new File([text], name, { type: type });
+      if(navigator.canShare({ files:[file] })){
+        navigator.share({ files:[file], title: name })
+          .then(()=>toast(doneMsg), toDownload);     // 取り消し・失敗ならダウンロードへ
+        return;
+      }
+    }
+  }catch(e){ /* 共有できない端末は下へ */ }
+  toDownload();
+}
+
 function downloadText(name,text,mime){
   const blob=new Blob([text],{type:mime||(/\.csv$/i.test(name)?"text/csv":"application/json")}); const url=URL.createObjectURL(blob);
   const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click();
@@ -2950,8 +3002,8 @@ function pulseToHealth(bpm){
 function pulseExportCsv(){
   const list=state.pulse||[];
   if(!list.length){ toast("書き出す測定がありません"); return; }
-  downloadText(`kakeibo-pulse-${todayISO()}.csv`, "\ufeff"+Core.pulseCsv(list));
-  toast("CSVを書き出しました");
+  saveFile(`kakeibo-pulse-${todayISO()}.csv`, "\ufeff"+Core.pulseCsv(list), "text/csv",
+    "CSVを書き出しました");
 }
 
 /* =========================================================================
@@ -3071,25 +3123,20 @@ function lpSummaryHtml(){
   const age = Core.ageFromBirth(state.settings.birth, on);
   const mon = (kind) => yen(Core.lpMonthlyOf(state.settings, kind, age))+"/月";
   return `<div class="stitle">ライフプランへ渡すデータ</div>
-  <div class="calcnote" style="margin:0 0 10px">
-    ライフプランアプリへ入れ直す手間をなくすための欄です。<br>
-    右の数字は、どれも<b>毎月いくら</b>です。残高は「内訳」で見られます。<br>
-    <b>毎月の家計の計算には入りません。</b>実際に払ったお金は、これまでどおり「記録」から入れてください。
-  </div>
   <div class="barlist">
     ${row("nisa","📈","NISA積立", yen(Core.nisaPlannedOn(state.settings, on))+"/月", nisaNote(state.settings, on))}
     ${row("gold","🪙","金（きん）", mon("gold"), `いま ${a.gold.currentGrams||0}g・評価 ${yen(Core.lpGoldValue(a.gold))}`)}
     ${row("banks","🏦","銀行貯金", mon("banks"), `${a.banks.length}件・残高 ${yen(Core.lpBanksTotal(a.banks))}`)}
     ${row("loans","💳","借入金", mon("loans"), `${a.loans.length}件・残り ${yen(Core.lpLoansTotal(a.loans))}`)}
     ${row("ideco","🏛","iDeCo", mon("ideco"), a.ideco.productName||"毎月の掛金は先取り")}
-    ${row("insurance","🛟","生命保険", mon("insurance"), `${a.insurancePolicies.length}件`)}
+    ${row("insurance","🛟","各種保険", mon("insurance"), `${a.insurancePolicies.length}件`)}
     ${row("pension","📜","民間年金", mon("pension"), `${a.privatePensionPlans.length}件`)}
     <button class="btn-ghost" data-act="lp-export" style="margin-top:10px">📤 ライフプランへ渡す</button>
   </div>`;
 }
 
 /* ---------- 内訳の画面 ---------- */
-const LP_TITLES = { nisa:"📈 NISA積立", ideco:"🏛 iDeCo", gold:"🪙 金（きん）", banks:"🏦 銀行貯金", loans:"💳 借入金", insurance:"🛟 生命保険", pension:"📜 民間年金" };
+const LP_TITLES = { nisa:"📈 NISA積立", ideco:"🏛 iDeCo", gold:"🪙 金（きん）", banks:"🏦 銀行貯金", loans:"💳 借入金", insurance:"🛟 各種保険", pension:"📜 民間年金" };
 
 function renderLp(){
   const a = lpAssets();
@@ -3123,8 +3170,8 @@ function lpNisaHtml(a){
           <input class="mono" id="${id}-fa-${i}-${n}" inputmode="numeric" value="${f.amount||""}" placeholder="0">
           <button class="lpdel" data-act="lp-del-fund" data-key="${key}" data-i="${i}" data-n="${n}">🗑</button></div></label>
       </div>`).join("");
-    return `<div class="lpcard">
-      <div class="lpcard-h"><b>${r.fromAge||0}歳 〜 ${r.toAge||0}歳</b>
+    return `<div class="lpseg">
+      <div class="lpseg-h"><b>${r.fromAge||0}歳 〜 ${r.toAge||0}歳</b>
         <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="${key}">🗑 区間ごと</button></div>
       <div class="lpgrid">
         <label>開始年齢<input class="mono" id="${id}-from-${i}" inputmode="decimal" value="${r.fromAge||""}" placeholder="57.75"></label>
@@ -3193,10 +3240,10 @@ function lpIdecoHtml(d){
   </div>`;
 }
 
-/* 生命保険。保険料は出ていくお金なので、毎月固定の支出として数える。 */
+/* 各種保険。保険料は出ていくお金なので、毎月固定の支出として数える。 */
 function lpInsuranceHtml(list){
-  const rows = list.map((p,i)=>`<div class="lpcard">
-    <div class="lpcard-h"><b>${escapeHtml(p.name)||"（名前なし）"}</b>
+  const rows = list.map((p,i)=>`<div class="lpseg">
+    <div class="lpseg-h"><b>${escapeHtml(p.name)||"（名前なし）"}</b>
       <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="insurancePolicies">🗑</button></div>
     <div class="lpgrid">
       <label>保険の名前<input id="lp-in-name-${i}" value="${escapeAttr(p.name)}" placeholder="○○生命"></label>
@@ -3230,8 +3277,8 @@ function lpGoldHtml(g){
 }
 
 function lpBanksHtml(list){
-  const rows = list.map((b,i)=>`<div class="lpcard">
-    <div class="lpcard-h"><b>${escapeHtml(b.name)||"（名前なし）"}</b>
+  const rows = list.map((b,i)=>`<div class="lpseg">
+    <div class="lpseg-h"><b>${escapeHtml(b.name)||"（名前なし）"}</b>
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
       <label>銀行名<input id="lp-b-name-${i}" value="${escapeAttr(b.name)}" placeholder="○○銀行"></label>
@@ -3248,8 +3295,8 @@ function lpBanksHtml(list){
 }
 
 function lpLoansHtml(list){
-  const rows = list.map((l,i)=>`<div class="lpcard">
-    <div class="lpcard-h"><b>${escapeHtml(l.name)||"（名前なし）"}</b>
+  const rows = list.map((l,i)=>`<div class="lpseg">
+    <div class="lpseg-h"><b>${escapeHtml(l.name)||"（名前なし）"}</b>
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
       <label>借入の名前<input id="lp-l-name-${i}" value="${escapeAttr(l.name)}" placeholder="車のローン"></label>
@@ -3267,8 +3314,8 @@ function lpLoansHtml(list){
 }
 
 function lpPensionHtml(list){
-  const rows = list.map((p,i)=>`<div class="lpcard">
-    <div class="lpcard-h"><b>${escapeHtml(p.name)||"（名前なし）"}</b>
+  const rows = list.map((p,i)=>`<div class="lpseg">
+    <div class="lpseg-h"><b>${escapeHtml(p.name)||"（名前なし）"}</b>
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
       <label>年金の名前<input id="lp-p-name-${i}" value="${escapeAttr(p.name)}" placeholder="○○年金共済"></label>
@@ -3447,6 +3494,28 @@ function lpDeleteRow(i, keyFromBtn){
   if(lpSave(a)){ render(); toast("消しました ✓"); }
 }
 
+/* すべて初期設定に戻す。
+   取り返しがつかないので、二度たずねる。
+   一度目は何が消えるか、二度目は本当に押したのかを確かめる。
+   保存に失敗したときは、消える前の状態へそのまま戻す。 */
+function resetAll(){
+  if(typeof confirm!=="function") return;
+  if(!confirm("この端末のデータをすべて消して、最初の状態に戻します。\n"
+    + "設定・記録・日記・健康・予定・写真が消えます。\n"
+    + "元に戻せません。\n\n先にバックアップを書き出しましたか？")) return;
+  if(!confirm("本当に、すべて消して最初から始めますか？")) return;
+  const before = JSON.parse(JSON.stringify(state));
+  state = defaultState();
+  if(!save()){
+    state = before;                                 // 消える前へ完全に戻す
+    render(); toast("戻せませんでした。データはそのままです");
+    return;
+  }
+  view = "home";
+  render();
+  toast("最初の状態に戻しました ✓");
+}
+
 /* ---------- ライフプランへ渡す ---------- */
 function lpExport(){
   /* 前に作った保存データには、まだ行のしるし（id）が無い。
@@ -3454,20 +3523,9 @@ function lpExport(){
      名前が空・同名だと同じ行が増える。渡す前に付けて、この端末にも残す。 */
   if(Core.lpHasAny(state.settings.lp)) lpSave(lpAssets());
   const text = JSON.stringify(Core.buildLifePlanInputs(state.settings), null, 2);
-  /* ライフプラン側は文字を貼りつけて読み込む作りなので、まずコピーを試す。
-     コピーできない端末では、これまでどおりファイルに書き出す。 */
-  const done = () => toast("コピーしました。ライフプランの「バックアップの読み込み」に貼りつけてください");
-  try{
-    if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(text).then(done, ()=>{
-        downloadText(`lifeplan-assets-${todayISO()}.json`, text);
-        toast("ファイルに書き出しました");
-      });
-      return;
-    }
-  }catch(e){ /* コピーできない端末は下のファイル書き出しへ */ }
-  downloadText(`lifeplan-assets-${todayISO()}.json`, text);
-  toast("ファイルに書き出しました");
+  shareText(`lifeplan-assets-${todayISO()}.json`, text,
+    "コピーしました。ライフプランの「バックアップの読み込み」に貼りつけてください",
+    "ファイルに書き出しました");
 }
 
 /* ---------- イベント（委譲） ---------- */
@@ -3555,6 +3613,7 @@ function handleAct(a,e){
     renderSheet(); return;
   }
   if(a==="save-settings") return saveSettings();
+  if(a==="reset-all") return resetAll();
   if(a==="export-snapshot") return exportSnapshot();
   /* --- ライフプランへ渡す資産 --- */
   if(a==="lp-open"){ const el=e&&e.target&&e.target.closest("[data-kind]");

@@ -19,7 +19,7 @@ const appSrc = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/scrip
 const KNOWN_GLOBALS = new Set([
   "if", "for", "while", "switch", "catch", "return", "typeof", "function", "await", "new",
   "Promise", "Object", "Array", "String", "Number", "Boolean", "Math", "JSON", "Date", "Error",
-  "Image", "Blob", "URL", "FileReader", "RegExp", "Set", "Map", "parseInt", "parseFloat",
+  "Image", "Blob", "File", "URL", "FileReader", "RegExp", "Set", "Map", "parseInt", "parseFloat",
   "isNaN", "setTimeout", "clearTimeout", "queueMicrotask", "requestAnimationFrame",
   "setInterval", "clearInterval", "cancelAnimationFrame",
   "encodeURIComponent", "decodeURIComponent", "alert", "confirm", "console",
@@ -88,8 +88,7 @@ function boot(scriptLoads) {
     id, innerHTML: "", textContent: "", value: "", dataset: {}, style: {},
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     addEventListener() {}, appendChild() {}, click() {}, focus() {}, remove() {},
-    closest: () => null, querySelectorAll: () => [], getBoundingClientRect: () => ({ width: 100, height: 100 }),
-  });
+    closest: () => null, querySelectorAll: () => [], getBoundingClientRect: () => ({ width: 100, height: 100 }) });
   const get = (id) => (els[id] = els[id] || makeEl(id));
   const sandbox = {
     console,
@@ -100,8 +99,7 @@ function boot(scriptLoads) {
     clearTimeout() {},
     scrollTo() {},
     Blob: function () {}, URL: { createObjectURL: () => "blob:", revokeObjectURL() {} },
-    FileReader: function () {}, Image: function () {},
-  };
+    FileReader: function () {}, File: function () {}, Image: function () {} };
   sandbox.document = {
     getElementById: get,
     querySelector: () => null,
@@ -116,10 +114,8 @@ function boot(scriptLoads) {
       appendChild(el) {
         if (scriptLoads) { sandbox.Tesseract = { createWorker: async () => ({}) }; if (el.onload) el.onload(); }
         else if (el.onerror) el.onerror();
-      },
-    },
-    body: makeEl("body"),
-  };
+      } },
+    body: makeEl("body") };
   sandbox.window = sandbox;
   sandbox.self = sandbox;
   const ctx = vm.createContext(sandbox);

@@ -73,8 +73,7 @@ test("保存されるデータ構造に photoHi が現れない", () => {
 test("保存量の見積もりは photo だけを数える（photoHi は対象外）", () => {
   const u = Core.storageUsage({
     settings: {},
-    tx: [{ photo: "data:image/jpeg;base64," + "A".repeat(4000), photoHi: "data:image/jpeg;base64," + "B".repeat(400000) }],
-  });
+    tx: [{ photo: "data:image/jpeg;base64," + "A".repeat(4000), photoHi: "data:image/jpeg;base64," + "B".repeat(400000) }] });
   assert.equal(u.photos, 3000, "保存量に高解像度画像が混ざっている");
 });
 

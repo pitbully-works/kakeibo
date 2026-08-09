@@ -48,8 +48,7 @@ test("写真の枚数と合計量が分かる", () => {
       { photo: "data:image/jpeg;base64," + "A".repeat(4000) },
       { photo: "data:image/jpeg;base64," + "A".repeat(4000) },
       { photo: null },
-    ],
-  };
+    ] };
   const u = Core.storageUsage(state);
   assert.equal(u.photoCount, 2);
   assert.equal(u.photos, 6000);

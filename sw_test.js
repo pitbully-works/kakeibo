@@ -204,11 +204,8 @@ async function runRegistration(opts) {
           if (o.failRegister) throw new Error("registration blocked");
           return { update: async () => { calls.update++; } };
         },
-        addEventListener: (type, fn) => { (swListeners[type] = swListeners[type] || []).push(fn); },
-      },
-    },
-    window: {},
-  };
+        addEventListener: (type, fn) => { (swListeners[type] = swListeners[type] || []).push(fn); } } },
+    window: {} };
   sandbox.window.addEventListener = (type, fn) => { (sandbox._load = sandbox._load || []).push({ type, fn }); };
   sandbox.window.location = { reload: () => { calls.reload++; } };
   const ctx = vm.createContext(sandbox);

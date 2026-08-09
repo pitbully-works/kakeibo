@@ -68,7 +68,7 @@ test("民間年金：掛けている期間の中だけを足す", () => {
   assert.strictEqual(Core.lpMonthlyOf(s, "pension", 39), 0, "まだ始まっていない契約は足さない");
 });
 
-test("生命保険：保険料を払う期間の中だけを足す", () => {
+test("各種保険：保険料を払う期間の中だけを足す", () => {
   const s = settingsWith({ insurancePolicies: [
     { name: "○○生命", monthlyPremium: 8000, premiumFromAge: 46, premiumToAge: 65, coverageUntilAge: 82 },
   ] });
@@ -102,8 +102,7 @@ test("毎月いくらの合計は、内訳の足し算と一致する", () => {
     gold: { monthlyYen: 20000 },
     banks: [{ name: "A", monthlyDeposit: 10000 }],
     loans: [{ name: "車", monthlyPayment: 30000 }],
-    privatePensionPlans: [{ name: "共済", monthlyContribution: 15000 }],
-  });
+    privatePensionPlans: [{ name: "共済", monthlyContribution: 15000 }] });
   const parts = ["gold", "banks", "loans", "pension", "ideco", "insurance"]
     .reduce((t, k) => t + Core.lpMonthlyOf(s, k, 57), 0);
   assert.strictEqual(parts, Core.lpMonthlyTotal(s, 57));
@@ -113,8 +112,7 @@ test("毎月いくらの合計は、内訳の足し算と一致する", () => {
 
 test("id は保存の形に残る。無い行には足さない（古いデータの形を変えない）", () => {
   const a = Core.normalizeLifePlanAssets({
-    banks: [{ name: "A", id: "keep-1" }, { name: "B" }],
-  });
+    banks: [{ name: "A", id: "keep-1" }, { name: "B" }] });
   assert.strictEqual(a.banks[0].id, "keep-1");
   assert.ok(!("id" in a.banks[1]), "id が無い行に空の id を足さない");
 });
@@ -132,8 +130,7 @@ test("lpEnsureIds：無い行にだけ付ける。すでにある id は付け�
     insurancePolicies: [{ name: "○○生命" }],
     lumpSums: [{ age: 59, amount: 1000000 }],
     tsumitateSchedule: [{ fromAge: 57, toAge: 65, funds: [{ name: "全世界", amount: 90000 }] }],
-    growthSchedule: [{ fromAge: 57, toAge: 65, monthlyYen: 50000 }],
-  }, seqId());
+    growthSchedule: [{ fromAge: 57, toAge: 65, monthlyYen: 50000 }] }, seqId());
   assert.strictEqual(a.banks[0].id, "keep-1", "すでにある id は絶対に変えない");
   assert.strictEqual(a.banks[1].id, "test-1");
   [a.loans[0], a.privatePensionPlans[0], a.insurancePolicies[0],
@@ -162,8 +159,7 @@ test("lpDropEmptyRows：空の行だけを捨て、中身のある行は残す",
     banks: [{ name: "", balance: 0 }, { name: "A銀行", balance: 100 }],
     loans: [{ name: "", principal: 0, monthlyPayment: 0 }],
     privatePensionPlans: [{ name: "", monthlyContribution: 0 }],
-    lumpSums: [{ age: 0, amount: 0 }, { age: 59, amount: 1000000 }],
-  });
+    lumpSums: [{ age: 0, amount: 0 }, { age: 59, amount: 1000000 }] });
   assert.strictEqual(a.banks.length, 1);
   assert.strictEqual(a.banks[0].name, "A銀行");
   assert.strictEqual(a.loans.length, 0);
@@ -196,8 +192,7 @@ test("渡すデータの各行に id が入る", () => {
     loans: [{ name: "車", principal: 1 }],
     privatePensionPlans: [{ name: "共済", monthlyContribution: 1 }],
     insurancePolicies: [{ name: "○○生命", monthlyPremium: 1 }],
-    lumpSums: [{ age: 59, amount: 1 }],
-  }, seqId()));
+    lumpSums: [{ age: 59, amount: 1 }] }, seqId()));
   const io = Core.buildLifePlanInputs(s, "2026-08-08").inputs;
   ["banks", "loans", "privatePensionPlans", "insurancePolicies", "lumpSums"]
     .forEach((k) => assert.ok(io[k][0].id, k + " に id が無い"));
@@ -205,8 +200,7 @@ test("渡すデータの各行に id が入る", () => {
 
 test("積立の区間も id を落とさない（区間は名前を持たないため）", () => {
   const s = settingsWith(Core.lpEnsureIds({
-    tsumitateSchedule: [{ fromAge: 57, toAge: 65, funds: [{ name: "全世界", amount: 90000 }] }],
-  }, seqId()));
+    tsumitateSchedule: [{ fromAge: 57, toAge: 65, funds: [{ name: "全世界", amount: 90000 }] }] }, seqId()));
   const io = Core.buildLifePlanInputs(s, "2026-08-08").inputs;
   assert.strictEqual(io.tsumitateSchedule[0].id, "test-1");
   assert.strictEqual(io.tsumitateSchedule[0].monthlyYen, 90000);
@@ -299,4 +293,174 @@ test("タイルは8枚。先取り貯金のタイルは無い（銀行貯金と�
   const strip = html.slice(html.indexOf("dreamstrip"));
   assert.strictEqual((strip.match(/class="ds/g) || []).length, 8, "タイルの数が合わない");
   assert.equal(strip.includes("先取り貯金"), false, "廃止した先取り貯金のタイルが残っている");
+});
+
+/* =========================================================================
+   画面まわりの決めごと
+   ========================================================================= */
+
+test("内訳の入力カードは、ホームの入口カードと別の名前を使う", () => {
+  /* 同じ名前にしていたため、入口カードの display:flex が内訳にも効き、
+     見出し・入力欄・合計が横一列に潰れて読めなくなっていた。 */
+  const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", lp: {
+    tsumitateSchedule: [{ fromAge: 57, toAge: 65, funds: [{ name: "全世界株式", amount: 90000 }] }] } } } });
+  const out = app.run(`lpKind="nisa"; view="lp"; renderLp()`);
+  assert.match(out, /class="lpseg"/, "内訳の入力カードが別名になっていない");
+  assert.equal(out.includes('class="lpcard"'), false, "入口カードの名前を使い回している");
+  assert.match(html, /\.lpseg\{display:block/, "内訳のカードが縦並びになっていない");
+});
+
+test("目標のタイルは、先取りのタイルと見た目と文言で見分けられる", () => {
+  const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
+  const app = bootApp({ state: { settings: { birth: "1968-11-20", cycleStart: 20 } } });
+  const out = app.run(`renderHome()`);
+  assert.match(out, /class="ds goal"/, "目標だけの色分けが無い");
+  assert.match(html, /\.ds\.goal\{background/, "目標の色の指定が無い");
+  assert.match(out, /目標記入/, "目標の文言が入っていない");
+});
+
+test("先取りのタイルの文言は「固定金額入力」で、「タップで入力」は残っていない", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-20", cycleStart: 20 } } });
+  const out = app.run(`renderHome()`);
+  const strip = out.slice(out.indexOf("dreamstrip"));
+  assert.strictEqual((strip.match(/固定金額入力/g) || []).length, 7, "先取り7枚ぶんになっていない");
+  assert.equal(strip.includes("タップで入力"), false, "古い文言が残っている");
+});
+
+test("目標が設定済みでも「目標記入」から入れ直せる", () => {
+  const app = bootApp({ state: { settings: { goalName: "車", goalTarget: 1000000, goalCurrent: 100000 }, tx: [] } });
+  const out = app.run(`renderHome()`);
+  assert.match(out, /class="ds goal"/);
+  assert.match(out, /目標記入/);
+});
+
+test("すべて初期設定に戻す：二度たずねて、どちらか断れば何も消えない", () => {
+  const make = () => bootApp({ state: {
+    settings: { goalName: "車", goalTarget: 1000000 },
+    tx: [{ id: "1", d: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
+    diary: { "2026-08-01": { text: "あ" } } } });
+  let app = make();
+  app.run(`globalThis.confirm=()=>false; resetAll();`);
+  assert.strictEqual(app.run(`state.tx.length`), 1, "一度目を断ったのに消えた");
+  app = make();
+  let n = 0;
+  app.run(`globalThis.confirm=()=>{ return (++globalThis.__n||1)===1; }; globalThis.__n=0; resetAll();`);
+  assert.strictEqual(app.run(`state.tx.length`), 1, "二度目を断ったのに消えた");
+});
+
+test("すべて初期設定に戻す：両方たずねに答えたら、端末の中まで消える", () => {
+  const app = bootApp({ state: {
+    settings: { goalName: "車", goalTarget: 1000000 },
+    tx: [{ id: "1", d: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
+    diary: { "2026-08-01": { text: "あ" } } } });
+  app.run(`globalThis.confirm=()=>true; resetAll();`);
+  assert.strictEqual(app.run(`state.tx.length`), 0, "記録が残っている");
+  assert.strictEqual(app.run(`Object.keys(state.diary).length`), 0, "日記が残っている");
+  assert.strictEqual(app.run(`state.settings.goalName`), "", "設定が残っている");
+  assert.strictEqual(app.run(`view`), "home", "ホームへ戻っていない");
+  assert.strictEqual(JSON.parse(app.saved()).tx.length, 0, "端末の中に残っている");
+});
+
+test("せっていに、初期設定に戻すボタンと注意書きがある", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
+  assert.match(out, /data-act="reset-all"/, "ボタンが無い");
+  assert.match(out, /元に戻せません/, "取り返しがつかないことを伝えていない");
+  assert.match(out, /バックアップ/, "先にバックアップを促していない");
+});
+
+test("すべて初期設定に戻す：保存に失敗したら、データはそのまま残る", () => {
+  /* 消してから保存できなかった場合、画面だけ空になって
+     開き直すと元に戻る、という食い違いを防ぐ。 */
+  const app = bootApp({ storageFull: true, state: {
+    settings: { goalName: "車", goalTarget: 1000000 },
+    tx: [{ id: "1", d: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
+    diary: { "2026-08-01": { text: "あ" } } } });
+  app.run(`globalThis.confirm=()=>true; resetAll();`);
+  assert.strictEqual(app.run(`state.tx.length`), 1, "記録が消えたままになっている");
+  assert.strictEqual(app.run(`state.settings.goalName`), "車", "設定が消えたままになっている");
+  assert.strictEqual(app.run(`Object.keys(state.diary).length`), 1, "日記が消えたままになっている");
+  assert.equal(/最初の状態に戻しました/.test(app.toastText()), false, "失敗なのに成功と表示している");
+});
+
+test("ライフプラン用データは、まずコピーする（iPhoneでファイル保存できないため）", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20 }, tx: [] } });
+  app.run(`globalThis.__copied=null;
+    navigator.clipboard={ writeText:(t)=>{ globalThis.__copied=t; return Promise.resolve(); } };
+    exportSnapshot();`);
+  const copied = app.run(`globalThis.__copied`);
+  assert.ok(copied, "コピーしていない");
+  assert.doesNotThrow(() => JSON.parse(copied), "貼りつけられる形になっていない");
+});
+
+test("コピーできない端末では、これまでどおりファイルに書き出す", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20 }, tx: [] } });
+  app.run(`globalThis.__file=null;
+    navigator.clipboard=undefined;
+    globalThis.downloadText=(n,t)=>{ globalThis.__file=n; };
+    exportSnapshot();`);
+  assert.match(String(app.run(`globalThis.__file`)), /lifeplan-snapshot-.*\.json/, "ファイルにも書き出せていない");
+});
+
+test("「ライフプランへ渡す」も同じ作りを使う（同じことを二か所で書かない）", () => {
+  const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
+  assert.strictEqual((html.match(/function shareText\(/g) || []).length, 1);
+  assert.match(html, /function lpExport\(\)\{[\s\S]{0,600}shareText\(/, "渡すボタンが共通の作りを使っていない");
+  assert.match(html, /function exportSnapshot\(\)\{[\s\S]{0,400}shareText\(/, "書き出しボタンが共通の作りを使っていない");
+});
+
+test("バックアップは、まず共有シートで保存する（iPhoneでダウンロードできないため）", () => {
+  /* バックアップは「読み込む」がファイル選びなので、文字のコピーでは戻せない。
+     ファイルとして残せる道を先に試す。 */
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  app.run(`globalThis.__shared=null; globalThis.__downloaded=null;
+    globalThis.File=function(parts,name,opt){ this.name=name; this.type=opt&&opt.type; };
+    navigator.canShare=()=>true;
+    navigator.share=(o)=>{ globalThis.__shared=o.files[0].name; return Promise.resolve(); };
+    globalThis.downloadText=(n)=>{ globalThis.__downloaded=n; };
+    exportBackup();`);
+  assert.match(String(app.run(`globalThis.__shared`)), /kakeibo-backup-.*\.json/, "共有していない");
+  assert.strictEqual(app.run(`globalThis.__downloaded`), null, "共有できるのにダウンロードしている");
+});
+
+test("共有が使えない端末では、これまでどおりダウンロードする", () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  app.run(`globalThis.__downloaded=null;
+    navigator.share=undefined; navigator.canShare=undefined;
+    globalThis.downloadText=(n)=>{ globalThis.__downloaded=n; };
+    exportBackup();`);
+  assert.match(String(app.run(`globalThis.__downloaded`)), /kakeibo-backup-.*\.json/, "書き出せていない");
+});
+
+test("バックアップと連携データで、保存のしかたを使い分ける", () => {
+  /* バックアップ＝ファイル（読み込みがファイル選びのため）
+     連携データ＝コピー（ライフプランは貼りつけて読み込むため） */
+  const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
+  assert.match(html, /function exportBackup\(\)\{[\s\S]{0,300}saveFile\(/, "バックアップがファイル保存になっていない");
+  assert.match(html, /function exportSnapshot\(\)\{[\s\S]{0,400}shareText\(/, "連携データがコピーになっていない");
+});
+
+test("コピーに失敗したら、ファイルに書き出す（何も残らない状態にしない）", async () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20 }, tx: [] } });
+  app.run(`globalThis.__file=null;
+    navigator.clipboard={ writeText:()=>Promise.reject(new Error("コピーできない")) };
+    globalThis.downloadText=(n)=>{ globalThis.__file=n; };
+    exportSnapshot();`);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.match(String(app.run(`globalThis.__file`)), /lifeplan-snapshot-.*\.json/,
+    "コピーに失敗したのに、ファイルにも書き出していない");
+});
+
+test("共有を取り消したら、ダウンロードで書き出す", async () => {
+  const app = bootApp({ state: { settings: {}, tx: [] } });
+  app.run(`globalThis.__file=null;
+    globalThis.File=function(parts,name,opt){ this.name=name; this.type=opt&&opt.type; };
+    navigator.canShare=()=>true;
+    navigator.share=()=>Promise.reject(new Error("取り消し"));
+    globalThis.downloadText=(n)=>{ globalThis.__file=n; };
+    exportBackup();`);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.match(String(app.run(`globalThis.__file`)), /kakeibo-backup-.*\.json/,
+    "共有を取り消したのに、ダウンロードもしていない");
 });

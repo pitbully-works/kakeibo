@@ -13,7 +13,7 @@ const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 const appSrc = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].pop()[1];
 
 const STATE = () => ({
-  settings: { lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }] }, nisaMonthly: 33000 },
+  settings: { birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] } },
   tx: [
     { id: "e1", type: "expense", amount: 1200, cat: "food", date: "2026-07-25", memo: "スーパー" },
     { id: "e2", type: "expense", amount: 800, cat: "eatout", date: "2026-07-25" },
@@ -21,8 +21,7 @@ const STATE = () => ({
     { id: "e3", type: "expense", amount: 500, cat: "daily", date: "2026-07-10" },
   ],
   diary: { "2026-07-25": { text: "いい一日", photo: "data:image/png;base64,AA" }, "2026-07-20": { text: "べつの日" } },
-  health: { "2026-07-25": { weight: 62.5, bpHigh: 120, bpLow: 78 } },
-});
+  health: { "2026-07-25": { weight: 62.5, bpHigh: 120, bpLow: 78 } } });
 
 /* ---------- dayDetail ---------- */
 test("その日の支出・収入・日記・健康をまとめて返す", () => {

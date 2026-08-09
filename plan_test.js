@@ -79,8 +79,7 @@ test("これから先の予定を、日付の早い順に取り出せる", () =>
   const st = stateWith({
     "2026-08-05": [plan("b", "", "後の日")],
     "2026-08-03": [plan("a", "", "先の日")],
-    "2020-01-01": [plan("z", "", "ずっと前")],
-  });
+    "2020-01-01": [plan("z", "", "ずっと前")] });
   assert.deepEqual(Core.upcomingPlans(st, "2026-08-01", 10).map((x) => x.plan.text), ["先の日", "後の日"]);
 });
 
@@ -242,8 +241,7 @@ test("暦の月でまとめる（給料日起点の設定には引きずられ�
 test("件数と、のこり件数を数える", () => {
   const m = Core.monthPlans(stateWith({
     "2026-07-05": [plan("a", "", "済んだ", true), plan("b", "", "まだ")],
-    "2026-07-09": [plan("c", "", "まだ2")],
-  }), "2026-07");
+    "2026-07-09": [plan("c", "", "まだ2")] }), "2026-07");
   assert.equal(m.total, 3);
   assert.equal(m.done, 1);
   assert.equal(m.left, 2);
