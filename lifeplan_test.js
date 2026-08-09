@@ -499,7 +499,7 @@ test("せっていに生年月日の欄があり、なぜ要るかが書いて�
   const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
   assert.match(out, /id="f-birth"/, "生年月日の欄が無い");
   assert.match(out, /なぜ必要か/, "理由が書いていない");
-  assert.match(out, /年齢の区間/, "年齢の区間で決まることを説明していない");
+  assert.match(out, /NISA積立の年齢区間/, "NISA積立の年齢区間で決まることを説明していない");
 });
 
 test("生年月日を保存できる（保存ボタンでも、内訳へ移るときでも）", () => {
