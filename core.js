@@ -47,7 +47,7 @@
     { k: "gas",      e: "🔥", n: "ガス" },
     { k: "water",    e: "🚰", n: "水道" },
     { k: "comm",     e: "📱", n: "通信" },
-    /* 各種保険は「ライフプランへ渡すデータ」に入力口を作ったので、記録の選択からは外す。
+    /* 生命保険は「ライフプランへ渡すデータ」に入力口を作ったので、記録の選択からは外す。
        同じお金を2か所から入れられると二重になるため。過去の記録はそのまま残り、集計にも出る。 */
     { k: "insure",   e: "🛟", n: "保険", hidden: true },
     { k: "transit",  e: "🚃", n: "交通" },
@@ -170,6 +170,47 @@
     return f(r.from) + "〜" + f(r.to);
   }
 
+  /* ---------- 国・通貨の共通設定（将来の5カ国対応の土台） ---------- */
+  const COUNTRY_RULES = Object.freeze({
+    JP: Object.freeze({ country: "JP", currency: "JPY", locale: "ja-JP", symbol: "¥" }),
+    US: Object.freeze({ country: "US", currency: "USD", locale: "en-US", symbol: "$" }),
+    GB: Object.freeze({ country: "GB", currency: "GBP", locale: "en-GB", symbol: "£" }),
+    CA: Object.freeze({ country: "CA", currency: "CAD", locale: "en-CA", symbol: "CA$" }),
+    AU: Object.freeze({ country: "AU", currency: "AUD", locale: "en-AU", symbol: "A$" }),
+  });
+
+  function normalizeCountry(v) {
+    const c = String(v == null ? "" : v).trim().toUpperCase();
+    return COUNTRY_RULES[c] ? c : "JP";
+  }
+
+  function countryFromCurrency(v) {
+    const cur = String(v == null ? "" : v).trim().toUpperCase();
+    const keys = Object.keys(COUNTRY_RULES);
+    for (let i = 0; i < keys.length; i++) {
+      if (COUNTRY_RULES[keys[i]].currency === cur) return keys[i];
+    }
+    return null;
+  }
+
+  function countryRule(country) {
+    return COUNTRY_RULES[normalizeCountry(country)];
+  }
+
+  function formatMoney(v, settingsOrCountry) {
+    const obj = settingsOrCountry && typeof settingsOrCountry === "object" ? settingsOrCountry : null;
+    const country = normalizeCountry(obj ? obj.country : settingsOrCountry);
+    const rule = countryRule(country);
+    const n = Math.round(Number(v) || 0);
+    try {
+      return new Intl.NumberFormat(rule.locale, {
+        style: "currency", currency: rule.currency, maximumFractionDigits: 0, minimumFractionDigits: 0,
+      }).format(n);
+    } catch (e) {
+      return rule.symbol + n.toLocaleString(rule.locale);
+    }
+  }
+
   /* ---------- 設定の正規化 ---------- */
   /* 設定に持つのは「先取り（予定額）」と「夢・目標」だけ。
      旧版の手取り収入(incomeNet)・固定費(fixedCost / fixed)は読み捨てる。
@@ -177,11 +218,17 @@
      「記録」はそのまま通常の支出として残る。 */
   function normalizeSettings(raw) {
     const s = raw || {};
+    /* 旧データには country が無いので currency から推定し、どちらも無ければJP。
+       対応5カ国では country を正として、その国の基準通貨と必ず組にする。 */
+    const inferredCountry = s.country || countryFromCurrency(s.currency) || "JP";
+    const country = normalizeCountry(inferredCountry);
     const out = {
+      nisaMonthly: num(s.nisaMonthly),
       goalName: String(s.goalName || "").slice(0, 24),
       goalTarget: num(s.goalTarget),
       goalCurrent: num(s.goalCurrent),
-      currency: s.currency || "JPY",
+      country: country,
+      currency: countryRule(country).currency,
       cycleStart: normalizeCycleStart(s.cycleStart),
       /* 年齢の区間で決める積立に使う。空なら年齢は使わない。 */
       birth: normalizeBirth(s.birth),
@@ -289,7 +336,7 @@
     });
   }
 
-  /* 各種保険。ライフプランの insurancePolicies と同じ形（保険料の期間と月額）。
+  /* 生命保険。ライフプランの insurancePolicies と同じ形（保険料の期間と月額）。
      出ていくお金なので、毎月固定の支出として数える。 */
   function normalizeLpInsurance(list) {
     return (Array.isArray(list) ? list : []).slice(0, LP_MAX_ROWS).map(function (r) {
@@ -499,13 +546,9 @@
      基準日はその区切りの初日にする（「いま」に依らず、いつ計算しても同じ答えになる）。 */
   function nisaPlannedOn(settings, onDate) {
     const s = settings || {};
-    /* NISAの月額を決めるのは「区間と銘柄」だけ。
-       以前は区間が無いときに、昔せっていで打ち込んだ月額を出していた。
-       その欄は廃止したので、画面に出るのに直せない金額が残ってしまう。
-       出どころをひとつにして、区間が無ければ0にする。 */
-    if (!nisaAuto(s)) return 0;
+    if (!nisaAuto(s)) return num(s.nisaMonthly);
     const age = ageFromBirth(s.birth, onDate);
-    if (age === null) return 0;
+    if (age === null) return num(s.nisaMonthly);
     const lp = s.lp || {};
     return Math.round(scheduledMonthly(lp.tsumitateSchedule, age) + scheduledMonthly(lp.growthSchedule, age));
   }
@@ -590,7 +633,7 @@
     return rows;
   }
 
-  /* 出ていって戻らないお金 → 毎月固定の支出。借入の返済と各種保険の保険料。 */
+  /* 出ていって戻らないお金 → 毎月固定の支出。借入の返済と生命保険の保険料。 */
   function lpSpendItems(settings, age) {
     const a = normalizeLifePlanAssets((settings || {}).lp);
     const rows = [];
@@ -598,7 +641,7 @@
     if (loan > 0) rows.push({ key: "loans", name: "借入の返済", amount: loan });
     /* 保険料を払う期間の中にある契約だけを足す（保障が続く年齢とは別物） */
     const ins = lpActiveSum(a.insurancePolicies, "premiumFromAge", "premiumToAge", "monthlyPremium", age);
-    if (ins > 0) rows.push({ key: "insurance", name: "各種保険の保険料", amount: ins });
+    if (ins > 0) rows.push({ key: "insurance", name: "生命保険の保険料", amount: ins });
     return rows;
   }
 
@@ -706,10 +749,8 @@
 
   /* ライフプランアプリへ渡す形。
      向こうの「バックアップの読み込み」がそのまま受け取れる { inputs: ... } にする。
-     渡すのは、家計簿に登録されている資産形成・年金・保険・ローンのうち、
-     連携の対象になっているものだけ。読み込み側は差分をかぶせる作りなので、
-     ここで渡したものだけが入れ替わり、向こうで入れた値は消えない。
-     未登録の項目を空データとして送らないのも、向こうの中身を消さないため。 */
+     読み込み側は差分をかぶせる作りなので、ここで渡した4つだけが入れ替わり、
+     年齢や年金など向こうで入れた値は消えない。 */
   function buildLifePlanInputs(settings, onDate) {
     const s = settings || {};
     const a = normalizeLifePlanAssets(s.lp);
@@ -794,7 +835,7 @@
 
     /* --- 支出：すべて「記録」から。固定費／変動費の区分は無い --- */
     const expRecs = month.filter(function (t) { return t.type === "expense"; });
-    /* ライフプラン欄の「出ていく毎月の金額」（借入の返済・各種保険）。
+    /* ライフプラン欄の「出ていく毎月の金額」（借入の返済・生命保険）。
        記録からは入れない決めごとなので、ここで毎月固定の支出として足す。 */
     /* その月の年齢（区切りの初日で見る）。生年月日が無ければ null。 */
     const lpAgeNow = ageFromBirth(s.birth, cycleRange(ym, s.cycleStart).from);
@@ -811,7 +852,7 @@
     /* NISAの先取り額。スケジュールがあればそこから、無ければ打ち込んだ月額。
        基準日は区切りの初日にして、いつ計算しても同じ答えになるようにする。 */
     const nisaPlanned = nisaPlannedOn(s, cycleRange(ym, s.cycleStart).from);
-    /* 貯まるもの（金・銀行・民間年金）は先取り。出ていくもの（借入・各種保険）は上で支出に足した。 */
+    /* 貯まるもの（金・銀行・民間年金）は先取り。出ていくもの（借入・生命保険）は上で支出に足した。 */
     const lpSetAside = lpSetAsideItems(s, lpAgeNow);
     const lpSetAsideSum = lpSum(lpSetAside);
     const lpMonthly = lpSetAside.concat(lpSpend);
@@ -3324,6 +3365,69 @@
     return out.slice(0, TASK_MAX);
   }
 
+  /* ---------- ライフプラン連携スナップショット ---------- */
+  function buildSnapshot(settings, txs, ym) {
+    const c = computeMonth(settings, txs, ym);
+    const accounts = [];
+    /* 「先取り貯金」の欄は廃止した。貯金の予定額は、ライフプラン欄の
+       銀行貯金（毎月の入金）から出す。書ける場所をひとつにするため。 */
+    const bankPlanned = c.lpMonthly.reduce(function (t, r) {
+      return r.key === "banks" ? t + r.amount : t;
+    }, 0);
+    if (bankPlanned > 0) {
+      accounts.push({
+        type: "CASH_SAVINGS", local: "貯金",
+        basis: "planned", planned_contribution: bankPlanned,
+      });
+    }
+    if (c.nisaPlanned > 0) {
+      accounts.push({
+        type: "TAX_FREE_INVEST", local: "NISA",
+        basis: "planned", planned_contribution: c.nisaPlanned,
+      });
+    }
+    return {
+      schema_version: "2.2",
+      country_code: c.settings.country,
+      base_currency: c.currency,
+      year_month: ym,
+      /* 月の区切り。起点が1日なら period_from/to はその月の1日と末日になる。 */
+      cycle_start_day: c.cycleStart,
+      period_from: c.periodFrom,
+      period_to: c.periodTo,
+
+      /* 収入：通常／臨時／当月実収入合計を分けて出力（すべて記録の実績） */
+      income_regular: c.incomeRegular,
+      income_regular_basis: "actual",
+      income_regular_recorded: c.incomeRegularRecorded,
+      income_extra: c.incomeExtra,
+      income_actual_total: c.incomeTotal,
+      /* 後方互換。旧 income_net は「当月の実収入合計」を指す */
+      income_net: c.incomeTotal,
+
+      /* 支出：すべて記録した実績。
+         fixed_cost … 「🔁 毎月固定」の印が付いた記録の合計（印が無ければ0）
+         variable_spend … それ以外
+         どちらも足すと spend_total になる。 */
+      fixed_cost: c.recurringSpend,
+      fixed_cost_items: Object.keys(c.byCatRecurring).map(function (k) {
+        return { key: k, name: catOf("expense", k).n, amount: c.byCatRecurring[k] };
+      }),
+      variable_spend: c.spotSpend,
+      spend_total: c.spendTotal,
+      expense_total: c.spendTotal,
+      by_category: Object.keys(c.byCat).map(function (k) {
+        return { key: k, name: catOf("expense", k).n, amount: c.byCat[k] };
+      }),
+
+      /* 先取りは「予定額」であることを構造で明示 */
+      planned_set_aside: c.setAside,
+      accounts: accounts,
+
+      available_to_spend: c.available,
+    };
+  }
+
   return {
     EXP_CATS: EXP_CATS,
     VAR_CATS: EXP_CATS,   // 旧名の互換（中身は全支出カテゴリ）
@@ -3354,6 +3458,11 @@
     cycleLabel: cycleLabel,
     CYCLE_START_MIN: CYCLE_START_MIN,
     CYCLE_START_MAX: CYCLE_START_MAX,
+    COUNTRY_RULES: COUNTRY_RULES,
+    normalizeCountry: normalizeCountry,
+    countryFromCurrency: countryFromCurrency,
+    countryRule: countryRule,
+    formatMoney: formatMoney,
     normalizeSettings: normalizeSettings,
     LP_MAX_ROWS: LP_MAX_ROWS,
     normalizeLifePlanAssets: normalizeLifePlanAssets,
@@ -3392,6 +3501,7 @@
     buildLifePlanInputs: buildLifePlanInputs,
     computeMonth: computeMonth,
     weekSpent: weekSpent,
+    buildSnapshot: buildSnapshot,
     parseAmount: parseAmount,
     cropRect: cropRect,
     cropOutputSize: cropOutputSize,
