@@ -227,8 +227,8 @@ test("一括投資は、かけいぼの計算にも月次スナップショッ�
   const withLump = Core.computeMonth(Core.normalizeSettings({ lp: lumps }), txs, "2026-08");
   assert.equal(withLump.available, plain.available, "一括投資が毎月の計算に入っている");
   assert.deepEqual(
-    Core.buildSnapshot(Core.normalizeSettings({ lp: lumps }), [], "2026-08"),
-    Core.buildSnapshot(Core.normalizeSettings({}), [], "2026-08"));
+    Core.computeMonth(Core.normalizeSettings({ lp: lumps }), [], "2026-08").lpMonthly,
+    Core.computeMonth(Core.normalizeSettings({}), [], "2026-08").lpMonthly);
   /* ライフプランへは渡す */
   assert.deepEqual(Core.buildLifePlanInputs(Core.normalizeSettings({ lp: lumps })).inputs.lumpSums,
     [{ age: 59, amount: 2280000 }]);

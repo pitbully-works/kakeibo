@@ -153,12 +153,12 @@ test("毎月固定の写しは、次の区切りの同じ日にちへ入る", ()
   assert.equal(plan.toAdd[0].date, "2026-09-01", "毎月1日のまま、次の区切りへ");
 });
 
-test("書き出すJSONに、何日〜何日かが入る", () => {
-  const snap = Core.buildSnapshot(S(20), [salary("s", 300000, "2026-07-20")], "2026-07");
-  assert.equal(snap.year_month, "2026-07");
-  assert.equal(snap.cycle_start_day, 20);
-  assert.equal(snap.period_from, "2026-07-20");
-  assert.equal(snap.period_to, "2026-08-19");
+test("計算の結果に、何日〜何日かが入る", () => {
+  const c = Core.computeMonth(S(20), [salary("s", 300000, "2026-07-20")], "2026-07");
+  assert.equal(c.ym, "2026-07");
+  assert.equal(c.cycleStart, 20);
+  assert.equal(c.periodFrom, "2026-07-20");
+  assert.equal(c.periodTo, "2026-08-19");
 });
 
 test("給料の催促は、その区切りの給料日を過ぎてから出る", () => {

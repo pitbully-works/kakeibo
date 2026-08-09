@@ -706,8 +706,10 @@
 
   /* ライフプランアプリへ渡す形。
      向こうの「バックアップの読み込み」がそのまま受け取れる { inputs: ... } にする。
-     読み込み側は差分をかぶせる作りなので、ここで渡した4つだけが入れ替わり、
-     年齢や年金など向こうで入れた値は消えない。 */
+     渡すのは、家計簿に登録されている資産形成・年金・保険・ローンのうち、
+     連携の対象になっているものだけ。読み込み側は差分をかぶせる作りなので、
+     ここで渡したものだけが入れ替わり、向こうで入れた値は消えない。
+     未登録の項目を空データとして送らないのも、向こうの中身を消さないため。 */
   function buildLifePlanInputs(settings, onDate) {
     const s = settings || {};
     const a = normalizeLifePlanAssets(s.lp);
@@ -3322,69 +3324,6 @@
     return out.slice(0, TASK_MAX);
   }
 
-  /* ---------- ライフプラン連携スナップショット ---------- */
-  function buildSnapshot(settings, txs, ym) {
-    const c = computeMonth(settings, txs, ym);
-    const accounts = [];
-    /* 「先取り貯金」の欄は廃止した。貯金の予定額は、ライフプラン欄の
-       銀行貯金（毎月の入金）から出す。書ける場所をひとつにするため。 */
-    const bankPlanned = c.lpMonthly.reduce(function (t, r) {
-      return r.key === "banks" ? t + r.amount : t;
-    }, 0);
-    if (bankPlanned > 0) {
-      accounts.push({
-        type: "CASH_SAVINGS", local: "貯金",
-        basis: "planned", planned_contribution: bankPlanned,
-      });
-    }
-    if (c.nisaPlanned > 0) {
-      accounts.push({
-        type: "TAX_FREE_INVEST", local: "NISA",
-        basis: "planned", planned_contribution: c.nisaPlanned,
-      });
-    }
-    return {
-      schema_version: "2.2",
-      country_code: "JP",
-      base_currency: c.currency,
-      year_month: ym,
-      /* 月の区切り。起点が1日なら period_from/to はその月の1日と末日になる。 */
-      cycle_start_day: c.cycleStart,
-      period_from: c.periodFrom,
-      period_to: c.periodTo,
-
-      /* 収入：通常／臨時／当月実収入合計を分けて出力（すべて記録の実績） */
-      income_regular: c.incomeRegular,
-      income_regular_basis: "actual",
-      income_regular_recorded: c.incomeRegularRecorded,
-      income_extra: c.incomeExtra,
-      income_actual_total: c.incomeTotal,
-      /* 後方互換。旧 income_net は「当月の実収入合計」を指す */
-      income_net: c.incomeTotal,
-
-      /* 支出：すべて記録した実績。
-         fixed_cost … 「🔁 毎月固定」の印が付いた記録の合計（印が無ければ0）
-         variable_spend … それ以外
-         どちらも足すと spend_total になる。 */
-      fixed_cost: c.recurringSpend,
-      fixed_cost_items: Object.keys(c.byCatRecurring).map(function (k) {
-        return { key: k, name: catOf("expense", k).n, amount: c.byCatRecurring[k] };
-      }),
-      variable_spend: c.spotSpend,
-      spend_total: c.spendTotal,
-      expense_total: c.spendTotal,
-      by_category: Object.keys(c.byCat).map(function (k) {
-        return { key: k, name: catOf("expense", k).n, amount: c.byCat[k] };
-      }),
-
-      /* 先取りは「予定額」であることを構造で明示 */
-      planned_set_aside: c.setAside,
-      accounts: accounts,
-
-      available_to_spend: c.available,
-    };
-  }
-
   return {
     EXP_CATS: EXP_CATS,
     VAR_CATS: EXP_CATS,   // 旧名の互換（中身は全支出カテゴリ）
@@ -3453,7 +3392,6 @@
     buildLifePlanInputs: buildLifePlanInputs,
     computeMonth: computeMonth,
     weekSpent: weekSpent,
-    buildSnapshot: buildSnapshot,
     parseAmount: parseAmount,
     cropRect: cropRect,
     cropOutputSize: cropOutputSize,

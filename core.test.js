@@ -75,22 +75,14 @@ test("ホームとまとめの残額が完全一致する", () => {
   assert.equal(home, 149000);
 });
 
-test("連携JSONの金額が画面の値と一致する", () => {
+test("収入・支出・先取り・のこりが、ひとつの式でつながっている", () => {
   const txs = [SALARY, ...FIXED98, exp(20000, "food"), inc(50000, "bonus")];
   const c = Core.computeMonth(BASE, txs, YM);
-  const j = Core.buildSnapshot(BASE, txs, YM);
-  assert.equal(j.income_regular, c.incomeRegular);
-  assert.equal(j.income_extra, c.incomeExtra);
-  assert.equal(j.income_actual_total, c.incomeTotal);
-  assert.equal(j.income_net, c.incomeTotal);
-  assert.equal(j.fixed_cost, /*removed*/0);
-  assert.equal(j.variable_spend, c.spendTotal);
-  assert.equal(j.spend_total, c.spendTotal);
-  assert.equal(j.planned_set_aside, c.setAside);
-  assert.equal(j.available_to_spend, c.available);
+  assert.equal(c.incomeTotal, c.incomeRegular + c.incomeExtra);
+  assert.equal(c.spendTotal, c.recurringSpend + c.spotSpend);
   assert.equal(
-    j.available_to_spend,
-    j.income_actual_total - j.spend_total - j.planned_set_aside
+    c.available,
+    c.incomeTotal - c.spendTotal - c.setAside
   );
 });
 
@@ -176,33 +168,28 @@ test("通常給与と臨時収入が区別される", () => {
 });
 
 /* ---------- 5・6. 連携JSONの構造 ---------- */
-test("臨時収入が income に反映され、通常／臨時／合計が分かれている", () => {
-  const j = Core.buildSnapshot(BASE, [SALARY, inc(50000, "bonus")], YM);
-  assert.equal(j.income_regular, 290000);
-  assert.equal(j.income_extra, 50000);
-  assert.equal(j.income_actual_total, 340000);
-  assert.equal(j.income_net, 340000);
+test("臨時収入が収入に反映され、通常／臨時／合計が分かれている", () => {
+  const c = Core.computeMonth(BASE, [SALARY, inc(50000, "bonus")], YM);
+  assert.equal(c.incomeRegular, 290000);
+  assert.equal(c.incomeExtra, 50000);
+  assert.equal(c.incomeTotal, 340000);
 });
 
-test("貯金・NISAは予定額だと分かる構造で出力される", () => {
-  const j = Core.buildSnapshot(BASE, [], YM);
-  const cash = j.accounts.find((a) => a.type === "CASH_SAVINGS");
-  const nisa = j.accounts.find((a) => a.type === "TAX_FREE_INVEST");
-  assert.equal(cash.planned_contribution, 40000);
-  assert.equal(cash.basis, "planned");
-  assert.equal(nisa.planned_contribution, 33000);
-  assert.equal(nisa.basis, "planned");
-  for (const a of j.accounts) {
-    assert.equal("contribution" in a, false, "実績と誤解されるキーを残さない");
-  }
+test("貯金・NISAは予定額として先取りに入る（実績ではない）", () => {
+  const c = Core.computeMonth(BASE, [], YM);
+  const bank = c.lpMonthly.filter((r) => r.key === "banks")
+    .reduce((t, r) => t + r.amount, 0);
+  assert.equal(bank, 40000, "銀行貯金の毎月の入金が入っていない");
+  assert.equal(c.nisaPlanned, 33000);
+  assert.equal(c.setAside, bank + 33000, "先取りの合計が合わない");
 });
 
-test("連携JSONは支出合計を持ち、固定費の予定額キーは持たない", () => {
-  const snap = Core.buildSnapshot({ birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] } },
+test("支出は合計で持ち、固定費の予定額は持たない", () => {
+  const c = Core.computeMonth({ birth: "1968-11-13", lp: { banks: [{ name: "貯金", monthlyDeposit: 40000 }], tsumitateSchedule: [{ fromAge: 0, toAge: 120, funds: [{ name: "全世界株式", amount: 33000 }] }] } },
     [{ id:"r", type:"expense", amount:60000, cat:"rent", date:"2026-07-01" }], "2026-07");
-  assert.equal(snap.spend_total, 60000);
-  assert.equal(snap.fixed_cost, 0, "固定費の区分が残っている");
-  assert.ok(Array.isArray(snap.by_category), "カテゴリ別内訳が無い");
+  assert.equal(c.spendTotal, 60000);
+  assert.equal(c.recurringSpend, 0, "印の無い記録が固定費に入っている");
+  assert.equal(c.byCat.rent, 60000, "カテゴリ別内訳が無い");
 });
 
 /* ---------- 月の切り分け・堅牢性 ---------- */

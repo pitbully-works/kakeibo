@@ -170,29 +170,26 @@ test("毎月かかるお金が、気づきに出る", () => {
 /* =========================================================================
    5. 連携JSON（ライフプランへ渡す）
    ========================================================================= */
-test("連携JSONの fixed_cost / variable_spend が、印のとおりに埋まる", () => {
-  const j = Core.buildSnapshot(S, TX, YM);
-  assert.equal(j.fixed_cost, 72000);
-  assert.equal(j.variable_spend, 12000);
-  assert.equal(j.spend_total, 84000);
-  assert.equal(j.fixed_cost + j.variable_spend, j.spend_total, "合計が合わない");
+test("毎月固定とそれ以外が、印のとおりに分かれる", () => {
+  const c = Core.computeMonth(S, TX, YM);
+  assert.equal(c.recurringSpend, 72000);
+  assert.equal(c.spotSpend, 12000);
+  assert.equal(c.spendTotal, 84000);
+  assert.equal(c.recurringSpend + c.spotSpend, c.spendTotal, "合計が合わない");
 });
 
-test("連携JSONに、毎月固定の項目別が入る", () => {
-  const items = Core.buildSnapshot(S, TX, YM).fixed_cost_items;
-  assert.ok(Array.isArray(items));
-  const keys = items.map((i) => i.key).sort();
-  assert.deepEqual(keys, ["power", "rent"]);
-  assert.equal(items.filter((i) => i.key === "rent")[0].amount, 60000);
-  assert.equal(items.filter((i) => i.key === "rent")[0].name, "住居");
+test("毎月固定は、項目別にも分かれている", () => {
+  const byCat = Core.computeMonth(S, TX, YM).byCatRecurring;
+  assert.deepEqual(Object.keys(byCat).sort(), ["power", "rent"]);
+  assert.equal(byCat.rent, 60000);
 });
 
-test("印がひとつも無ければ、fixed_cost は0のまま（これまでと同じ）", () => {
+test("印がひとつも無ければ、毎月固定は0のまま（これまでと同じ）", () => {
   const plain = TX.map((t) => { const c = Object.assign({}, t); delete c.recurring; return c; });
-  const j = Core.buildSnapshot(S, plain, YM);
-  assert.equal(j.fixed_cost, 0);
-  assert.deepEqual(j.fixed_cost_items, []);
-  assert.equal(j.variable_spend, j.spend_total);
+  const c = Core.computeMonth(S, plain, YM);
+  assert.equal(c.recurringSpend, 0);
+  assert.deepEqual(c.byCatRecurring, {});
+  assert.equal(c.spotSpend, c.spendTotal);
 });
 
 /* =========================================================================
@@ -309,12 +306,6 @@ test("まとめ画面に、毎月固定とそれ以外の内わけが出る", ()
   assert.ok(html.includes("¥8,000"), "それ以外の合計が出ていない");
 });
 
-/* ---------- 連携JSONの版数 ---------- */
-test("スナップショットの版数が 2.2 になっている（fixed_cost の意味が変わったため）", () => {
-  const snap = Core.buildSnapshot(S, TX, YM);
-  assert.equal(snap.schema_version, "2.2");
-  assert.equal(snap.fixed_cost + snap.variable_spend, snap.spend_total, "内わけの合計が全体と合わない");
-});
 
 /* =========================================================================
    6. 先月の🔁を今月へまとめて入れる

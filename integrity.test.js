@@ -62,10 +62,10 @@ test("せっていに給料の入力欄が無く、入力口がひとつに保�
   assert.equal(src.includes("s.incomeNet"), false, "設定の手取り収入を読む処理が残っている");
 });
 
-test("スナップショットは core.js に一本化されている", () => {
+test("月次の書き出しは、跡形なく消えている", () => {
   const src = appScript();
-  assert.match(src, /function buildSnapshot\(\)\{\s*return Core\.buildSnapshot/);
-  assert.equal(src.includes("contribution:Number("), false, "予定額と実績を混同するキーが残っている");
+  ["buildSnapshot", "exportSnapshot", "export-snapshot"].forEach((w) =>
+    assert.equal(src.includes(w), false, `${w} が残っている`));
 });
 
 test("レシートは枠で指定した範囲だけを読む", () => {

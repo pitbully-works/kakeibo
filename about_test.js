@@ -114,5 +114,7 @@ test("せっていの保存欄・データの書き出しは、そのまま残�
   assert.equal(h.includes('id="f-nisa"'), false, "廃止したNISA積立の欄が残っている");
   assert.ok(h.includes('data-act="lp-open"'), "ライフプラン欄の内訳ボタンが消えている");
   assert.ok(h.includes('data-act="save-settings"'), "保存ボタンが消えている");
-  assert.ok(h.includes('data-act="export-snapshot"'), "ライフプラン用の書き出しが消えている");
+  /* 月次の書き出しは廃止した。資産を渡す「ライフプランへ渡す」だけを残す。 */
+  assert.equal(h.includes('data-act="export-snapshot"'), false, "廃止した月次の書き出しが残っている");
+  assert.ok(h.includes('data-act="lp-export"'), "ライフプランへ渡すボタンが消えている");
 });

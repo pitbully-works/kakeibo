@@ -140,21 +140,20 @@ test("支出を記録しても、まとめの支出が二重にならない", ()
   assert.ok(out().includes(yen(12000)));
 });
 
-test("書き出したJSONが、画面と同じ金額になっている", () => {
+test("ライフプランへ渡す資産が、画面の内訳と同じになっている", () => {
   const tx = [
     SALARY, ...FIXED98,
     { id: "a", type: "expense", amount: 20000, cat: "food", date: D(5) },
     { id: "b", type: "income", amount: 50000, cat: "bonus", date: D(25) },
   ];
   const { app } = bootApp({ settings: SETTINGS, tx });
-  const j = app.buildSnapshot();
+  const j = Core.buildLifePlanInputs(app.state.settings);
   const c = Core.computeMonth(SETTINGS, tx, YM);
-  assert.equal(j.available_to_spend, c.available);
-  assert.equal(j.income_actual_total, c.incomeTotal);
-  assert.equal(j.spend_total, c.spendTotal);
-  assert.equal(j.variable_spend, c.spendTotal);   // 互換キー：支出合計と同じ
-  assert.equal(j.fixed_cost, 0);                  // 互換キー：区分廃止で常に0
-  assert.equal(j.accounts.find((a) => a.type === "TAX_FREE_INVEST").planned_contribution, 33000);
+  assert.equal(j.source, "kakeibo");
+  assert.equal(j.inputs.banks[0].monthlyDeposit, 40000, "銀行貯金が渡っていない");
+  assert.equal(j.inputs.tsumitateSchedule[0].monthlyYen, 33000, "NISAの区間が渡っていない");
+  /* 画面の先取りと、渡す資産の毎月ぶんが食い違わない */
+  assert.equal(c.nisaPlanned, 33000);
 });
 
 test("旧保存データ（支出が合計欄）を読んでも落ちない", () => {

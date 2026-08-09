@@ -384,14 +384,17 @@ test("すべて初期設定に戻す：保存に失敗したら、データは�
   assert.equal(/最初の状態に戻しました/.test(app.toastText()), false, "失敗なのに成功と表示している");
 });
 
-test("ライフプラン用データは、まずコピーする（iPhoneでファイル保存できないため）", () => {
-  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20 }, tx: [] } });
+test("ライフプランへ渡すときは、まずコピーする（iPhoneでファイル保存できないため）", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20,
+    lp: { gold: { monthlyYen: 10000 } } }, tx: [] } });
   app.run(`globalThis.__copied=null;
     navigator.clipboard={ writeText:(t)=>{ globalThis.__copied=t; return Promise.resolve(); } };
-    exportSnapshot();`);
+    lpExport();`);
   const copied = app.run(`globalThis.__copied`);
   assert.ok(copied, "コピーしていない");
-  assert.doesNotThrow(() => JSON.parse(copied), "貼りつけられる形になっていない");
+  const payload = JSON.parse(copied);
+  assert.strictEqual(payload.source, "kakeibo", "ライフプランが受け取れる形になっていない");
+  assert.ok(payload.inputs, "資産が入っていない");
 });
 
 test("コピーできない端末では、これまでどおりファイルに書き出す", () => {
@@ -399,15 +402,14 @@ test("コピーできない端末では、これまでどおりファイルに�
   app.run(`globalThis.__file=null;
     navigator.clipboard=undefined;
     globalThis.downloadText=(n,t)=>{ globalThis.__file=n; };
-    exportSnapshot();`);
-  assert.match(String(app.run(`globalThis.__file`)), /lifeplan-snapshot-.*\.json/, "ファイルにも書き出せていない");
+    lpExport();`);
+  assert.match(String(app.run(`globalThis.__file`)), /lifeplan-assets-.*\.json/, "ファイルにも書き出せていない");
 });
 
-test("「ライフプランへ渡す」も同じ作りを使う（同じことを二か所で書かない）", () => {
+test("書き出しの作りはひとつだけ（同じことを二か所で書かない）", () => {
   const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
   assert.strictEqual((html.match(/function shareText\(/g) || []).length, 1);
   assert.match(html, /function lpExport\(\)\{[\s\S]{0,600}shareText\(/, "渡すボタンが共通の作りを使っていない");
-  assert.match(html, /function exportSnapshot\(\)\{[\s\S]{0,400}shareText\(/, "書き出しボタンが共通の作りを使っていない");
 });
 
 test("バックアップは、まず共有シートで保存する（iPhoneでダウンロードできないため）", () => {
@@ -438,7 +440,7 @@ test("バックアップと連携データで、保存のしかたを使い分�
      連携データ＝コピー（ライフプランは貼りつけて読み込むため） */
   const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
   assert.match(html, /function exportBackup\(\)\{[\s\S]{0,300}saveFile\(/, "バックアップがファイル保存になっていない");
-  assert.match(html, /function exportSnapshot\(\)\{[\s\S]{0,400}shareText\(/, "連携データがコピーになっていない");
+  assert.match(html, /function lpExport\(\)\{[\s\S]{0,600}shareText\(/, "連携データがコピーになっていない");
 });
 
 test("コピーに失敗したら、ファイルに書き出す（何も残らない状態にしない）", async () => {
@@ -446,9 +448,9 @@ test("コピーに失敗したら、ファイルに書き出す（何も残ら�
   app.run(`globalThis.__file=null;
     navigator.clipboard={ writeText:()=>Promise.reject(new Error("コピーできない")) };
     globalThis.downloadText=(n)=>{ globalThis.__file=n; };
-    exportSnapshot();`);
+    lpExport();`);
   await new Promise((r) => setTimeout(r, 20));
-  assert.match(String(app.run(`globalThis.__file`)), /lifeplan-snapshot-.*\.json/,
+  assert.match(String(app.run(`globalThis.__file`)), /lifeplan-assets-.*\.json/,
     "コピーに失敗したのに、ファイルにも書き出していない");
 });
 
@@ -531,11 +533,11 @@ test("金・銀行・借入・年金・保険・iDeCoも、打っただけで保
 
 test("せっていも、打っただけで保存される（目標の貯まった額など）", () => {
   const app = bootApp({ state: { settings: { goalName: "車", goalTarget: 1000000 }, tx: [] } });
+  /* 打った欄だけを保存する。ほかの欄を読み直すと、
+     まだ値を取り出せていない欄（日付など）を空で上書きしてしまう。 */
   app.run(`view="settings"; render();
     document.getElementById("f-gcur").value="300000";
-    document.getElementById("f-gtarget").value="1000000";
-    document.getElementById("f-gname").value="車";
-    autoSave();`);
+    autoSave("f-gcur");`);
   assert.strictEqual(app.run(`state.settings.goalCurrent`), 300000, "保存されていない");
   assert.strictEqual(JSON.parse(app.saved()).settings.goalCurrent, 300000, "端末に残っていない");
   const home = app.run(`view="home"; renderHome()`);
@@ -544,7 +546,9 @@ test("せっていも、打っただけで保存される（目標の貯まっ�
 
 test("打っている間は画面を作り直さない（入力中の欄から指が外れないように）", () => {
   const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
-  const fn = html.slice(html.indexOf("function autoSave()"), html.indexOf("function autoSave()") + 260);
+  const at = html.indexOf("function autoSave(id)");
+  assert.ok(at > 0, "自動保存の関数が見つからない");
+  const fn = html.slice(at, at + 260);
   assert.equal(/\brender\(\)/.test(fn), false, "自動保存で画面を作り直している");
   assert.match(html, /lpRefreshTotals\(\)/, "合計の書き換えをしていない");
   assert.match(html, /data-live="\$\{key\}-\$\{i\}"/, "合計に書き換え用の印が無い");
@@ -564,7 +568,7 @@ test("自動保存が、打つ操作につながっている", () => {
   const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
   const appSrc = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].pop()[1];
   assert.match(appSrc, /addEventListener\("input"/, "打つ操作を受けていない");
-  assert.match(appSrc, /autoSaveT\s*=\s*setTimeout\(autoSave,\s*\d+\)/, "手が止まってからの保存を仕掛けていない");
+  assert.match(appSrc, /autoSaveT\s*=\s*setTimeout\(\(\)=>autoSave\(id\),\s*\d+\)/, "手が止まってからの保存を仕掛けていない");
   assert.match(appSrc, /clearTimeout\(autoSaveT\)/, "打つたびに端末へ書いてしまう");
   /* 対象はせっていと内訳の2画面だけ（ほかの画面で無駄に保存しない） */
   assert.match(appSrc, /if\(view!=="settings" && view!=="lp"\) return;/, "対象の画面をしぼっていない");
@@ -616,4 +620,35 @@ test("区間も、2つ目は2つ目の欄へ移る", () => {
   app.run(`globalThis.__focus=null; globalThis.focusField=(id)=>{ globalThis.__focus=id; };`);
   app.run(`lpKind="nisa"; view="lp"; lpAddRow("tsumitateSchedule"); lpAddRow("tsumitateSchedule");`);
   assert.strictEqual(app.run(`globalThis.__focus`), "lp-ts-from-1", "2つ目の区間へ移っていない");
+});
+
+test("せっていの自動保存は、打った欄だけを書き換える（生年月日を消さない）", () => {
+  /* すべての欄を読み直していたため、日付の欄が空として読まれると
+     生年月日が消え、NISAの年齢区間が決まらずトップが0円になっていた。 */
+  const app = bootApp({ state: { settings: {
+    birth: "1968-11-13", cycleStart: 20, goalName: "車", goalTarget: 1000000,
+    lp: { tsumitateSchedule: [{ fromAge: 57, toAge: 65, funds: [{ name: "全世界", amount: 100000 }] }] },
+  }, tx: [] } });
+  app.run(`view="settings"; render();
+    document.getElementById("f-gcur").value="300000"; autoSave("f-gcur");`);
+  assert.strictEqual(app.run(`state.settings.birth`), "1968-11-13", "生年月日が消えた");
+  assert.strictEqual(app.run(`state.settings.goalName`), "車", "ほかの設定が消えた");
+  assert.strictEqual(app.run(`state.settings.goalCurrent`), 300000, "打った欄が保存されていない");
+  assert.strictEqual(
+    app.run(`Core.nisaPlannedOn(state.settings, Core.cycleRange(curYM(), cycleStart()).from)`),
+    100000, "NISAが0円になっている");
+});
+
+test("知らない欄を打っても、設定は変わらない", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", goalName: "車" }, tx: [] } });
+  app.run(`view="settings"; render(); autoSave("しらない欄");`);
+  assert.strictEqual(app.run(`state.settings.birth`), "1968-11-13");
+  assert.strictEqual(app.run(`state.settings.goalName`), "車");
+});
+
+test("NISAのタイルの色は、ほかの先取りのタイルとそろえる", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20 }, tx: [] } });
+  const out = app.run(`renderHome()`);
+  assert.equal(out.includes('class="ds blue"'), false, "NISAだけ色がくすんでいる");
+  assert.match(out, /class="ds" data-act="lp-open" data-kind="nisa"/, "NISAのタイルが無い");
 });

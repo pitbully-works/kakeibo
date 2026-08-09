@@ -125,7 +125,7 @@ test("写真が1枚も無ければ、保存処理そのものを行わない", (
 /* ---------- 画面側の作り ---------- */
 test("3つの処理すべてで、保存前に退避している", () => {
   for (const [fn, end] of [
-    ["function saveSettings()", "function buildSnapshot()"],
+    ["function saveSettings()", "function purgePhotos()"],
     ["function delTx()", "function saveSettings()"],
     ["function purgePhotos()", "function exportBackup()"],
   ]) {

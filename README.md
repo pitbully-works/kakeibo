@@ -87,61 +87,6 @@
 
 ---
 
-## ライフプラン連携スナップショット（schema_version 2.2）
-
-```json
-{
-  "schema_version": "2.2",
-  "country_code": "JP",
-  "base_currency": "JPY",
-  "year_month": "2026-07",
-
-  "income_regular": 290000,
-  "income_regular_basis": "actual",
-  "income_regular_recorded": true,
-  "income_extra": 50000,
-  "income_actual_total": 340000,
-  "income_net": 340000,
-
-  "fixed_cost": 98000,
-  "fixed_cost_items": [
-    { "key": "rent", "name": "家賃・住居", "amount": 60000 },
-    { "key": "power", "name": "電気", "amount": 12000 }
-  ],
-  "variable_spend": 20000,
-  "spend_total": 118000,
-
-  "planned_set_aside": 73000,
-  "accounts": [
-    { "type": "CASH_SAVINGS",    "local": "貯金", "basis": "planned", "planned_contribution": 40000 },
-    { "type": "TAX_FREE_INVEST", "local": "NISA", "basis": "planned", "planned_contribution": 33000 }
-  ],
-
-  "available_to_spend": 149000
-}
-```
-
-**2.1 からの変更点（ライフプラン側の読み取りを直す必要があります）**
-
-| 旧 (2.1) | 新 (2.2) | 理由 |
-| --- | --- | --- |
-| `fixed_cost` は常に 0、`variable_spend` は支出の全額 | `fixed_cost` は「🔁 毎月固定」の印が付いた記録の合計、`variable_spend` はそれ以外。`fixed_cost_items` に項目別 | 記録1件ごとの印ができたので、固定費を実績として渡せるようになった |
-
-`fixed_cost + variable_spend = spend_total` は変わりません。
-印を1つも付けていなければ `fixed_cost` は 0 で、2.1 と同じ値になります。
-
-**2.0 からの変更点（2.1 で入ったもの）**
-
-| 旧 (2.0) | 新 (2.1) | 理由 |
-| --- | --- | --- |
-| `income_net` は設定の手取りのみ | `income_regular` / `income_extra` / `income_actual_total` に分離。`income_net` は実収入合計。すべて記録した実績 | 臨時収入が抜けていた／設定と記録の二重入力をやめた |
-| `fixed_cost` は設定値のみ | 設定の固定費を廃止し、記録だけを入力口にした | 設定と記録の二重入力をやめた |
-| `accounts[].contribution` | `accounts[].planned_contribution` ＋ `basis: "planned"` | 実績と誤解される名前だった |
-
-`type`（汎用の資産クラス）は既存ライフプランアプリと共通です。
-
----
-
 ## レシートの読み取り
 
 **撮る → 枠で囲む → 読み取る** の3ステップです。撮っただけでは読み取りません。
@@ -516,9 +461,9 @@ navigator.serviceWorker.addEventListener("controllerchange", () => {
 
 ### 二重入力にしないための決めごと
 
-- この4つは**ここだけが入力口**です。ほかの画面には同じ欄を作りません
+- これらは**ここだけが入力口**です。ほかの画面には同じ欄を作りません
 - **毎月の家計の計算には一切入りません**。「今月あと つかえるお金」も、
-  まとめも、月次スナップショットも変わりません
+  まとめも変わりません
 - 実際に払ったお金は、これまでどおり**「記録」から**入れてください。
   たとえば借入の毎月返済は、払った月に記録します。ここに入れる毎月返済額は
   ライフプランが将来を見通すための予定額で、今月の家計には足しません
@@ -528,7 +473,9 @@ navigator.serviceWorker.addEventListener("controllerchange", () => {
 NISA積立は「57歳9ヶ月〜65歳・月9万円」のように**年齢の区間**で入れます。
 そのため、せっていに**生年月日**の欄があります。いま何歳かが分からないと、
 どの区間にいるかを決められず、今月いくら先取りするのかも出せないためです。
-生年月日はこの計算にだけ使い、画面に出したり外へ送ったりはしません。
+生年月日は、この計算とライフプラン連携に使います。連携時は、生年月日の
+食い違いを知らせるために渡すだけで、ライフプラン側の生年月日を自動で
+書き換えることはありません。連携以外の目的には使いません。
 
 **月額を打てる場所は、いつでも1か所だけ**です。
 
@@ -599,12 +546,15 @@ NISA・貯金と同じ**先取り**として扱い、使えるお金から引き
 「📤 ライフプランへ渡す」を押すと、**ライフプランの形のまま**書き出します。
 ライフプランアプリの「バックアップの読み込み」に貼りつけるだけで入ります。
 
-キー名（`gold` / `banks` / `loans` / `privatePensionPlans`）も中の項目名も、
+キー名（`gold` / `ideco` / `banks` / `loans` / `privatePensionPlans` /
+`tsumitateSchedule` / `growthSchedule` / `tsumitateAllocation` /
+`growthAllocation` / `lumpSums` / `insurancePolicies`）も中の項目名も、
 ライフプラン側とまったく同じにしてあります。言い換えると対応表が要り、
 渡すたびにズレの元になるためです。
 
-**渡すのはこの4つだけ**です。年齢・年金・NISAなどライフプランでしか
-入れない値は含めないので、向こうで入れた内容が消えることはありません。
+渡すのは、**家計簿に登録されている資産形成・年金・保険・ローンのうち、
+連携の対象になっているデータだけ**です。未登録の項目を空データとして
+送らないので、ライフプラン側で入れた内容が消えることはありません。
 
 ## バックアップ
 

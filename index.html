@@ -803,7 +803,7 @@ function renderHome(){
     ? `<button class="ds goal" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||"目標")}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div><div class="tapin">目標記入</div></button>`
     : `<button class="ds goal" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">未設定</div><div class="tapin">目標記入</div></button>`;
   /* NISAは内訳（年齢の区間と銘柄）が唯一の入力口。設定の古い欄ではなくそこへ飛ばす。 */
-  const nisaTile = `<button class="ds blue" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(c.nisaPlanned)}/月</div><div class="tapin">固定金額入力</div></button>`;
+  const nisaTile = `<button class="ds" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(c.nisaPlanned)}/月</div><div class="tapin">固定金額入力</div></button>`;
   /* ライフプランへ渡す項目も、ホームからそのまま入れに行けるようにする。
      出す数字は「毎月いくら」。残高を出していたため、毎月の積立額を入れても
      ここが動かず「反映されない」ように見えていた。残高は内訳の画面で見る。 */
@@ -1666,7 +1666,9 @@ function renderSettings(){
     <div class="calcnote" style="margin:0 0 10px">
       <b>なぜ必要か。</b>ライフプランの積立は「57歳9ヶ月〜65歳・月9万円」のように<b>年齢の区間</b>で決めます。
       いま何歳かが分からないと、どの区間にいるかを決められず、今月いくら先取りするのかも出せません。<br>
-      使うのはこの計算だけです。年齢そのものを画面のどこかに出したり、外へ送ったりはしません。
+      ライフプランへ渡すときにも、生年月日の食い違いを知らせるために使います。
+      向こうの生年月日を勝手に書き換えることはありません。
+      ライフプランとの連携以外の目的には使いません。
     </div>
     <div class="field"><label>生年月日</label>
       <input id="f-birth" type="date" value="${escapeAttr(s.birth||"")}">
@@ -1699,7 +1701,6 @@ function renderSettings(){
       使用中のデータ：<b>${mb(u.total)}</b>（うち写真 ${mb(u.photos)}／${u.photoCount}枚）<br>
       この端末に保存できるのは<b>およそ5MB</b>までです。${u.nearLimit?"<b style=\"color:var(--terra)\">空きが少なくなっています。</b>":""}
     </div>
-    <button class="btn-ghost" data-act="export-snapshot">📤 ライフプラン用データを書き出す</button>
     ${lpSummaryHtml()}
     <button class="btn-quiet" data-act="export-backup">📥 バックアップを書き出す（JSON）</button>
     <button class="btn-quiet" data-act="import-backup">📤 バックアップを読み込む（JSON）</button>
@@ -2300,15 +2301,6 @@ function saveSettings(){
 }
 
 /* ---------- 連携：ライフプラン形式の月次スナップショット ---------- */
-function buildSnapshot(){
-  return Core.buildSnapshot(state.settings, state.tx, curYM());
-}
-function exportSnapshot(){
-  const snap=buildSnapshot(); const text=JSON.stringify(snap,null,2);
-  shareText(`lifeplan-snapshot-${snap.year_month}.json`, text,
-    "コピーしました。ライフプランに貼りつけてください 📤",
-    "ファイルに書き出しました 📤");
-}
 function purgePhotos(){
   const n=state.tx.filter(t=>t.photo).length;
   if(!n){ toast("消せる写真はありません"); return; }   // 保存処理そのものを行わない
@@ -3592,14 +3584,37 @@ function lpRefreshTotals(){
   put('[data-live="sum-pension"]',   yen(Core.lpPensionMonthly(a.privatePensionPlans)));
 }
 
-function autoSave(){
-  if(view==="settings"){ saveSettingsQuiet(); return; }
+/* せっていで、いま打った欄だけを保存する。
+   すべての欄を読み直すと、まだ画面から値を取り出せていない欄
+   （日付の欄など）を空で上書きしてしまい、生年月日が消えていた。
+   生年月日が消えるとNISAの年齢区間が決まらず、トップが0円になる。 */
+const SETTING_FIELD = {
+  "f-birth":   (s,v)=>{ s.birth = Core.normalizeBirth(v); },
+  "f-gname":   (s,v)=>{ s.goalName = String(v||"").slice(0,24); },
+  "f-gtarget": (s,v)=>{ s.goalTarget = settingNum(v); },
+  "f-gcur":    (s,v)=>{ s.goalCurrent = settingNum(v); },
+  "f-cycle":   (s,v)=>{ s.cycleStart = Core.normalizeCycleStart(v); },
+};
+function settingNum(v){ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; }
+function saveSettingField(id){
+  const put = SETTING_FIELD[id]; if(!put) return;
+  const el = $(id); if(!el) return;
+  const before = JSON.parse(JSON.stringify(state.settings));
+  const s = Object.assign({}, state.settings);
+  put(s, el.value);
+  state.settings = Core.normalizeSettings(s);
+  if(!save()) state.settings = before;        // 失敗したら元のまま
+}
+
+function autoSave(id){
+  if(view==="settings"){ saveSettingField(id); return; }
   if(view==="lp"){ lpSave(lpReadCurrent()); lpRefreshTotals(); }
 }
 document.addEventListener("input",(e)=>{
   const el=e&&e.target; if(!el||!el.id) return;
   if(view!=="settings" && view!=="lp") return;
-  clearTimeout(autoSaveT); autoSaveT=setTimeout(autoSave,350);
+  const id=el.id;
+  clearTimeout(autoSaveT); autoSaveT=setTimeout(()=>autoSave(id),350);
 });
 
 document.addEventListener("change",(e)=>{
@@ -3683,7 +3698,6 @@ function handleAct(a,e){
   }
   if(a==="save-settings") return saveSettings();
   if(a==="reset-all") return resetAll();
-  if(a==="export-snapshot") return exportSnapshot();
   /* --- ライフプランへ渡す資産 --- */
   if(a==="lp-open"){ const el=e&&e.target&&e.target.closest("[data-kind]");
     saveSettingsQuiet();                       // 書きかけの設定を取りこぼさない
@@ -3807,7 +3821,7 @@ if ("serviceWorker" in navigator) {
 /* --- SW-REGISTRATION-END --- */
 
 /* テスト用フック（本番挙動には影響しない） */
-window.__kakeibo={ get state(){return state;}, Core, compute, buildSnapshot, save, render, load:()=>{state=load();}, setView:v=>{view=v;render();}, setTab:t=>{sumTab=t;render();} };
+window.__kakeibo={ get state(){return state;}, Core, compute, save, render, load:()=>{state=load();}, setView:v=>{view=v;render();}, setTab:t=>{sumTab=t;render();} };
 </script>
 </body>
 </html>
