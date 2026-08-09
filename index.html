@@ -3171,13 +3171,13 @@ function lpNisaHtml(a){
           <button class="lpdel" data-act="lp-del-fund" data-key="${key}" data-i="${i}" data-n="${n}">🗑</button></div></label>
       </div>`).join("");
     return `<div class="lpseg">
-      <div class="lpseg-h"><b>${r.fromAge||0}歳 〜 ${r.toAge||0}歳</b>
+      <div class="lpseg-h"><b data-liveage="${key}-${i}">${r.fromAge||0}歳 〜 ${r.toAge||0}歳</b>
         <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="${key}">🗑 区間ごと</button></div>
       <div class="lpgrid">
         <label>開始年齢<input class="mono" id="${id}-from-${i}" inputmode="decimal" value="${r.fromAge||""}" placeholder="57.75"></label>
         <label>終了年齢<input class="mono" id="${id}-to-${i}" inputmode="decimal" value="${r.toAge||""}" placeholder="65"></label>
       </div>
-      <div class="lptotal" style="margin:8px 0 4px">この区間の月額 <b class="mono">${yen(sum)}</b></div>
+      <div class="lptotal" style="margin:8px 0 4px">この区間の月額 <b class="mono" data-live="${key}-${i}">${yen(sum)}</b></div>
       ${funds || `<div class="fhelp" style="margin-bottom:6px">銘柄を足すと、その合計が月額になります</div>`}
       <button class="btn-quiet" data-act="lp-add-fund" data-key="${key}" data-i="${i}">＋ 銘柄を足す</button>
     </div>`;
@@ -3207,8 +3207,8 @@ function lpNisaHtml(a){
       </div>`;
 
   return `${head}
-    ${box("つみたて投資枠：区間ごとの銘柄","tsumitateSchedule","lp-ts",a.tsumitateSchedule)}
-    ${box("成長投資枠：区間ごとの銘柄","growthSchedule","lp-gs",a.growthSchedule)}
+    ${box("つみたて投資枠（積立）","tsumitateSchedule","lp-ts",a.tsumitateSchedule)}
+    ${box("成長投資枠（積立）","growthSchedule","lp-gs",a.growthSchedule)}
     <div class="stitle" style="margin-top:4px">一括投資（ライフプランへ渡すだけ）</div>
     <div class="barlist">
       <div class="fhelp" style="margin-bottom:8px">まとまったお金なので、<b>かけいぼの毎月の計算には入りません</b>。ライフプランへ渡すためだけの欄です。</div>
@@ -3256,7 +3256,7 @@ function lpInsuranceHtml(list){
     <div class="fhelp" style="margin-bottom:8px">保険料は<b>毎月固定の支出</b>として数えます。
       こちらに入れた分は、<b>記録から入れないでください</b>（二重になります）。</div>
     ${rows || `<div class="empty"><span class="e">🛟</span>まだ入っていません</div>`}
-    <div class="lptotal">毎月の保険料 合計 <b class="mono">${yen(list.reduce((t,p)=>t+p.monthlyPremium,0))}</b></div>
+    <div class="lptotal">毎月の保険料 合計 <b class="mono" data-live="sum-insurance">${yen(list.reduce((t,p)=>t+p.monthlyPremium,0))}</b></div>
     <button class="btn-main" data-act="lp-save-insurance">この内容で保存する</button>
     <button class="btn-quiet" data-act="lp-add" data-key="insurancePolicies">＋ 保険を足す</button>
   </div>`;
@@ -3271,7 +3271,7 @@ function lpGoldHtml(g){
     <div class="field"><label>毎月の積立額</label><div class="row"><span class="yen">¥</span>
       <input class="mono" id="lp-g-monthly" inputmode="numeric" value="${g.monthlyYen||""}" placeholder="0"></div>
       <div class="fhelp">これから毎月いくら買う予定か。実際に買ったお金は「記録」から入れてください</div></div>
-    <div class="lptotal">いまの評価額 <b class="mono">${yen(Core.lpGoldValue(g))}</b></div>
+    <div class="lptotal">いまの評価額 <b class="mono" data-live="sum-gold">${yen(Core.lpGoldValue(g))}</b></div>
     <button class="btn-main" data-act="lp-save-gold">この内容で保存する</button>
   </div>`;
 }
@@ -3288,7 +3288,7 @@ function lpBanksHtml(list){
     </div></div>`).join("");
   return `<div class="barlist">
     ${rows || `<div class="empty"><span class="e">🏦</span>まだ入っていません</div>`}
-    <div class="lptotal">合計 <b class="mono">${yen(Core.lpBanksTotal(list))}</b></div>
+    <div class="lptotal">合計 <b class="mono" data-live="sum-banks">${yen(Core.lpBanksTotal(list))}</b></div>
     <button class="btn-main" data-act="lp-save-banks">この内容で保存する</button>
     <button class="btn-quiet" data-act="lp-add">＋ 銀行を足す</button>
   </div>`;
@@ -3306,7 +3306,7 @@ function lpLoansHtml(list){
     </div></div>`).join("");
   return `<div class="barlist">
     ${rows || `<div class="empty"><span class="e">💳</span>まだ入っていません</div>`}
-    <div class="lptotal">残り合計 <b class="mono">${yen(Core.lpLoansTotal(list))}</b></div>
+    <div class="lptotal">残り合計 <b class="mono" data-live="sum-loans">${yen(Core.lpLoansTotal(list))}</b></div>
     <div class="fhelp" style="margin:2px 0 8px">毎月の返済は、実際に払った月に「記録」からも入れてください。ここの金額は将来の見通し用で、今月の家計には足しません。</div>
     <button class="btn-main" data-act="lp-save-loans">この内容で保存する</button>
     <button class="btn-quiet" data-act="lp-add">＋ 借入を足す</button>
@@ -3328,7 +3328,7 @@ function lpPensionHtml(list){
     </div></div>`).join("");
   return `<div class="barlist">
     ${rows || `<div class="empty"><span class="e">📜</span>まだ入っていません</div>`}
-    <div class="lptotal">毎月の掛金 合計 <b class="mono">${yen(Core.lpPensionMonthly(list))}</b></div>
+    <div class="lptotal">毎月の掛金 合計 <b class="mono" data-live="sum-pension">${yen(Core.lpPensionMonthly(list))}</b></div>
     <button class="btn-main" data-act="lp-save-pension">この内容で保存する</button>
     <button class="btn-quiet" data-act="lp-add">＋ 年金を足す</button>
   </div>`;
@@ -3337,11 +3337,12 @@ function lpPensionHtml(list){
 /* ---------- 画面の値を読んで保存する ---------- */
 const lpVal = (id) => { const el=$(id); return el?el.value:""; };
 
-function lpSaveGold(){
+function lpReadGold(){
   const a = lpAssets();
   a.gold = { currentGrams: lpVal("lp-g-grams"), pricePerGram: lpVal("lp-g-price"), monthlyYen: lpVal("lp-g-monthly") };
-  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
+  return a;
 }
+function lpSaveGold(){ if(lpSaveTidy(lpReadGold())){ render(); toast("保存しました ✓"); } }
 function lpSaveBanks(){
   const a = lpAssets();
   a.banks = a.banks.map((b,i)=>({
@@ -3391,7 +3392,8 @@ function lpAddFund(key, i){
   if(!row) return;
   if((row.funds||[]).length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
   row.funds = (row.funds||[]).concat([{ name:"", amount:"" }]);
-  if(lpSave(a)) render();
+  const n = row.funds.length - 1;
+  if(lpSave(a)){ render(); focusField(`${key==="tsumitateSchedule"?"lp-ts":"lp-gs"}-fn-${i}-${n}`); }
 }
 function lpDeleteFund(key, i, n){
   const a = lpReadNisa();
@@ -3403,7 +3405,7 @@ function lpDeleteFund(key, i, n){
 }
 function lpSaveNisa(){ if(lpSaveTidy(lpReadNisa())){ render(); toast("保存しました ✓"); } }
 
-function lpSaveIdeco(){
+function lpReadIdeco(){
   const a = lpAssets();
   a.ideco = {
     productName: lpVal("lp-id-name"), monthlyContribution: lpVal("lp-id-monthly"),
@@ -3411,7 +3413,10 @@ function lpSaveIdeco(){
     startAge: lpVal("lp-id-start"), endAge: lpVal("lp-id-end"),
     payoutStartAge: lpVal("lp-id-pstart"), payoutYears: lpVal("lp-id-pyears"),
   };
-  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
+  return a;
+}
+function lpSaveIdeco(){
+  if(lpSaveTidy(lpReadIdeco())){ render(); toast("保存しました ✓"); }
 }
 function lpReadInsurance(){
   const a = lpAssets();
@@ -3425,19 +3430,26 @@ function lpReadInsurance(){
 function lpSaveInsurance(){ if(lpSaveTidy(lpReadInsurance())){ render(); toast("保存しました ✓"); } }
 
 /* 行を足す。書きかけを消さないよう、いま画面にある値をそのまま保存してから足す。 */
+/* 足した行の入力欄へ画面を移す。
+   作り直すといちばん上に戻ってしまい、どこに入れるのか分からなくなるため。 */
 function lpAddRow(key){
   if(lpKind==="insurance"){
     const ai = lpReadInsurance();
     if(ai.insurancePolicies.length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
     ai.insurancePolicies = ai.insurancePolicies.concat([{ name:"" }]);
-    if(lpSave(ai)) render();
+    const i = ai.insurancePolicies.length - 1;
+    if(lpSave(ai)){ render(); focusField(`lp-in-name-${i}`); }
     return;
   }
   if(lpKind==="nisa"){
     const a0 = lpReadNisa();
     if(a0[key].length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
     a0[key] = a0[key].concat([key==="lumpSums" ? {} : { funds: [] }]);
-    if(lpSave(a0)) render();
+    const i = a0[key].length - 1;
+    const id = key==="tsumitateSchedule" ? `lp-ts-from-${i}`
+             : key==="growthSchedule"    ? `lp-gs-from-${i}`
+             : `lp-lm-age-${i}`;
+    if(lpSave(a0)){ render(); focusField(id); }
     return;
   }
   if(lpKind==="banks"){ lpSaveBanksQuiet(); }
@@ -3448,7 +3460,9 @@ function lpAddRow(key){
   const key3 = key2;
   if(a[key3].length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
   a[key3] = a[key3].concat([{ name:"" }]);
-  if(lpSave(a)) render();
+  const i = a[key3].length - 1;
+  const id = lpKind==="banks" ? `lp-b-name-${i}` : lpKind==="loans" ? `lp-l-name-${i}` : `lp-p-name-${i}`;
+  if(lpSave(a)){ render(); focusField(id); }
 }
 /* 「足す」「消す」の前に、書きかけを取りこぼさないための静かな保存 */
 function lpSaveBanksQuiet(){ const a=lpAssets(); a.banks=a.banks.map((b,i)=>({
@@ -3533,6 +3547,61 @@ function lpExport(){
    日記や設定などの入力途中の下書きを消さないよう、
    自由入力の無い画面（カレンダー・ホーム・まとめ）だけ描き直す。 */
 /* 日記の日付えらびは、押すのではなく選ぶ操作なので change で受ける。 */
+/* ---------- 打ったその場で保存する ----------
+   「保存する」を押さずに画面を移ると、入れた内容が消えていた。
+   トップに反映されない、内訳が空に戻る、という報告の元。
+
+   画面を作り直すと入力中の欄から指が外れてしまうので、
+   保存は静かに行い、合計の表示だけをその場で書き換える。
+   打つたびに端末へ書くと重いので、手が止まってから少しおいて保存する。 */
+let autoSaveT=null;
+function lpReadCurrent(){
+  if(lpKind==="nisa")      return lpReadNisa();
+  if(lpKind==="insurance") return lpReadInsurance();
+  if(lpKind==="gold")      return lpReadGold();
+  if(lpKind==="ideco")     return lpReadIdeco();
+  const a=lpAssets();
+  if(lpKind==="banks") a.banks=a.banks.map((b,i)=>({
+    name:lpVal(`lp-b-name-${i}`), balance:lpVal(`lp-b-bal-${i}`),
+    monthlyDeposit:lpVal(`lp-b-mon-${i}`), interestPct:lpVal(`lp-b-int-${i}`), id:b.id }));
+  if(lpKind==="loans") a.loans=a.loans.map((l,i)=>({
+    name:lpVal(`lp-l-name-${i}`), principal:lpVal(`lp-l-pri-${i}`),
+    annualRatePct:lpVal(`lp-l-rate-${i}`), monthlyPayment:lpVal(`lp-l-pay-${i}`), id:l.id }));
+  if(lpKind==="pension") a.privatePensionPlans=a.privatePensionPlans.map((p,i)=>({
+    name:lpVal(`lp-p-name-${i}`), monthlyContribution:lpVal(`lp-p-mon-${i}`),
+    contribFromAge:lpVal(`lp-p-cf-${i}`), contribToAge:lpVal(`lp-p-ct-${i}`),
+    payoutFromAge:lpVal(`lp-p-pf-${i}`), payoutToAge:lpVal(`lp-p-pt-${i}`),
+    monthlyPayout:lpVal(`lp-p-pay-${i}`), id:p.id }));
+  return a;
+}
+
+/* 保存したあとの値で、合計の表示だけを書き換える（欄は触らない） */
+function lpRefreshTotals(){
+  const a = Core.normalizeLifePlanAssets(state.settings.lp);
+  const put = (sel, text) => { const el=document.querySelector(sel); if(el) el.textContent=text; };
+  [["tsumitateSchedule", a.tsumitateSchedule], ["growthSchedule", a.growthSchedule]].forEach(([key,rows])=>{
+    rows.forEach((r,i)=>{
+      put(`[data-live="${key}-${i}"]`, yen(r.monthlyYen));
+      put(`[data-liveage="${key}-${i}"]`, `${r.fromAge||0}歳 〜 ${r.toAge||0}歳`);
+    });
+  });
+  put('[data-live="sum-insurance"]', yen(a.insurancePolicies.reduce((t,p)=>t+p.monthlyPremium,0)));
+  put('[data-live="sum-gold"]',      yen(Core.lpGoldValue(a.gold)));
+  put('[data-live="sum-banks"]',     yen(Core.lpBanksTotal(a.banks)));
+  put('[data-live="sum-loans"]',     yen(Core.lpLoansTotal(a.loans)));
+  put('[data-live="sum-pension"]',   yen(Core.lpPensionMonthly(a.privatePensionPlans)));
+}
+
+function autoSave(){
+  if(view==="settings"){ saveSettingsQuiet(); return; }
+  if(view==="lp"){ lpSave(lpReadCurrent()); lpRefreshTotals(); }
+}
+document.addEventListener("input",(e)=>{
+  const el=e&&e.target; if(!el||!el.id) return;
+  if(view!=="settings" && view!=="lp") return;
+  clearTimeout(autoSaveT); autoSaveT=setTimeout(autoSave,350);
+});
+
 document.addEventListener("change",(e)=>{
   const el = e && e.target;
   if(el && el.id === "d-date") pickDiaryDate(el.value);

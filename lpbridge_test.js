@@ -464,3 +464,156 @@ test("共有を取り消したら、ダウンロードで書き出す", async ()
   assert.match(String(app.run(`globalThis.__file`)), /kakeibo-backup-.*\.json/,
     "共有を取り消したのに、ダウンロードもしていない");
 });
+
+/* =========================================================================
+   打ったその場で保存する（自動保存）
+   -------------------------------------------------------------------------
+   「保存する」を押さずに画面を移ると入れた内容が消え、
+   トップに反映されない・内訳が空に戻る、という報告があった。
+   ========================================================================= */
+
+test("NISA：打っただけで保存され、トップにも出る", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20 }, tx: [] } });
+  app.run(`lpKind="nisa"; view="lp"; lpAddRow("tsumitateSchedule"); lpAddFund("tsumitateSchedule",0);`);
+  app.run(`document.getElementById("lp-ts-from-0").value="57";
+    document.getElementById("lp-ts-to-0").value="65";
+    document.getElementById("lp-ts-fn-0-0").value="全世界";
+    document.getElementById("lp-ts-fa-0-0").value="100000";
+    autoSave();`);
+  assert.strictEqual(app.run(`state.settings.lp.tsumitateSchedule[0].monthlyYen`), 100000, "保存されていない");
+  assert.strictEqual(JSON.parse(app.saved()).settings.lp.tsumitateSchedule[0].monthlyYen, 100000, "端末に残っていない");
+  const home = app.run(`view="home"; renderHome()`);
+  assert.match(home, /NISA<\/div><div class="dv mono">¥100,000\/月</, "トップに反映されていない");
+});
+
+test("2つ目の銘柄を足しても、合計がその場で足し直される", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20 }, tx: [] } });
+  app.run(`lpKind="nisa"; view="lp"; lpAddRow("growthSchedule");
+    lpAddFund("growthSchedule",0); lpAddFund("growthSchedule",0);`);
+  app.run(`document.getElementById("lp-gs-from-0").value="57";
+    document.getElementById("lp-gs-to-0").value="65";
+    document.getElementById("lp-gs-fn-0-0").value="インド";
+    document.getElementById("lp-gs-fa-0-0").value="5000";
+    document.getElementById("lp-gs-fn-0-1").value="AI半導体";
+    document.getElementById("lp-gs-fa-0-1").value="5000";
+    autoSave();`);
+  assert.strictEqual(app.run(`state.settings.lp.growthSchedule[0].monthlyYen`), 10000, "2つ目が足されていない");
+});
+
+test("金・銀行・借入・年金・保険・iDeCoも、打っただけで保存される", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13", cycleStart: 20 }, tx: [] } });
+  const put = (id, v) => `document.getElementById("${id}").value=${JSON.stringify(v)};`;
+
+  app.run(`lpKind="gold"; view="lp"; render();`);
+  app.run(put("lp-g-monthly", "10000") + `autoSave();`);
+  assert.strictEqual(app.run(`state.settings.lp.gold.monthlyYen`), 10000, "金が保存されない");
+
+  app.run(`lpKind="banks"; lpAddRow();`);
+  app.run(put("lp-b-name-0", "A銀行") + put("lp-b-mon-0", "20000") + `autoSave();`);
+  assert.strictEqual(app.run(`state.settings.lp.banks[0].monthlyDeposit`), 20000, "銀行が保存されない");
+
+  app.run(`lpKind="loans"; lpAddRow();`);
+  app.run(put("lp-l-name-0", "車") + put("lp-l-pay-0", "70000") + `autoSave();`);
+  assert.strictEqual(app.run(`state.settings.lp.loans[0].monthlyPayment`), 70000, "借入が保存されない");
+
+  app.run(`lpKind="pension"; lpAddRow();`);
+  app.run(put("lp-p-name-0", "共済") + put("lp-p-mon-0", "15000") + `autoSave();`);
+  assert.strictEqual(app.run(`state.settings.lp.privatePensionPlans[0].monthlyContribution`), 15000, "民間年金が保存されない");
+
+  app.run(`lpKind="insurance"; lpAddRow();`);
+  app.run(put("lp-in-name-0", "○○保険") + put("lp-in-prem-0", "18672") + `autoSave();`);
+  assert.strictEqual(app.run(`state.settings.lp.insurancePolicies[0].monthlyPremium`), 18672, "各種保険が保存されない");
+
+  app.run(`lpKind="ideco"; render();`);
+  app.run(put("lp-id-monthly", "23000") + `autoSave();`);
+  assert.strictEqual(app.run(`state.settings.lp.ideco.monthlyContribution`), 23000, "iDeCoが保存されない");
+});
+
+test("せっていも、打っただけで保存される（目標の貯まった額など）", () => {
+  const app = bootApp({ state: { settings: { goalName: "車", goalTarget: 1000000 }, tx: [] } });
+  app.run(`view="settings"; render();
+    document.getElementById("f-gcur").value="300000";
+    document.getElementById("f-gtarget").value="1000000";
+    document.getElementById("f-gname").value="車";
+    autoSave();`);
+  assert.strictEqual(app.run(`state.settings.goalCurrent`), 300000, "保存されていない");
+  assert.strictEqual(JSON.parse(app.saved()).settings.goalCurrent, 300000, "端末に残っていない");
+  const home = app.run(`view="home"; renderHome()`);
+  assert.match(home, /あと70%/, "トップの進み具合が変わっていない");
+});
+
+test("打っている間は画面を作り直さない（入力中の欄から指が外れないように）", () => {
+  const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
+  const fn = html.slice(html.indexOf("function autoSave()"), html.indexOf("function autoSave()") + 260);
+  assert.equal(/\brender\(\)/.test(fn), false, "自動保存で画面を作り直している");
+  assert.match(html, /lpRefreshTotals\(\)/, "合計の書き換えをしていない");
+  assert.match(html, /data-live="\$\{key\}-\$\{i\}"/, "合計に書き換え用の印が無い");
+});
+
+test("NISAの見出しは「積立」とだけ書く（区間ごとの銘柄はわかりにくい）", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13" }, tx: [] } });
+  const out = app.run(`lpKind="nisa"; view="lp"; renderLp()`);
+  assert.match(out, /つみたて投資枠（積立）/);
+  assert.match(out, /成長投資枠（積立）/);
+  assert.equal(out.includes("区間ごとの銘柄"), false, "古い言い方が残っている");
+});
+
+test("自動保存が、打つ操作につながっている", () => {
+  /* テスト用の簡易DOMはイベントを流せないので、つなぎ込みを字面で確かめる。
+     ここが外れると、打っても何も保存されなくなる。 */
+  const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
+  const appSrc = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].pop()[1];
+  assert.match(appSrc, /addEventListener\("input"/, "打つ操作を受けていない");
+  assert.match(appSrc, /autoSaveT\s*=\s*setTimeout\(autoSave,\s*\d+\)/, "手が止まってからの保存を仕掛けていない");
+  assert.match(appSrc, /clearTimeout\(autoSaveT\)/, "打つたびに端末へ書いてしまう");
+  /* 対象はせっていと内訳の2画面だけ（ほかの画面で無駄に保存しない） */
+  assert.match(appSrc, /if\(view!=="settings" && view!=="lp"\) return;/, "対象の画面をしぼっていない");
+});
+
+test("行を足したら、その入力欄まで画面が移る（いちばん上に戻らない）", () => {
+  /* 作り直すと先頭に戻ってしまい、どこに入れるのか分からなくなっていた。 */
+  const app = bootApp({ state: { settings: { birth: "1968-11-13" }, tx: [] } });
+  const focused = () => app.run(`globalThis.__focus`);
+  app.run(`globalThis.__focus=null; globalThis.focusField=(id)=>{ globalThis.__focus=id; };`);
+
+  app.run(`lpKind="nisa"; view="lp"; lpAddRow("tsumitateSchedule");`);
+  assert.strictEqual(focused(), "lp-ts-from-0", "足した区間へ移っていない");
+  app.run(`lpAddFund("tsumitateSchedule",0);`);
+  assert.strictEqual(focused(), "lp-ts-fn-0-0", "足した銘柄へ移っていない");
+  app.run(`lpAddRow("growthSchedule");`);
+  assert.strictEqual(focused(), "lp-gs-from-0", "成長投資枠で移っていない");
+
+  app.run(`lpKind="banks"; lpAddRow();`);
+  assert.strictEqual(focused(), "lp-b-name-0", "銀行で移っていない");
+  app.run(`lpKind="loans"; lpAddRow();`);
+  assert.strictEqual(focused(), "lp-l-name-0", "借入で移っていない");
+  app.run(`lpKind="pension"; lpAddRow();`);
+  assert.strictEqual(focused(), "lp-p-name-0", "民間年金で移っていない");
+  app.run(`lpKind="insurance"; lpAddRow();`);
+  assert.strictEqual(focused(), "lp-in-name-0", "各種保険で移っていない");
+});
+
+test("2つ目を足したときは、2つ目の欄へ移る", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13" }, tx: [] } });
+  app.run(`globalThis.__focus=null; globalThis.focusField=(id)=>{ globalThis.__focus=id; };`);
+  app.run(`lpKind="nisa"; view="lp"; lpAddRow("tsumitateSchedule");
+    lpAddFund("tsumitateSchedule",0); lpAddFund("tsumitateSchedule",0);`);
+  assert.strictEqual(app.run(`globalThis.__focus`), "lp-ts-fn-0-1", "2つ目の銘柄へ移っていない");
+});
+
+test("銀行・借入・年金・保険も、2つ目は2つ目の欄へ移る", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13" }, tx: [] } });
+  app.run(`globalThis.__focus=null; globalThis.focusField=(id)=>{ globalThis.__focus=id; };`);
+  [["banks", "lp-b-name-1"], ["loans", "lp-l-name-1"],
+   ["pension", "lp-p-name-1"], ["insurance", "lp-in-name-1"]].forEach(([kind, want]) => {
+    app.run(`lpKind="${kind}"; view="lp"; lpAddRow(); lpAddRow();`);
+    assert.strictEqual(app.run(`globalThis.__focus`), want, `${kind} が2つ目へ移っていない`);
+  });
+});
+
+test("区間も、2つ目は2つ目の欄へ移る", () => {
+  const app = bootApp({ state: { settings: { birth: "1968-11-13" }, tx: [] } });
+  app.run(`globalThis.__focus=null; globalThis.focusField=(id)=>{ globalThis.__focus=id; };`);
+  app.run(`lpKind="nisa"; view="lp"; lpAddRow("tsumitateSchedule"); lpAddRow("tsumitateSchedule");`);
+  assert.strictEqual(app.run(`globalThis.__focus`), "lp-ts-from-1", "2つ目の区間へ移っていない");
+});
