@@ -1664,11 +1664,9 @@ function renderSettings(){
   return `<div class="screen">
     <div class="stitle" style="margin-top:6px">生年月日</div>
     <div class="calcnote" style="margin:0 0 10px">
-      <b>なぜ必要か。</b>ライフプランの積立は「57歳9ヶ月〜65歳・月9万円」のように<b>年齢の区間</b>で決めます。
-      いま何歳かが分からないと、どの区間にいるかを決められず、今月いくら先取りするのかも出せません。<br>
-      ライフプランへ渡すときにも、生年月日の食い違いを知らせるために使います。
-      向こうの生年月日を勝手に書き換えることはありません。
-      ライフプランとの連携以外の目的には使いません。
+      <b>なぜ必要か。</b>NISA積立の年齢区間を正しく計算するために使用します。
+      ライフプラン連携時には、生年月日の食い違い確認にも使用します。
+      ライフプラン側の生年月日を自動で変更することはありません。
     </div>
     <div class="field"><label>生年月日</label>
       <input id="f-birth" type="date" value="${escapeAttr(s.birth||"")}">

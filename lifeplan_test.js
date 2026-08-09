@@ -506,7 +506,10 @@ test("せっていに生年月日の欄があり、なぜ要るかが書いて�
   const out = app.run(`view="settings"; render(); document.getElementById("app").innerHTML`);
   assert.match(out, /id="f-birth"/, "生年月日の欄が無い");
   assert.match(out, /なぜ必要か/, "理由が書いていない");
-  assert.match(out, /年齢の区間/, "年齢の区間で決まることを説明していない");
+  assert.match(out, /年齢区間/, "年齢の区間で決まることを説明していない");
+  /* 連携時に生年月日を渡すこと、向こうを書き換えないことも伝える */
+  assert.match(out, /食い違い/, "連携時の食い違い確認にふれていない");
+  assert.match(out, /自動で変更することはありません/, "向こうを書き換えないと伝えていない");
 });
 
 test("生年月日を保存できる（保存ボタンでも、内訳へ移るときでも）", () => {
