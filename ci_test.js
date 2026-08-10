@@ -166,6 +166,47 @@ test("対応表は、いまある変異の名前だけを持っている", () =>
   assert.deepEqual(stale, [], "もう無い変異が対応表に残っている: " + stale.join(" / "));
 });
 
+/* ---------- 変異の当たり先（対象なしを作らない） ----------
+   ソースを直したときに変異の from が消えると「対象なし」になる。
+   そのとき通常テストは緑、見逃しも0のままなので、
+   守れていないことに誰も気づけない。実際にこれが23件たまっていた。
+   だから、ここを通常テストの砦として置く。 */
+test("すべての変異が、いまのソースに当たる（対象なしを作らない）", () => {
+  const MUTATIONS = require("./mutations.js");
+  const cache = {};
+  const dead = [];
+  MUTATIONS.forEach((m) => {
+    const src = cache[m.file] || (cache[m.file] = fs.readFileSync(path.join(__dirname, m.file), "utf8"));
+    if (!src.includes(m.from)) dead.push(`${m.name}（${m.file}／守りたい振る舞い：${m.guards}）`);
+  });
+  assert.deepEqual(dead, [],
+    "変異の当たり先が消えている。ソースを直したら変異の from も直すこと:\n  " + dead.join("\n  "));
+});
+
+test("変異の当たり先は、ソースの1か所だけに定まる", () => {
+  /* 2か所に当たると、狙った行ではなく別の行を壊してしまう。
+     検出はされるので緑になるが、見張っている中身が違う。 */
+  const MUTATIONS = require("./mutations.js");
+  const cache = {};
+  const ambiguous = [];
+  MUTATIONS.forEach((m) => {
+    const src = cache[m.file] || (cache[m.file] = fs.readFileSync(path.join(__dirname, m.file), "utf8"));
+    const hits = src.split(m.from).length - 1;
+    if (hits > 1) ambiguous.push(`${m.name}（${m.file}／${hits}か所）`);
+  });
+  assert.deepEqual(ambiguous, [], "当たり先が1か所に定まらない: " + ambiguous.join(" / "));
+});
+
+test("mutation の実行そのものが、対象なしと見逃しの両方で赤になる", () => {
+  /* この検査は消されやすい。消えていないことを、ここでも見張る。 */
+  const runner = fs.readFileSync(path.join(__dirname, "run-mutations.js"), "utf8");
+  assert.match(runner, /function preflight\(\)/, "走らせる前の点検が無い");
+  assert.match(runner, /対象なし \$\{pre\.dead\.length\} 件/, "対象なしで赤にしていない");
+  assert.match(runner, /if \(skipped\.length\)/, "実行後の対象なし判定が無い");
+  assert.match(runner, /if \(missed\.length\)/, "見逃しの判定が消えている");
+  assert.match(runner, /if \(bad\) process\.exit\(1\);/, "赤にする処理が無い");
+});
+
 test("元のソースをその場で書き換える作りに戻っていない", () => {
   const libSrc = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");
   assert.match(libSrc, /makeWorkspace/, "一時フォルダへ写す作りになっていない");

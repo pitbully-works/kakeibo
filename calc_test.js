@@ -159,7 +159,9 @@ test("記録の画面に電卓が出る", () => {
   app.run(`openRecord(null);`);
   const h = sheet(app);
   assert.match(h, /class="calcpad"/, "電卓が出ていない");
-  for (const key of ["7", "0", "00", "000", "+", "-", "*", "/", "=", "C", "back"]) {
+  /* キーの並びは5か国とも同じ。000 は小数点キーに置き換えた
+     （国ごとに配置が変わると、どの国の画面か分からなくなるため）。 */
+  for (const key of ["7", "0", "00", ".", "+", "-", "*", "/", "=", "C", "back"]) {
     assert.ok(h.includes(`data-key="${key}"`), `${key} のキーが無い`);
   }
 });

@@ -361,7 +361,7 @@
   "sw_test.js"
  ],
  "設定の保存失敗を巻き戻さない": [
-  "rollback_test.js"
+  "audit_test.js"
  ],
  "設定の保存失敗でも成功と表示する": [
   "rollback_test.js"
@@ -514,9 +514,6 @@
  "保存のときに印を落とす": [
   "recurring_test.js"
  ],
- "更新のときに印を消さない": [
-  "recurring_test.js"
- ],
  "収入に切り替えても印を残す": [
   "recurring_test.js"
  ],
@@ -643,25 +640,32 @@
   "plan_test.js"
  ],
  "わり算を切り捨てにする": [
-  "calc_test.js"
+  "calc_test.js",
+  "decimal_input_test.js"
  ],
  "0で割れてしまう": [
-  "calc_test.js"
+  "calc_test.js",
+  "decimal_input_test.js"
  ],
  "＝を押さないと計算されない": [
-  "calc_test.js"
+  "calc_test.js",
+  "decimal_input_test.js"
  ],
  "打ち込める桁数の上限を外す": [
-  "calc_test.js"
+  "calc_test.js",
+  "decimal_input_test.js"
  ],
  "＝のあとに打ち足せてしまう": [
-  "calc_test.js"
+  "calc_test.js",
+  "decimal_input_test.js"
  ],
  "式を出さない": [
-  "calc_test.js"
+  "calc_test.js",
+  "decimal_input_test.js"
  ],
  "記録するとき、待っている計算を捨てる": [
-  "calc_test.js"
+  "calc_test.js",
+  "decimal_input_test.js"
  ],
  "金額欄にキーボードを出す": [
   "calc_test.js"
@@ -821,6 +825,7 @@
   "country_us.test.js"
  ],
  "せっていで国を読まない（切り替えても保存されない）": [
+  "audit_test.js",
   "country_us.test.js"
  ],
  "まとめの記録一覧を国で絞らない": [
@@ -972,9 +977,125 @@
   "minor_units_test.js"
  ],
  "打ち込みを最小単位へ直さない": [
-  "minor_units_test.js"
+  "minor_units_test.js",
+  "decimal_input_test.js"
  ],
  "直すときいまの国で換算する": [
   "minor_units_test.js"
+ ],
+ "円でも小数点を受け付ける": [
+  "decimal_input_test.js"
+ ],
+ "小数点を2つ置けるようにする": [
+  "decimal_input_test.js"
+ ],
+ "小数の桁数を制限しない": [
+  "decimal_input_test.js"
+ ],
+ "掛け算で倍率をならさない": [
+  "decimal_input_test.js"
+ ],
+ "割り算で倍率をならさない": [
+  "decimal_input_test.js"
+ ],
+ "打ち込みを小数のまま数にする": [
+  "decimal_input_test.js"
+ ],
+ "打ち込み欄でセントを切り捨てる": [
+  "decimal_input_test.js"
+ ],
+ "記録の電卓をいまの国の桁数で作る": [
+  "decimal_input_test.js"
+ ],
+ "レシートの小数を読まない": [
+  "decimal_input_test.js"
+ ],
+ "小計を合計として拾う": [
+  "decimal_input_test.js",
+  "chart_ocr_i18n_test.js"
+ ],
+ "お釣りを合計として拾う": [
+  "decimal_input_test.js",
+  "chart_ocr_i18n_test.js"
+ ],
+ "英語の言い回しを合計と見なさない": [
+  "decimal_input_test.js",
+  "chart_ocr_i18n_test.js"
+ ],
+ "レシートの桁数を渡さない": [
+  "decimal_input_test.js",
+  "integrity.test.js"
+ ],
+ "候補を主単位へ戻さずに入れる": [
+  "decimal_input_test.js",
+  "scoring_test.js"
+ ],
+ "設定の小数を切り捨てる": [
+  "decimal_input_test.js"
+ ],
+ "金額の欄に小数のキーボードを出さない": [
+  "decimal_input_test.js"
+ ],
+ "直しても記録に反映されない": [
+  "audit_test.js",
+  "recurring_test.js"
+ ],
+ "英語圏の目もりに M を出さない": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "英語圏の目もりに k を出さない": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "円でも k を出す": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "目もりを最小単位のまま出す": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "目もりの短縮で小数を捨てる": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "税込みの合計より税の語を優先する": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "はっきりした合計の言い方を知らない": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "英語の税を拾ってしまう": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "カード会社名を拾ってしまう": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "チップ・値引きを拾ってしまう": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "数量・単価を拾ってしまう": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "電卓の並びを国で分ける": [
+  "chart_ocr_i18n_test.js",
+  "calc_test.js",
+  "decimal_input_test.js"
+ ],
+ "小数点キーを出さない": [
+  "chart_ocr_i18n_test.js",
+  "calc_test.js",
+  "decimal_input_test.js"
+ ],
+ "関数電卓の記録ボタンを出さない": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "記録ボタンの金額を主単位のまま出す": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "記録画面へ最小単位のまま渡す": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "その通貨で表せない答えも記録させる": [
+  "chart_ocr_i18n_test.js"
+ ],
+ "0や負の答えも記録させる": [
+  "chart_ocr_i18n_test.js"
  ]
 }

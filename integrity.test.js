@@ -75,7 +75,9 @@ test("レシートは枠で指定した範囲だけを読む", () => {
   assert.match(src, /data-act="shot-total"/, "アップ撮影のボタンが無い");
   assert.match(src, /data-act="read-crop"/, "枠で読み取るボタンが無い");
   assert.match(src, /Core\.cropRect\(crop, nat\)/, "枠の切り出しに core を使っていない");
-  assert.match(src, /Core\.amountDetails\(data\.text\)/, "core の解釈関数を使っていない");
+  /* 解釈は core の関数に任せる。小数のある通貨では桁数も渡す
+     （渡さないと $9.99 が 99 と読まれ、10倍まちがえる）。 */
+  assert.match(src, /Core\.amountDetails\(data\.text, sheetDec\(\)\)/, "core の解釈関数を使っていない／桁数を渡していない");
   assert.match(src, /tessedit_char_whitelist/, "数字だけを読む設定が無い");
 });
 

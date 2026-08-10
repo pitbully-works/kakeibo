@@ -177,7 +177,9 @@ test("候補は最大5件、タップしても保存はしない", () => {
   assert.match(appSrc, /st\.ocrChoices = ranked\.slice\(0, Core\.MAX_CHOICES\)/, "候補の上限を使っていない");
   assert.match(appSrc, /data-pick="\$\{a\}"/, "候補ボタンが無い");
   const pick = appSrc.slice(appSrc.indexOf('const pick=e.target.closest("[data-pick]")'), appSrc.indexOf('const act=e.target.closest'));
-  assert.match(pick, /sheetState\.amount=String\(pick\.dataset\.pick\)/, "タップで金額が入らない");
+  /* 候補は最小単位で持っている。打ち込み欄には主単位の字で入れる。 */
+  assert.match(pick, /sheetState\.amount=Core\.minorToMajorText\(pick\.dataset\.pick, sheetDec\(\)\)/,
+    "タップで金額が入らない／単位を戻していない");
   assert.equal(/save\(\)|saveTx\(\)/.test(pick), false, "候補をタップしただけで保存している");
   assert.match(appSrc, /記録はまだされません/, "保存されない旨の説明が無い");
 });

@@ -653,7 +653,7 @@ test("直すとき、USの記録は打ち込み欄に主単位で出て、最小
            memo: "", photo: null, country: "US" }],
   } });
   app.run(`openRecord("us1");`);
-  assert.equal(app.run(`sheetState.amount`), "1234", "$1,234.00 が打ち込み欄に 1234 で出ていない");
+  assert.equal(app.run(`sheetState.amount`), "1234.00", "$1,234.00 が打ち込み欄に 1234.00 で出ていない");
   fill(app, 2000);
   await app.run(`saveTx()`);
   const t = JSON.parse(app.saved()).tx[0];

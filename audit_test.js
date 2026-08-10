@@ -471,3 +471,72 @@ test("5カ国の通貨と表示は、これまでのまま", () => {
   assert.ok(Core.formatMoney(1234, "CA").startsWith("CA$"));
   assert.ok(Core.formatMoney(1234, "AU").startsWith("A$"));
 });
+
+/* =========================================================================
+   mutation test の穴を塞ぐために足したもの
+   -------------------------------------------------------------------------
+   ソースを直したときに、変異の当たり先が消えて「対象なし」になり、
+   守れているつもりで守れていない箇所ができていた。当たり先を直したうえで、
+   その振る舞いを見張るテストをここに置く。
+   ========================================================================= */
+
+test("せっていの自動保存が失敗したら、設定は元のまま残る", () => {
+  /* 打つたびの自動保存が失敗したのに画面だけ変わると、
+     画面と端末の中身が食い違い、次に開いたとき打った内容が消える。 */
+  const app = bootApp({ state: { settings: { goalName: "車", goalTarget: 1000000 }, tx: [] },
+    storageFull: true });
+  app.run(`view="settings"; render();`);
+  app.run(`document.getElementById("f-gname").value="家"; autoSave("f-gname");`);
+  assert.equal(app.run(`state.settings.goalName`), "車", "保存できていないのに画面の設定が変わった");
+
+  /* 保存できるときは、ちゃんと変わること（巻き戻しが効きすぎていない） */
+  const ok = bootApp({ state: { settings: { goalName: "車" }, tx: [] } });
+  ok.run(`view="settings"; render();`);
+  ok.run(`document.getElementById("f-gname").value="家"; autoSave("f-gname");`);
+  assert.equal(ok.run(`state.settings.goalName`), "家", "保存できるのに変わっていない");
+});
+
+test("せっていで国を選ぶと、その国が保存される", () => {
+  const app = bootApp({ state: { settings: { country: "JP" }, tx: [] } });
+  app.run(`view="settings"; render();`);
+  app.run(`document.getElementById("f-country").value="US"; autoSave("f-country");`);
+  assert.equal(app.run(`state.settings.country`), "US", "国の選択が保存されていない");
+  assert.equal(JSON.parse(app.saved()).settings.country, "US", "端末に残っていない");
+});
+
+test("収入に切り替えて更新すると、毎月固定の印が記録から消える", async () => {
+  /* 支出のときに付けた印が、収入へ切り替えて更新しても残ってしまうと、
+     まとめの内わけと月末の見積もりが狂う。 */
+  const app = bootApp({ state: {
+    settings: {},
+    tx: [{ id: "r1", type: "expense", amount: 60000, cat: "rent", date: D(1),
+           memo: "", photo: null, recurring: true }],
+  } });
+  app.run(`openRecord("r1");`);
+  assert.equal(app.run(`sheetState.recurring`), true, "前提が崩れている");
+  app.run(`
+    sheetState.type="income"; sheetState.cat="salary";
+    document.getElementById("s-amt").value="300000";
+    document.getElementById("s-date").value=${JSON.stringify(D(10))};
+  `);
+  await app.run(`saveTx()`);
+  const t = JSON.parse(app.saved()).tx[0];
+  assert.equal(t.type, "income", "更新できていない");
+  assert.equal("recurring" in t, false, "収入なのに毎月固定の印が残っている");
+});
+
+test("支出のまま印を外して更新すると、記録からも消える", async () => {
+  const app = bootApp({ state: {
+    settings: {},
+    tx: [{ id: "r1", type: "expense", amount: 60000, cat: "rent", date: D(1),
+           memo: "", photo: null, recurring: true }],
+  } });
+  app.run(`openRecord("r1");`);
+  app.run(`handleAct("toggle-recurring");`);
+  app.run(`
+    document.getElementById("s-amt").value="60000";
+    document.getElementById("s-date").value=${JSON.stringify(D(1))};
+  `);
+  await app.run(`saveTx()`);
+  assert.equal("recurring" in JSON.parse(app.saved()).tx[0], false, "印が消えていない");
+});

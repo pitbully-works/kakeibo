@@ -93,6 +93,26 @@ if (FAST && changed) {
 
 const map = loadMap();
 
+/* ---------- 出発前の点検：変異の当たり先が、いまも全部あるか ----------
+   ここが今回いちばん大事な検査。
+   ソースを書き換えると、変異の from が消えて「対象なし」になる。
+   そのとき通常テストは緑のまま、見逃しも0のままなので、
+   **守っているつもりで守れていない**状態が静かに残る（実際に23件たまっていた）。
+   だから、絞り込み（--fast の対象）とは関係なく、
+   いつでも一覧の全件を静的に確かめて、1件でも欠けたら赤にする。 */
+function preflight() {
+  const dead = [];
+  const ambiguous = [];
+  const cache = {};
+  for (const m of MUTATIONS) {
+    const f = cache[m.file] || (cache[m.file] = fs.readFileSync(path.join(dir, m.file), "utf8"));
+    const hits = f.split(m.from).length - 1;
+    if (hits === 0) dead.push(m);
+    else if (hits > 1) ambiguous.push({ m: m, hits: hits });
+  }
+  return { dead: dead, ambiguous: ambiguous };
+}
+
 /* ---------- ここから実行 ---------- */
 (async function main() {
   /* 元のソースが最後まで無傷であることを、後で突き合わせるために控える */
@@ -105,6 +125,22 @@ const map = loadMap();
   try { base = await lib.runTests(baseWs); } finally { lib.removeWorkspace(baseWs); }
   if (!base.ok) {
     console.error("変異させる前からテストが落ちています。先に直してください。");
+    process.exit(1);
+  }
+
+  /* 変異の当たり先が消えていないかを、走らせる前に確かめる */
+  const pre = preflight();
+  if (pre.ambiguous.length) {
+    /* 1か所に定まらない変異は、狙った行ではなく別の行を壊してしまう。
+       検出はされるので緑にはなるが、見張っている中身が違う。 */
+    pre.ambiguous.forEach((x) =>
+      console.log(`::warning::変異「${x.m.name}」は ${x.m.file} の ${x.hits} か所に当たります（狙った行を壊せていない可能性）`));
+  }
+  if (pre.dead.length) {
+    console.error(`::error::変異の当たり先が見つかりません（対象なし ${pre.dead.length} 件）。`
+      + "ソースを直したときに、変異の from も直してください。"
+      + "このまま進めると、守れていないのに緑のままになります。");
+    pre.dead.forEach((m) => console.error(`  対象なし: ${m.name} （${m.file}） 守りたい振る舞い：${m.guards}`));
     process.exit(1);
   }
 
@@ -184,6 +220,12 @@ const map = loadMap();
       r.status === "検出" ? "✅ 検出" : r.status === "見逃し" ? "❌ 見逃し" : "— 対象なし"
     } | ${r.failedCount === null ? "-" : r.failedCount} |`),
     "",
+    skipped.length
+      ? "## 対象なし（変異の当たり先が消えています）\n\n"
+        + "ソースを直したときに、変異の `from` も直してください。\n"
+        + "このままだと、守れていないのに緑のままになります。\n\n"
+        + skipped.map((r) => `- ${r.name}（${r.guards}）`).join("\n") + "\n"
+      : "",
     missed.length
       ? "## 見逃し（テストの穴）\n\n" + missed.map((r) => `- ${r.name}（${r.guards}）`).join("\n")
         + (FAST ? "\n\n> 高速検査で見逃しが出たときは、対応表が古い可能性もあります。\n> `node run-mutations.js`（完全検査）で確かめてください。" : "")
@@ -199,11 +241,22 @@ const map = loadMap();
   }
 
   console.log(`変異 ${results.length} 件中、検出 ${caught.length} 件 ／ 見逃し ${missed.length} 件`
-    + ` ／ ${took.toFixed(1)} 秒`);
+    + ` ／ 対象なし ${skipped.length} 件 ／ ${took.toFixed(1)} 秒`);
+
+  /* 見逃し（テストの穴）と、対象なし（変異が当たっていない）は、
+     どちらも「守れていない」ことに変わりはない。両方で赤にする。 */
+  let bad = false;
   if (missed.length) {
     missed.forEach((r) => console.log("  見逃し: " + r.name));
-    process.exit(1);
+    console.error(`::error::見逃しが ${missed.length} 件あります（テストの穴）`);
+    bad = true;
   }
+  if (skipped.length) {
+    skipped.forEach((r) => console.log("  対象なし: " + r.name));
+    console.error(`::error::対象なしが ${skipped.length} 件あります（変異の当たり先が消えています）`);
+    bad = true;
+  }
+  if (bad) process.exit(1);
 })().catch((e) => {
   lib.removeAllWorkspaces();
   console.error(e);

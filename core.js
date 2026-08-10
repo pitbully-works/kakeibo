@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.8.0";
+  const APP_VERSION = "1.11.0";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -1688,24 +1688,56 @@
       .replace(/(登録番号|No\.?|NO\.?|伝票)\s*[:：]?\s*T?\d+/g, " ");
   }
 
-  /* 「合計」など、その行の金額を採用してよい語 */
-  const TOTAL_KW = /(合\s*計|お会計|お買[上げい]+\s*計|ご請求(金)?額|税込\s*計|総\s*額|total)/i;
-  /* 合計と紛らわしく、拾ってはいけない語 */
-  const SKIP_KW = /(小\s*計|中\s*計|お預[りかり]*|預\s*り|お釣り|釣\s*銭|お返し|現\s*金|クレジット|カード|電子マネー|ポイント|point|値引|割引|外税|内税|消費税|税\s*額|対象額)/i;
+  /* 「合計」など、その行の金額を採用してよい語。
+     英語のレシートは書き方がまちまちなので、よく使われる言い方を足す。 */
+  /* はっきり「これが合計です」と書いてある言い方。
+     -----------------------------------------------------------------------
+     これに当たった行は、あとの「拾ってはいけない語」より優先する。
+     たとえば英国・豪州の「Total incl VAT」「Total inc GST」は、
+     税の語（VAT / GST）を含むので、優先しないと丸ごと捨ててしまう。 */
+  const STRONG_TOTAL_KW = /(合\s*計|お会計|ご請求(金)?額|grand\s*total|order\s*total|total\s*due|amount\s*due|balance\s*due|total\s*amount|amount\s*payable|total\s*payable|total\s*to\s*pay|total\s*pay\b|total\s*inc)/i;
 
-  /* 文字列から金額候補を位置つきで拾う */
-  function amountsIn(str) {
+  /* 「合計」など、その行の金額を採用してよい語。
+     英語圏はレシートの書き方がまちまちなので、よく使われる言い方をひととおり入れる。 */
+  const TOTAL_KW = /(合\s*計|お会計|お買[上げい]+\s*計|ご請求(金)?額|税込\s*計|総\s*額|grand\s*total|order\s*total|total\s*due|amount\s*due|balance\s*due|total\s*amount|amount\s*payable|total\s*payable|total\s*to\s*pay|total\s*pay\b|you\s*pay|net\s*payable|purchase\s*total|total)/i;
+
+  /* 合計と紛らわしく、拾ってはいけない語。
+     英語の Subtotal は中に total を含むので、必ずこちらで先に落とす。
+     税（VAT / GST / HST / PST / QST / Sales Tax）・支払い手段・値引き・
+     チップ・数量などの行は、合計ではない。 */
+  const SKIP_KW = /(小\s*計|中\s*計|お預[りかり]*|預\s*り|お釣り|釣\s*銭|お返し|現\s*金|クレジット|カード|電子マネー|ポイント|point|値引|割引|外税|内税|消費税|税\s*額|対象額|sub\s*-?\s*total|change\s*due|change|cash\s*tend|tendered|cash|credit|debit|card|visa|mastercard|amex|eftpos|interac|coupon|discount|savings|you\s*saved|loyalty|reward|tip|gratuity|service\s*charge|deposit|refund|rounding|sales\s*tax|\btax\b|\bvat\b|\bgst\b|\bhst\b|\bpst\b|\bqst\b|unit\s*price|\bqty\b|quantity|\bitems?\b\s*[:：]?\s*\d)/i;
+
+  /* 文字列から金額候補を位置つきで拾う。
+     -----------------------------------------------------------------------
+     戻す value は **最小通貨単位**。dec が 0 の通貨（円）では、
+     これまでとまったく同じ整数になる。
+     dec が 2 の通貨では "9.99" を 999 として拾う。
+     ここで小数を無視すると、$9.99 が 99（＝$99.00）になり、10倍まちがえる。 */
+  function amountsIn(str, dec) {
+    const d = Math.max(0, Math.floor(Number(dec) || 0));
     const out = [];
-    const re = /(?:[¥￥]\s*)?(\d{1,3}(?:,\d{3})+|\d{2,7})(?![\d%％])/g;
+    const scale = Math.pow(10, d);
+    const re = d > 0
+      ? /(?:[¥￥$£€]\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,7}(?:\.\d{1,2})?)(?![\d%％])/g
+      : /(?:[¥￥]\s*)?(\d{1,3}(?:,\d{3})+|\d{2,7})(?![\d%％])/g;
     let m;
     while ((m = re.exec(str)) !== null) {
-      const v = parseInt(m[1].replace(/,/g, ""), 10);
-      if (v >= 10 && v <= 3000000) out.push({ value: v, index: m.index, raw: m[1], yen: /[¥￥]/.test(m[0]) });
+      const raw = m[1];
+      const plain = raw.replace(/,/g, "");
+      /* 小数の無い数字は、これまでどおり2桁以上だけを拾う
+         （1桁の数字は品数や番号のことが多いため）。 */
+      if (d > 0 && plain.indexOf(".") < 0 && plain.length < 2) continue;
+      const v = d > 0 ? majorTextToMinor(plain, d) : parseInt(plain, 10);
+      /* 下限は最小単位で 10（円なら10円、ドルなら$0.10）。
+         ここを $10.00 にすると $9.99 のレシートが読めなくなる。 */
+      if (v >= 10 && v <= 3000000 * scale) {
+        out.push({ value: v, index: m.index, raw: raw, yen: /[¥￥$£€]/.test(m[0]) });
+      }
     }
     return out;
   }
 
-  function parseAmount(text, mode) {
+  function parseAmount(text, mode, dec) {
     const cleaned = stripNonAmounts(text);
     if (!cleaned.trim()) return null;
     const lines = cleaned.split(/\r?\n/);
@@ -1713,7 +1745,7 @@
     /* --- アップ撮影：素直にいちばん大きい金額 --- */
     if (mode === "total") {
       const all = [];
-      lines.forEach(function (l) { amountsIn(l).forEach(function (a) { all.push(a); }); });
+      lines.forEach(function (l) { amountsIn(l, dec).forEach(function (a) { all.push(a); }); });
       if (!all.length) return null;
       const yenOnly = all.filter(function (a) { return a.yen; });
       const pool = yenOnly.length ? yenOnly : all;
@@ -1724,15 +1756,17 @@
     const hits = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (SKIP_KW.test(line)) continue;
+      /* はっきり合計と書いてある行は、拾ってはいけない語が混ざっていても採る
+         （「Total incl VAT」を税の行として捨てないため）。 */
+      if (!STRONG_TOTAL_KW.test(line) && SKIP_KW.test(line)) continue;
       const kw = TOTAL_KW.exec(line);
       if (!kw) continue;
-      const after = amountsIn(line).filter(function (a) { return a.index >= kw.index; });
+      const after = amountsIn(line, dec).filter(function (a) { return a.index >= kw.index; });
       if (after.length) { hits.push(after[after.length - 1].value); continue; }
       /* 合計の金額が次の行にあるレシートもある */
       for (let j = i + 1; j <= i + 2 && j < lines.length; j++) {
         if (SKIP_KW.test(lines[j])) continue;
-        const nx = amountsIn(lines[j]);
+        const nx = amountsIn(lines[j], dec);
         if (nx.length) { hits.push(nx[nx.length - 1].value); break; }
       }
     }
@@ -1742,7 +1776,7 @@
     const rest = [];
     lines.forEach(function (l) {
       if (SKIP_KW.test(l)) return;
-      amountsIn(l).forEach(function (a) { rest.push(a.value); });
+      amountsIn(l, dec).forEach(function (a) { rest.push(a.value); });
     });
     if (!rest.length) return null;
     return Math.max.apply(null, rest);
@@ -2237,12 +2271,12 @@
      ======================================================================= */
 
   /* テキストから、金額候補を位置つきで全部拾う */
-  function amountDetails(text) {
+  function amountDetails(text, dec) {
     const cleaned = stripNonAmounts(text);
     const lines = cleaned.split(/\r?\n/);
     const out = [];
     lines.forEach(function (line, i) {
-      amountsIn(line).forEach(function (a) {
+      amountsIn(line, dec).forEach(function (a) {
         out.push({
           amount: a.value, raw: a.raw, yen: a.yen,
           line: i, lineCount: lines.length,
@@ -3207,52 +3241,112 @@
   const CALC_OPS = ["+", "-", "*", "/"];
   const CALC_OP_LABEL = { "+": "＋", "-": "－", "*": "×", "/": "÷" };
 
-  function newCalc() {
-    return { acc: null, op: "", cur: "", done: false, expr: "", error: "" };
+  /* 電卓は「打ち込む側の数（主単位）」を字で受け取り、
+     計算そのものは **最小単位の整数** でやる。
+       ・cur … いま打っている字。主単位のまま（"12.3" のように途中の形も持つ）
+       ・acc … 計算の途中の答え。最小単位の整数
+     こうすると 0.1 + 0.2 が 0.30000000000000004 にならない。
+     小数の無い通貨（円）では dec = 0 になり、これまでとまったく同じ動きになる。 */
+  function calcScale(c) { return Math.pow(10, (c && c.dec) || 0); }
+
+  function newCalc(dec) {
+    const d = Math.max(0, Math.min(4, Math.floor(Number(dec) || 0)));
+    return { acc: null, op: "", cur: "", done: false, expr: "", error: "", dec: d };
   }
 
-  /* 数から電卓の状態を作る（記録を直すとき・レシートから金額を入れたとき） */
-  function calcFrom(value) {
-    const c = newCalc();
-    const digits = String(value == null ? "" : value).replace(/[^\d]/g, "");
-    if (digits !== "") c.cur = String(Number(digits)).slice(0, CALC_DIGITS_MAX);
+  /* その国の電卓を作る（小数の桁数を通貨から決める） */
+  function newCalcFor(settingsOrCountry) {
+    return newCalc(currencyDecimals(countryRule(countryOf(settingsOrCountry)).currency));
+  }
+
+  /* 打ち込みの字（主単位）→ 最小単位の整数。
+     途中で小数点だけ打った "12." のような形も受ける。
+     字のまま桁を組むので、掛け算・割り算の誤差が入らない。 */
+  function majorTextToMinor(text, dec) {
+    const d = Math.max(0, Math.floor(Number(dec) || 0));
+    const t = String(text == null ? "" : text).replace(/[^\d.]/g, "");
+    const m = /^(\d*)(?:\.(\d*))?/.exec(t) || [];
+    const intPart = m[1] || "0";
+    const fracPart = (m[2] || "").slice(0, d);
+    const frac = d === 0 ? 0 : Number((fracPart + "0".repeat(d)).slice(0, d));
+    return Number(intPart) * Math.pow(10, d) + frac;
+  }
+
+  /* 最小単位の整数 → 打ち込み欄に出す字（主単位）。 */
+  function minorToMajorText(value, dec) {
+    const d = Math.max(0, Math.floor(Number(dec) || 0));
+    const n = Math.round(Number(value) || 0);
+    if (d === 0) return String(n);
+    const sign = n < 0 ? "-" : "";
+    const a = Math.abs(n);
+    const p = Math.pow(10, d);
+    return sign + Math.floor(a / p) + "." + String(a % p).padStart(d, "0");
+  }
+
+  /* 数から電卓の状態を作る（記録を直すとき・レシートから金額を入れたとき）。
+     value は打ち込む側の数＝主単位（"12.34" も受ける）。 */
+  function calcFrom(value, dec) {
+    const c = newCalc(dec);
+    const t = String(value == null ? "" : value).replace(/[^\d.]/g, "");
+    if (t !== "" && t !== ".") c.cur = calcTrimEntry(t, c);
     return c;
   }
 
-  function calcFmt(v) {
-    const n = Number(v);
-    return Number.isFinite(n) ? n.toLocaleString("en-US") : String(v);
+  /* 打ち込みの字を、桁数の決まりに収める。
+     整数部は CALC_DIGITS_MAX 桁まで、小数部はその通貨の桁数まで。 */
+  function calcTrimEntry(text, c) {
+    const d = (c && c.dec) || 0;
+    const t = String(text).replace(/[^\d.]/g, "");
+    const dot = t.indexOf(".");
+    let intPart = dot < 0 ? t : t.slice(0, dot);
+    let frac = dot < 0 ? null : t.slice(dot + 1).replace(/\./g, "");
+    if (intPart.length > 1) intPart = intPart.replace(/^0+(?=\d)/, "");
+    intPart = intPart.slice(0, CALC_DIGITS_MAX);
+    if (d === 0 || frac === null) return intPart;
+    return intPart + "." + frac.slice(0, d);
   }
 
-  /* ひとつ計算する。0で割ろうとしたときだけ null を返す。 */
-  function calcApply(a, op, b) {
+  function calcFmt(v, c) {
+    const text = minorToMajorText(v, (c && c.dec) || 0);
+    const neg = text.charAt(0) === "-";
+    const body = neg ? text.slice(1) : text;
+    const parts = body.split(".");
+    parts[0] = Number(parts[0]).toLocaleString("en-US");
+    return (neg ? "-" : "") + parts.join(".");
+  }
+
+  /* ひとつ計算する。すべて最小単位の整数どうし。0で割ろうとしたときだけ null。
+     掛け算・割り算は「金額 × 個数」の意味なので、倍率でならしてから丸める
+     （$1.00 × 3 は $3.00。小数の無い通貨では、これまでの式とまったく同じ）。 */
+  function calcApply(a, op, b, scale) {
+    const s = scale || 1;
     if (op === "+") return a + b;
     if (op === "-") return a - b;
-    if (op === "*") return a * b;
-    if (op === "/") return b === 0 ? null : Math.round(a / b);
+    if (op === "*") return Math.round((a * b) / s);
+    if (op === "/") return b === 0 ? null : Math.round((a / b) * s);
     return b;
   }
 
-  /* いま打ち込んでいる数（未入力なら acc、それも無ければ 0） */
+  /* いま打ち込んでいる数（最小単位）。未入力なら acc、それも無ければ 0。 */
   function calcEntry(c) {
-    if (c.cur !== "") return Number(c.cur);
+    if (c.cur !== "") return majorTextToMinor(c.cur, c.dec || 0);
     if (c.acc !== null) return c.acc;
     return 0;
   }
 
-  /* 大きく出す数。まだ何も打っていなければ空文字（プレースホルダの 0 が出る）。 */
+  /* 大きく出す字。まだ何も打っていなければ空文字（プレースホルダの 0 が出る）。 */
   function calcDisplay(c) {
     if (!c) return "";
     if (c.cur !== "") return c.cur;
-    if (c.acc !== null) return String(c.acc);
+    if (c.acc !== null) return minorToMajorText(c.acc, c.dec || 0);
     return "";
   }
 
-  /* 待っている計算まで済ませた、最終的な金額 */
+  /* 待っている計算まで済ませた、最終的な金額（最小単位） */
   function calcValue(c) {
     if (!c) return 0;
     if (c.op && c.acc !== null && c.cur !== "") {
-      const r = calcApply(c.acc, c.op, Number(c.cur));
+      const r = calcApply(c.acc, c.op, majorTextToMinor(c.cur, c.dec || 0), calcScale(c));
       return r === null ? c.acc : r;
     }
     return calcEntry(c);
@@ -3261,30 +3355,39 @@
   /* キーを1つ押した結果を返す。元の状態は変えない。
      key: "0"〜"9" ／ "+" "-" "*" "/" ／ "=" ／ "C" ／ "back" ／ "00" "000" */
   function calcPress(state, key) {
-    const c = Object.assign(newCalc(), state || {});
+    const c = Object.assign(newCalc((state || {}).dec), state || {});
     c.error = "";
     const k = String(key);
+    const scale = calcScale(c);
 
-    if (k === "C") return newCalc();
+    if (k === "C") return newCalc(c.dec);
 
     if (k === "back") {
-      if (c.done) return newCalc();
+      if (c.done) return newCalc(c.dec);
       c.cur = c.cur.slice(0, -1);
+      return c;
+    }
+
+    /* 小数点。小数の無い通貨（円）では、押しても何も起きない。 */
+    if (k === "." || k === "．") {
+      if (!c.dec) return c;
+      if (c.done) { c.acc = null; c.op = ""; c.cur = ""; c.done = false; c.expr = ""; }
+      if (c.cur.indexOf(".") >= 0) return c;           // 2つ目の小数点は置かない
+      c.cur = (c.cur === "" ? "0" : c.cur) + ".";
       return c;
     }
 
     if (/^0+$|^[1-9]\d*$|^\d$/.test(k) && /^\d{1,3}$/.test(k)) {
       /* 数字（"0" "7" "00" "000"） */
       if (c.done) { c.acc = null; c.op = ""; c.cur = ""; c.done = false; c.expr = ""; }
-      let next = c.cur === "0" ? k : c.cur + k;
-      if (next.length > 1) next = next.replace(/^0+(?=\d)/, "");
-      c.cur = next.slice(0, CALC_DIGITS_MAX);
+      const next = c.cur === "0" ? k : c.cur + k;
+      c.cur = calcTrimEntry(next, c);
       return c;
     }
 
     if (CALC_OPS.indexOf(k) >= 0) {
       if (c.op && c.acc !== null && c.cur !== "") {
-        const r = calcApply(c.acc, c.op, Number(c.cur));
+        const r = calcApply(c.acc, c.op, majorTextToMinor(c.cur, c.dec), scale);
         if (r === null) { c.error = "0では割れません"; return c; }
         c.acc = r;
       } else {
@@ -3293,19 +3396,19 @@
       c.cur = "";
       c.op = k;
       c.done = false;
-      c.expr = calcFmt(c.acc) + " " + CALC_OP_LABEL[k];
+      c.expr = calcFmt(c.acc, c) + " " + CALC_OP_LABEL[k];
       return c;
     }
 
     if (k === "=") {
       if (!c.op || c.acc === null) return c;          // 計算するものが無い
-      const b = c.cur === "" ? c.acc : Number(c.cur);
-      const r = calcApply(c.acc, c.op, b);
+      const b = c.cur === "" ? c.acc : majorTextToMinor(c.cur, c.dec);
+      const r = calcApply(c.acc, c.op, b, scale);
       if (r === null) { c.error = "0では割れません"; return c; }
-      c.expr = calcFmt(c.acc) + " " + CALC_OP_LABEL[c.op] + " " + calcFmt(b) + " ＝";
+      c.expr = calcFmt(c.acc, c) + " " + CALC_OP_LABEL[c.op] + " " + calcFmt(b, c) + " ＝";
       c.acc = null;
       c.op = "";
-      c.cur = String(r);
+      c.cur = minorToMajorText(r, c.dec);
       c.done = true;
       return c;
     }
@@ -3606,6 +3709,26 @@
     if (v === null || v === undefined || !Number.isFinite(v)) return null;
     const n = Math.round(v);
     return n > 0 && Math.abs(v - n) < 1e-9 ? n : null;
+  }
+
+  /* 関数電卓の答えを、家計簿へ入れる金額（**最小単位**）に直す。
+     -----------------------------------------------------------------------
+     関数電卓は主単位のふつうの数で計算している（12.34 は $12.34）。
+     記録は最小単位なので、その通貨の桁数ぶんだけ位を上げてから渡す。
+
+     dec が 0 の通貨（円）は、これまでどおり「1円以上の整数」のときだけ。
+     dec が 2 の通貨は、セントまでなら受ける（$12.34 は入る、$12.345 は入らない）。
+     入れられない答えのときは null を返し、画面はボタンを出さない。 */
+  function sciRecordAmount(sci, dec) {
+    const v = sci && sci.result;
+    if (v === null || v === undefined || !Number.isFinite(v)) return null;
+    const d = Math.max(0, Math.floor(Number(dec) || 0));
+    const scale = Math.pow(10, d);
+    const minor = Math.round(v * scale);
+    if (!(minor > 0)) return null;
+    /* その通貨で表せる細かさに収まっているか（$12.345 は表せない） */
+    if (Math.abs(v * scale - minor) > 1e-6) return null;
+    return minor;
   }
 
   /* =======================================================================
@@ -4496,9 +4619,13 @@
     sciClearHistory: sciClearHistory,
     normalizeSciHistory: normalizeSciHistory,
     sciAmount: sciAmount,
+    sciRecordAmount: sciRecordAmount,
     SCI_TOKENS_MAX: SCI_TOKENS_MAX,
     SCI_HISTORY_MAX: SCI_HISTORY_MAX,
     newCalc: newCalc,
+    newCalcFor: newCalcFor,
+    majorTextToMinor: majorTextToMinor,
+    minorToMajorText: minorToMajorText,
     calcFrom: calcFrom,
     calcPress: calcPress,
     calcDisplay: calcDisplay,

@@ -1195,15 +1195,19 @@ function sumTabs(){
 /* グラフの目もり。渡ってくる v は内部の最小単位なので、
    ここで主単位へ戻してから「万」「k」に丸める。
    直さないと、USの軸だけが100倍の数字になる。 */
+/* 目もりの数字を短くする（1.5 → "1.5"、2 → "2"）。 */
+function tickShort(n){ return Number.isInteger(n) ? n : Math.round(n*10)/10; }
 function yenTick(minorValue){
   const v = toMajor(minorValue);
   if(v===0) return "0";
-  /* 英語圏は「万」を使わないので、1000区切りの k で出す */
+  /* 英語圏は「万」を使わない。1000区切りの k と、100万区切りの M で出す。
+     M が無いと 1,500,000 が "1500k" になり、桁がぱっと読めない。 */
   if(isEn()){
-    if(v>=1000){ const k=v/1000; return (Number.isInteger(k)?k:Math.round(k*10)/10)+"k"; }
+    if(v>=1000000){ return tickShort(v/1000000)+"M"; }
+    if(v>=1000){ return tickShort(v/1000)+"k"; }
     return v.toLocaleString("en-US");
   }
-  if(v>=10000){ const m=v/10000; return (Number.isInteger(m)?m:Math.round(m*10)/10)+"万"; }
+  if(v>=10000){ return tickShort(v/10000)+"万"; }
   return v.toLocaleString("ja-JP");
 }
 function paceChart(p){
@@ -1793,7 +1797,9 @@ function sci(){
 
 function renderSci(){
   const s=sci();
-  const amount=Core.sciAmount(s);
+  /* 家計簿へ入れられる金額（最小単位）。入れられない答えなら null。
+     通貨の桁数で決めるので、ドルなら $12.34 も入れられる。 */
+  const amount=Core.sciRecordAmount(s, decOf());
   const k=(key,label,cls)=>`<button class="${cls||""}" data-act="sci" data-key="${escapeAttr(key)}">${label}</button>`;
   const hist = s.history.length
     ? s.history.map((h,i)=>`<button class="shrow" data-act="sci-use" data-i="${i}">
@@ -1826,7 +1832,9 @@ function renderSci(){
 
     ${amount!==null
       ? `<button class="btn-main sciuse" data-act="sci-record">${L(`${yen(amount)} を家計簿に記録する`, `Record ${yen(amount)} in the budget`)}</button>`
-      : `<div class="calcnote" style="text-align:center;margin-top:10px">${L("＝ を押すと、この答えを家計簿に記録できます（1円以上の整数のとき）","Press = and you can record the answer in the budget — whole amounts of 1 or more")}</div>`}
+      : `<div class="calcnote" style="text-align:center;margin-top:10px">${L(
+          decOf()>0 ? "＝ を押すと、この答えを家計簿に記録できます" : "＝ を押すと、この答えを家計簿に記録できます（1円以上の整数のとき）",
+          "Press = and you can record the answer in the budget")}</div>`}
 
     <div class="stitle" style="margin-top:18px">${L("計算の履歴","Calculation history")}</div>
     <div class="barlist">
@@ -1880,9 +1888,9 @@ function renderSettings(){
       <input id="f-gname" value="${escapeAttr(s.goalName||"")}" placeholder="${escapeAttr(T("set.goalNamePh"))}"></div>
     <div class="row2">
       <div class="field"><label>${T("set.goalTarget")}</label><div class="row"><span class="yen">${Core.countryRule(s.country).symbol}</span>
-        <input class="mono" id="f-gtarget" inputmode="numeric" value="${s.goalTarget?sheetMajor(s.goalTarget):""}" placeholder="0"></div></div>
+        <input class="mono" id="f-gtarget" inputmode="${moneyInputMode()}" value="${s.goalTarget?sheetMajor(s.goalTarget):""}" placeholder="0"></div></div>
       <div class="field"><label>${T("set.goalCurrent")}</label><div class="row"><span class="yen">${Core.countryRule(s.country).symbol}</span>
-        <input class="mono" id="f-gcur" inputmode="numeric" value="${s.goalCurrent?sheetMajor(s.goalCurrent):""}" placeholder="0"></div></div>
+        <input class="mono" id="f-gcur" inputmode="${moneyInputMode()}" value="${s.goalCurrent?sheetMajor(s.goalCurrent):""}" placeholder="0"></div></div>
     </div>
 
     <div class="stitle">${T("set.data")}</div>
@@ -1912,7 +1920,20 @@ let sheetState=null; // {mode:'add'|'edit', id?, type, amount, cat, date, memo, 
    内部（最小単位）との行き来は、この2つだけを通す。
    第1段階では小数を打てないので、主単位は必ず整数になる
    （セントを打てるようにするのは第2段階）。 */
-function sheetMajor(minorValue, country){ return Math.round(Core.toMajor(minorValue, country||state.settings)); }
+/* 内部（最小単位）→ 打ち込み欄の字（主単位）。小数のある通貨では "12.34" になる。
+   丸めてはいけない。丸めると、直すたびにセントが落ちる。 */
+function decOf(country){ return Core.currencyDecimals(Core.countryRule(Core.normalizeCountry(
+  country===undefined ? (state.settings&&state.settings.country) : (country.country||country))).currency); }
+function sheetMajor(minorValue, country){ return Core.minorToMajorText(minorValue, decOf(country)); }
+/* いま開いている記録の小数桁 */
+function sheetDec(){
+  const st=sheetState;
+  if(st && st.mode==="edit"){
+    const t=state.tx.find(x=>x.id===st.id);
+    if(t) return decOf(txCountryOf(t));
+  }
+  return decOf(curCountry());
+}
 /* その記録がどの国のものか。国の印が無ければ日本。
    打ち込みの換算は「いま選んでいる国」ではなく **その記録の国** で決める。
    ここを取り違えると、US画面で日本の記録を直したときに100倍になる。 */
@@ -1923,7 +1944,7 @@ function openRecord(editId){
   } else {
     sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total", recurring:false};
   }
-  sheetState.calc=Core.calcFrom(sheetState.amount);
+  sheetState.calc=Core.calcFrom(sheetState.amount, sheetDec());
   renderSheet(); showSheet(true);
 }
 /* 電卓のキー。押した結果は Core.calcPress が決める（計算式は画面に書かない）。 */
@@ -1935,14 +1956,16 @@ function calcPad(calc){
     ${k("7","7")}${k("8","8")}${k("9","9")}${op("-","−")}
     ${k("4","4")}${k("5","5")}${k("6","6")}${op("+","＋")}
     ${k("1","1")}${k("2","2")}${k("3","3")}${k("=","＝","eq")}
-    ${k("0","0")}${k("00","00","zero")}${k("000","000","zero")}
+    ${k("0","0")}${k(".",".","zero")}${k("00","00","zero")}
   </div>`;
 }
 
 function renderSheet(){
   const st=sheetState;
   /* 電卓の状態。無ければ、いまの金額から作る（金額を外から入れる所では作り直している）。 */
-  if(!st.calc) st.calc=Core.calcFrom(st.amount);
+  /* 電卓の小数桁は、その記録の国の通貨で決める
+     （US画面のまま日本の記録を直しても、円の電卓のまま） */
+  if(!st.calc) st.calc=Core.calcFrom(st.amount, sheetDec());
   const calc=st.calc;
   const cats = st.type==="income" ? INC_CATS : EXP_PICK_CATS;
   if(st.cat && !cats.find(c=>c.k===st.cat)) st.cat = cats[0].k;
@@ -1959,7 +1982,7 @@ function renderSheet(){
   const choicesHtml = (st.ocrChoices&&st.ocrChoices.length)
     ? `<div class="choices">
          <div class="cl">${TJ("rec.choices","タップして金額を入れます（記録はまだされません）")}</div>
-         ${st.ocrChoices.map(a=>`<button class="choice mono" data-pick="${a}">${yen(toMinor(a))}</button>`).join("")}
+         ${st.ocrChoices.map(a=>`<button class="choice mono" data-pick="${a}">${yen(a)}</button>`).join("")}
          <button class="choice manual" data-act="manual-amount">${T("rec.manual")}</button>
        </div>`
     : "";
@@ -2170,7 +2193,7 @@ async function readCrop(){
       renderSheet(); return;
     }
     st.ocrChoices=null;
-    st.amount=String(ranked[0].amount);
+    st.amount=Core.minorToMajorText(ranked[0].amount, sheetDec());
     setStatus(L(`金額を「${yen(ranked[0].amount)}」と読みました。ちがう時は直してね`, `Read the amount as ${yen(ranked[0].amount)}. Change it if that's wrong`));
     renderSheet();
   }catch(e){
@@ -2293,12 +2316,13 @@ async function ocrCandidates(jobs, opts){
       try{
         await worker.setParameters({
           tessedit_pageseg_mode: job.psm,
-          tessedit_char_whitelist: (opts&&opts.raw) ? "0123456789" : "0123456789,.¥￥"
+          /* 小数のある通貨では通貨記号も読ませる（$9.99 の $ を落とさない） */
+          tessedit_char_whitelist: (opts&&opts.raw) ? "0123456789" : "0123456789,.¥￥$£€"
         });
         const { data } = await worker.recognize(job.img);
         const conf = data.confidence||0;
         if(opts&&opts.raw){ out.push({ text:data.text, confidence:conf }); continue; }
-        Core.amountDetails(data.text).forEach(d=>{
+        Core.amountDetails(data.text, sheetDec()).forEach(d=>{
           out.push({
             amount:d.amount, raw:d.raw, confidence:conf,
             posScore:Core.textPositionScore(d),
@@ -2361,16 +2385,17 @@ function initCrop(){
 /* ---------- 保存アクション ---------- */
 async function saveTx(){
   readSheetInputs(); const st=sheetState;
-  /* ＝ を押さずに「記録する」を押しても、待っている計算を済ませてから記録する */
-  if(st.calc && st.calc.op) st.amount=String(Core.calcValue(st.calc));
-  const typedMajor=parseInt(String(st.amount).replace(/[^\d]/g,""),10);
-  if(!typedMajor||typedMajor<=0){ toast(L("金額を入れてね","Please enter an amount")); const ai=$("s-amt"); if(ai) ai.focus(); return; }
+  /* ＝ を押さずに「記録する」を押しても、待っている計算を済ませてから記録する。
+     calcValue は最小単位を返すので、打ち込み欄の字（主単位）へ戻して持たせる。 */
+  if(st.calc && st.calc.op) st.amount=Core.minorToMajorText(Core.calcValue(st.calc), st.calc.dec||0);
   /* 直すときは、その記録がもともと持っていた国で換算する。
      新しく作るときは、いま選んでいる国。 */
   const editIdx = st.mode==="edit" ? state.tx.findIndex(x=>x.id===st.id) : -1;
   const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();
-  /* ここが「打ち込み → 内部」の境目。以降はすべて最小単位で扱う。 */
-  const typed=Core.toMinor(typedMajor, recCountry);
+  /* ここが「打ち込み → 内部」の境目。以降はすべて最小単位で扱う。
+     小数点を含む字（"12.34"）も、字のまま桁を組んで整数にするので誤差が出ない。 */
+  const typed=Core.majorTextToMinor(st.amount, decOf(recCountry));
+  if(!typed||typed<=0){ toast(L("金額を入れてね","Please enter an amount")); const ai=$("s-amt"); if(ai) ai.focus(); return; }
   /* 上限で止める。電卓は 9桁×9桁 のような掛け算ができてしまうので、
      ここで切り詰めないと 18桁の金額がそのまま残り、集計がすべて壊れる。
      黙って切り詰めず、切り詰めたことを必ず伝える。 */
@@ -2407,7 +2432,10 @@ async function saveTx(){
      同じ内容でも経路によって中身が変わってしまう。整える場所はひとつだけにする。 */
   const safe=Core.normalizeTransaction(rec);
   if(!safe){ toast(L("この内容では記録できません","That can't be recorded as it is")); return; }
-  Object.keys(rec).forEach(k=>{ if(!(k in safe)) delete rec[k]; });   // 落とされた印を消す
+  /* 計算コアが落としたキーは、こちらの rec からも消す。
+     いまは到達しない（rec に付くキーは、コアがどれも落とさない）。
+     将来キーを増やしたときに、片方だけ残るのを防ぐための保険として置いてある。 */
+  Object.keys(rec).forEach(k=>{ if(!(k in safe)) delete rec[k]; });
   Object.assign(rec, safe);
 
   if(st.mode==="edit"){ if(idx>=0) state.tx[idx]=rec; }
@@ -2498,7 +2526,7 @@ function readSettingsForm(base){
   s.birth=Core.normalizeBirth(g("f-birth"));
   s.goalName=(g("f-gname")||"").slice(0,24);
   /* 打ち込みは主単位。内部の最小単位へ直してから設定に入れる。 */
-  s.goalTarget=toMinor(num(g("f-gtarget"))); s.goalCurrent=toMinor(num(g("f-gcur")));
+  s.goalTarget=settingMinor(g("f-gtarget"), s); s.goalCurrent=settingMinor(g("f-gcur"), s);
   s.cycleStart=Core.normalizeCycleStart(g("f-cycle"));
   return Core.normalizeSettings(s);
 }
@@ -3447,7 +3475,7 @@ function lpNisaHtml(a){
     const funds = (r.funds||[]).map((f,n)=>`<div class="lpgrid" style="margin-bottom:6px">
         <label>${L("銘柄名","Fund name")}<input id="${id}-fn-${i}-${n}" value="${escapeAttr(f.name)}" placeholder="${L("全世界株式","Global equity index")}"></label>
         <label>${L("毎月の金額（円）","Monthly amount")}<div style="display:flex;gap:6px">
-          <input class="mono" id="${id}-fa-${i}-${n}" inputmode="numeric" value="${f.amount||""}" placeholder="0">
+          <input class="mono" id="${id}-fa-${i}-${n}" inputmode="${moneyInputMode()}" value="${f.amount||""}" placeholder="0">
           <button class="lpdel" data-act="lp-del-fund" data-key="${key}" data-i="${i}" data-n="${n}">🗑</button></div></label>
       </div>`).join("");
     return `<div class="lpseg">
@@ -3472,7 +3500,7 @@ function lpNisaHtml(a){
   const lumps = a.lumpSums.map((l,i)=>`<div class="lpgrid" style="margin-bottom:8px">
       <label>${L("何歳のとき","At what age")}<input class="mono" id="lp-lm-age-${i}" inputmode="decimal" value="${l.age||""}" placeholder="59"></label>
       <label>${L("金額（円）","Amount")}<div style="display:flex;gap:6px">
-        <input class="mono" id="lp-lm-amt-${i}" inputmode="numeric" value="${l.amount||""}" placeholder="0">
+        <input class="mono" id="lp-lm-amt-${i}" inputmode="${moneyInputMode()}" value="${l.amount||""}" placeholder="0">
         <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="lumpSums">🗑</button></div></label>
     </div>`).join("");
 
@@ -3502,7 +3530,7 @@ function lpNisaHtml(a){
 
 /* iDeCo。受給年齢まで引き出せないお金なので、かけいぼの毎月の計算には入れない。 */
 function lpIdecoHtml(d){
-  const f=(id,label,val,ph,mode)=>`<label>${label}<input class="mono" id="${id}" inputmode="${mode||"numeric"}" value="${val||""}" placeholder="${ph}"></label>`;
+  const f=(id,label,val,ph,mode)=>`<label>${label}<input class="mono" id="${id}" inputmode="${mode||moneyInputMode()}" value="${val||""}" placeholder="${ph}"></label>`;
   return `<div class="barlist">
     <div class="fhelp" style="margin-bottom:8px">${L("毎月の掛金は、金や民間年金と同じ<b>先取り</b>として引きます。","The monthly contribution is treated as money <b>set aside</b>, like gold or a private pension.")}
       ${L("こちらに入れた分は、<b>記録から入れないでください</b>（二重になります）。","Do <b>not</b> also enter it as a record — it would be counted twice.")}<br>
@@ -3529,7 +3557,7 @@ function lpInsuranceHtml(list){
       <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="insurancePolicies">🗑</button></div>
     <div class="lpgrid">
       <label>${L("保険の名前","Policy name")}<input id="lp-in-name-${i}" value="${escapeAttr(p.name)}" placeholder="${L("○○生命","Life insurance")}"></label>
-      <label>${L("毎月の保険料（円）","Monthly premium")}<input class="mono" id="lp-in-prem-${i}" inputmode="numeric" value="${p.monthlyPremium||""}" placeholder="0"></label>
+      <label>${L("毎月の保険料（円）","Monthly premium")}<input class="mono" id="lp-in-prem-${i}" inputmode="${moneyInputMode()}" value="${p.monthlyPremium||""}" placeholder="0"></label>
       <label>${L("払い始め年齢","Premiums start at age")}<input class="mono" id="lp-in-from-${i}" inputmode="decimal" value="${p.premiumFromAge||""}" placeholder="46"></label>
       <label>${L("払い終わり年齢（その誕生日まで）","Premiums end at age — up to that birthday")}<input class="mono" id="lp-in-to-${i}" inputmode="decimal" value="${p.premiumToAge||""}" placeholder="65"></label>
       <label style="grid-column:1/-1">${L("保障が続く年齢","Cover lasts until age")}<input class="mono" id="lp-in-cov-${i}" inputmode="decimal" value="${p.coverageUntilAge||""}" placeholder="82"></label>
@@ -3549,9 +3577,9 @@ function lpGoldHtml(g){
     <div class="field"><label>${L("いま持っている量","Amount you hold")}</label><div class="row">
       <input class="mono" id="lp-g-grams" inputmode="decimal" value="${g.currentGrams||""}" placeholder="0"><span class="yen">g</span></div></div>
     <div class="field"><label>${L("1グラムの値段","Price per gram")}</label><div class="row"><span class="yen">${curSym()}</span>
-      <input class="mono" id="lp-g-price" inputmode="numeric" value="${g.pricePerGram||""}" placeholder="0"></div></div>
+      <input class="mono" id="lp-g-price" inputmode="${moneyInputMode()}" value="${g.pricePerGram||""}" placeholder="0"></div></div>
     <div class="field"><label>${L("毎月の積立額","Monthly amount you buy")}</label><div class="row"><span class="yen">${curSym()}</span>
-      <input class="mono" id="lp-g-monthly" inputmode="numeric" value="${g.monthlyYen||""}" placeholder="0"></div>
+      <input class="mono" id="lp-g-monthly" inputmode="${moneyInputMode()}" value="${g.monthlyYen||""}" placeholder="0"></div>
       <div class="fhelp">${L("これから毎月いくら買う予定か。実際に買ったお金は「記録」から入れてください","How much you plan to buy each month. What you actually spend goes in as a record.")}</div></div>
     <div class="lptotal">${L("いまの評価額","Current value")} <b class="mono" data-live="sum-gold">${yen(Core.lpGoldValue(g))}</b></div>
     <button class="btn-main" data-act="lp-save-gold">${L("この内容で保存する","Save these details")}</button>
@@ -3564,8 +3592,8 @@ function lpBanksHtml(list){
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
       <label>${L("銀行名","Bank name")}<input id="lp-b-name-${i}" value="${escapeAttr(b.name)}" placeholder="${L("○○銀行","Your bank")}"></label>
-      <label>${L("残高（円）","Balance")}<input class="mono" id="lp-b-bal-${i}" inputmode="numeric" value="${b.balance||""}" placeholder="0"></label>
-      <label>${L("毎月の入金（円）","Monthly deposit")}<input class="mono" id="lp-b-mon-${i}" inputmode="numeric" value="${b.monthlyDeposit||""}" placeholder="0"></label>
+      <label>${L("残高（円）","Balance")}<input class="mono" id="lp-b-bal-${i}" inputmode="${moneyInputMode()}" value="${b.balance||""}" placeholder="0"></label>
+      <label>${L("毎月の入金（円）","Monthly deposit")}<input class="mono" id="lp-b-mon-${i}" inputmode="${moneyInputMode()}" value="${b.monthlyDeposit||""}" placeholder="0"></label>
       <label>${L("年利（％）","Annual rate %")}<input class="mono" id="lp-b-int-${i}" inputmode="decimal" value="${b.interestPct||""}" placeholder="0"></label>
     </div></div>`).join("");
   return `<div class="barlist">
@@ -3582,9 +3610,9 @@ function lpLoansHtml(list){
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
       <label>${L("借入の名前","Loan name")}<input id="lp-l-name-${i}" value="${escapeAttr(l.name)}" placeholder="${L("車のローン","Car loan")}"></label>
-      <label>${L("残っている元金（円）","Principal remaining")}<input class="mono" id="lp-l-pri-${i}" inputmode="numeric" value="${l.principal||""}" placeholder="0"></label>
+      <label>${L("残っている元金（円）","Principal remaining")}<input class="mono" id="lp-l-pri-${i}" inputmode="${moneyInputMode()}" value="${l.principal||""}" placeholder="0"></label>
       <label>${L("年利（％）","Annual rate %")}<input class="mono" id="lp-l-rate-${i}" inputmode="decimal" value="${l.annualRatePct||""}" placeholder="0"></label>
-      <label>${L("毎月の返済（円）","Monthly repayment")}<input class="mono" id="lp-l-pay-${i}" inputmode="numeric" value="${l.monthlyPayment||""}" placeholder="0"></label>
+      <label>${L("毎月の返済（円）","Monthly repayment")}<input class="mono" id="lp-l-pay-${i}" inputmode="${moneyInputMode()}" value="${l.monthlyPayment||""}" placeholder="0"></label>
     </div></div>`).join("");
   return `<div class="barlist">
     ${rows || `<div class="empty"><span class="e">💳</span>${L("まだ入っていません","Nothing here yet")}</div>`}
@@ -3601,12 +3629,12 @@ function lpPensionHtml(list){
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
       <label>${L("年金の名前","Plan name")}<input id="lp-p-name-${i}" value="${escapeAttr(p.name)}" placeholder="${L("○○年金共済","Annuity plan")}"></label>
-      <label>${L("毎月の掛金（円）","Monthly contribution")}<input class="mono" id="lp-p-mon-${i}" inputmode="numeric" value="${p.monthlyContribution||""}" placeholder="0"></label>
+      <label>${L("毎月の掛金（円）","Monthly contribution")}<input class="mono" id="lp-p-mon-${i}" inputmode="${moneyInputMode()}" value="${p.monthlyContribution||""}" placeholder="0"></label>
       <label>${L("掛ける 開始年齢","Contributions start at age")}<input class="mono" id="lp-p-cf-${i}" inputmode="decimal" value="${p.contribFromAge||""}" placeholder="35"></label>
       <label>${L("掛ける 終了年齢（その誕生日まで）","Contributions end at age — up to that birthday")}<input class="mono" id="lp-p-ct-${i}" inputmode="decimal" value="${p.contribToAge||""}" placeholder="60"></label>
       <label>${L("もらう 開始年齢","Payouts start at age")}<input class="mono" id="lp-p-pf-${i}" inputmode="decimal" value="${p.payoutFromAge||""}" placeholder="60"></label>
       <label>${L("もらう 終了年齢（その誕生日まで）","Payouts end at age — up to that birthday")}<input class="mono" id="lp-p-pt-${i}" inputmode="decimal" value="${p.payoutToAge||""}" placeholder="70"></label>
-      <label>${L("毎月もらう額（円）","Monthly payout")}<input class="mono" id="lp-p-pay-${i}" inputmode="numeric" value="${p.monthlyPayout||""}" placeholder="0"></label>
+      <label>${L("毎月もらう額（円）","Monthly payout")}<input class="mono" id="lp-p-pay-${i}" inputmode="${moneyInputMode()}" value="${p.monthlyPayout||""}" placeholder="0"></label>
     </div></div>`).join("");
   return `<div class="barlist">
     ${rows || `<div class="empty"><span class="e">📜</span>${L("まだ入っていません","Nothing here yet")}</div>`}
@@ -3885,12 +3913,17 @@ function lpRefreshTotals(){
 const SETTING_FIELD = {
   "f-birth":   (s,v)=>{ s.birth = Core.normalizeBirth(v); },
   "f-gname":   (s,v)=>{ s.goalName = String(v||"").slice(0,24); },
-  "f-gtarget": (s,v)=>{ s.goalTarget = Core.toMinor(settingNum(v), s); },
-  "f-gcur":    (s,v)=>{ s.goalCurrent = Core.toMinor(settingNum(v), s); },
+  "f-gtarget": (s,v)=>{ s.goalTarget = settingMinor(v, s); },
+  "f-gcur":    (s,v)=>{ s.goalCurrent = settingMinor(v, s); },
   "f-cycle":   (s,v)=>{ s.cycleStart = Core.normalizeCycleStart(v); },
   "f-country": (s,v)=>{ s.country = Core.pickCountry(v); },
 };
+/* 設定の金額欄。打ち込みは主単位。小数の無い通貨では、これまでどおり整数だけ。
+   字のまま桁を組むので、$300.50 も誤差なく 30050 になる。 */
+function settingMinor(v, settings){ return Core.majorTextToMinor(v, decOf(settings)); }
 function settingNum(v){ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; }
+/* 金額の欄でスマホに出すキーボード。小数のある通貨だけ小数点を出す。 */
+function moneyInputMode(){ return decOf()>0 ? "decimal" : "numeric"; }
 /* 国は「押す」ではなく「選ぶ」操作なので change で受ける。
    選んだその場で保存し、ことば・通貨・日付の出し方を入れ替えるため画面を作り直す。
    （打つたびの自動保存に任せると、ことばが古いままになる） */
@@ -3939,8 +3972,9 @@ document.addEventListener("click",e=>{
   const go=e.target.closest("[data-go]"); if(go){ showSheet(false); view=go.dataset.go; render(); focusField(go.dataset.focus); return; }
   const pick=e.target.closest("[data-pick]");
   if(pick&&sheetState){ readSheetInputs();
-    sheetState.amount=String(pick.dataset.pick);
-    sheetState.calc=Core.calcFrom(sheetState.amount);
+    /* 候補は最小単位で持っている。打ち込み欄の字（主単位）へ戻す。 */
+    sheetState.amount=Core.minorToMajorText(pick.dataset.pick, sheetDec());
+    sheetState.calc=Core.calcFrom(sheetState.amount, sheetDec());
     sheetState.ocrChoices=null;
     sheetState.ocrNote="金額を入れました。内容を確かめて「記録する」を押してください";
     renderSheet(); return; }
@@ -3995,11 +4029,14 @@ function handleAct(a,e){
     render(); return;
   }
   if(a==="sci-record"){
-    const amount=Core.sciAmount(sci());
-    if(amount===null){ toast(L("先に ＝ を押してください","Press = first")); return; }
+    /* 関数電卓の答え → 記録画面。ここが「計算した額をそのまま記録する」導線。 */
+    const minor=Core.sciRecordAmount(sci(), decOf());
+    if(minor===null){ toast(L("先に ＝ を押してください","Press = first")); return; }
     openRecord(null);
-    sheetState.amount=String(amount);
-    sheetState.calc=Core.calcFrom(amount);
+    /* 打ち込み欄は主単位の字。最小単位から戻してから入れる
+       （ここを取り違えると、$12.34 が $1,234.00 になる）。 */
+    sheetState.amount=Core.minorToMajorText(minor, sheetDec());
+    sheetState.calc=Core.calcFrom(sheetState.amount, sheetDec());
     renderSheet(); return;
   }
   if(a==="save-settings") return saveSettings();
