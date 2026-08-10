@@ -717,6 +717,39 @@
     return out;
   }
 
+  /* ---------- 国別のお金プロファイル ----------
+     収入・支出記録は各記録の country で分ける。
+     ここでは NISA・保険・借入・銀行など「設定として持つ金額」を国別に分離する。
+     旧保存データには moneyProfiles が無いので、既存 settings は必ず JP として移行する。
+     生年月日は本人共通情報なので、プロファイルを切り替えるときに現在値を上書きして共通利用する。 */
+  function profileSettings(raw, country, birth) {
+    const c = normalizeCountry(country);
+    const src = Object.assign({}, raw || {}, { country: c, currency: countryRule(c).currency });
+    if (birth !== undefined) src.birth = birth;
+    return normalizeSettings(src);
+  }
+
+  function normalizeMoneyProfiles(rawProfiles, legacySettings) {
+    const src = rawProfiles && typeof rawProfiles === "object" && !Array.isArray(rawProfiles) ? rawProfiles : {};
+    const out = {};
+    SUPPORTED_COUNTRIES.forEach(function (c) {
+      if (src[c] && typeof src[c] === "object" && !Array.isArray(src[c])) {
+        out[c] = profileSettings(src[c], c);
+      }
+    });
+    /* 既存ユーザーの金額は通貨記号だけを変えてUSへ持ち込まず、必ずJPへ退避する。 */
+    if (!out.JP && legacySettings && typeof legacySettings === "object") {
+      out.JP = profileSettings(legacySettings, "JP");
+    }
+    return out;
+  }
+
+  function settingsForCountry(profiles, country, sharedBirth) {
+    const c = normalizeCountry(country);
+    const p = profiles && profiles[c] ? profiles[c] : {};
+    return profileSettings(p, c, sharedBirth);
+  }
+
   /* =======================================================================
      ライフプランへ渡す資産（金・銀行貯金・借入金・民間年金）
      -----------------------------------------------------------------------
@@ -2100,6 +2133,7 @@
       version: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       settings: normalizeSettings(st.settings),
+      moneyProfiles: normalizeMoneyProfiles(st.moneyProfiles, st.settings),
       tx: (Array.isArray(st.tx) ? st.tx : []).map(normalizeTransaction).filter(Boolean),
       health: normalizeHealth(st.health),
       diary: normalizeDiary(st.diary),
@@ -2201,6 +2235,7 @@
     if (data.tx.length > TX_MAX) dropped += data.tx.length - TX_MAX;
     return {
       settings: normalizeSettings(settings),
+      moneyProfiles: normalizeMoneyProfiles(data.moneyProfiles, settings),
       tx: tx,
       health: normalizeHealth(data.health),   // 旧バックアップに health が無ければ空
       diary: normalizeDiary(data.diary),       // 旧バックアップに diary が無ければ空
@@ -4004,6 +4039,8 @@
     txsForCountry: txsForCountry,
     formatMoney: formatMoney,
     normalizeSettings: normalizeSettings,
+    normalizeMoneyProfiles: normalizeMoneyProfiles,
+    settingsForCountry: settingsForCountry,
     LP_MAX_ROWS: LP_MAX_ROWS,
     normalizeLifePlanAssets: normalizeLifePlanAssets,
     normalizeLpGold: normalizeLpGold,

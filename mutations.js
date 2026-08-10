@@ -754,6 +754,23 @@ const MUTATIONS = [
   { name: "下のタブを日本語のまま置き去りにする", guards: "下のタブも国のことばで出る",
     file: "index.html", from: "function render(){\n  applyLang();", to: "function render(){" },
 
+  /* ---- JP/US のお金プロファイル分離 ---- */
+  { name: "旧JPのお金設定をJPへ退避しない", guards: "旧データの金額はJPに残りUSへ持ち込まない",
+    file: "core.js", from: '    if (!out.JP && legacySettings && typeof legacySettings === "object") {',
+    to: '    if (false) {' },
+  { name: "初回USへJPの金額をコピーする", guards: "初回USは0/未設定から始まる",
+    file: "core.js", from: '    const p = profiles && profiles[c] ? profiles[c] : {};',
+    to: '    const p = profiles && profiles[c] ? profiles[c] : (profiles && profiles.JP ? profiles.JP : {});' },
+  { name: "国切替で現在の金額を次の国へ持ち込む", guards: "JPの円金額を同じ数字のドルにしない",
+    file: "index.html", from: '  state.settings=Core.settingsForCountry(state.moneyProfiles,next,sharedBirth);',
+    to: '  state.settings=Core.normalizeSettings(Object.assign({},state.settings,{country:next}));' },
+  { name: "USのお金設定をプロファイルへ保存しない", guards: "US→JP→USでUS設定が戻る",
+    file: "index.html", from: '  state.moneyProfiles[c]=Core.normalizeSettings(Object.assign({},state.settings,{country:c}));',
+    to: '' },
+  { name: "バックアップから国別お金プロファイルを外す", guards: "バックアップ復元後もJP/US両方を保持する",
+    file: "core.js", from: '      moneyProfiles: normalizeMoneyProfiles(st.moneyProfiles, st.settings),\n',
+    to: '' },
+
   /* ---- カレンダーは暦の月（家計の区切りキーではない） ---- */
   { name: "カレンダーの今月を区切りキーにする", guards: "起点20日でも暦の月を表示",
     file: "index.html", from: "function calCurYM(){ return ymOf(todayISO()); }",
