@@ -69,7 +69,7 @@ test('AU home is English and does not count other-country records',()=>{
     {id:'u',type:'income',amount:8888,cat:'salary',date:'2026-08-02',country:'US'},
     {id:'g',type:'income',amount:7777,cat:'salary',date:'2026-08-02',country:'GB'},
     {id:'c',type:'income',amount:6666,cat:'salary',date:'2026-08-02',country:'CA'},
-    {id:'a',type:'income',amount:1200,cat:'salary',date:'2026-08-02',country:'AU'},
+    {id:'a',type:'income',amount:120000,cat:'salary',date:'2026-08-02',country:'AU'},
   ];
   const h=plain(screen({country:'AU',cycleStart:1},tx,'home'));
   assert.match(h,/Hello/);

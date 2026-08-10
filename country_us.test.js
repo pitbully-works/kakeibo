@@ -24,9 +24,12 @@ const OLD_TX = [
   { id: "j2", type: "expense", amount: 60000, cat: "rent", date: D(1), recurring: true },
   { id: "j3", type: "expense", amount: 12345, cat: "food", date: D(3) },
 ];
+/* 内部の金額は最小通貨単位。USは 1 = 1セントなので、
+   $4,200.00 は 420000、$12.34 は 1234 と書く。
+   （日本は 1 = 1円のままなので、JPの作りものは1つも変わらない） */
 const US_TX = [
-  { id: "u1", type: "income", amount: 4200, cat: "salary", date: D(25), country: "US" },
-  { id: "u2", type: "expense", amount: 1234, cat: "food", date: D(3), country: "US" },
+  { id: "u1", type: "income", amount: 420000, cat: "salary", date: D(25), country: "US" },
+  { id: "u2", type: "expense", amount: 123400, cat: "food", date: D(3), country: "US" },
 ];
 
 function screen(settings, tx, view) {
@@ -250,18 +253,27 @@ test("JPを選んでいるとき、USの記録は集計に入らない", () => {
 
 test("USを選んでいるとき、JPの記録は集計に入らない", () => {
   const c = Core.computeMonth({ country: "US" }, OLD_TX.concat(US_TX), YM);
-  assert.equal(c.incomeTotal, 4200);
-  assert.equal(c.spendTotal, 1234);
+  /* 内部は最小単位（セント）。$4,200.00 = 420000、$1,234.00 = 123400 */
+  assert.equal(c.incomeTotal, 420000);
+  assert.equal(c.spendTotal, 123400);
 });
 
 test("まとめの記録一覧にも、ほかの国の記録は出ない", () => {
   const sum = plain(screen({ country: "US" }, OLD_TX.concat(US_TX), "summary"));
   assert.equal(/290,000/.test(sum), false, "JPの給与がUS画面に出ている");
   assert.match(sum, /\$4,200\.00/);
+  /* 金額の見た目だけで確かめると、国ごとに書式が違うぶん取りこぼす。
+     （JPの290000をUSの書式で出すと $2,900.00 になり、290,000 では見つからない）
+     出ている行の数と、その国の書式に直したJPの金額でも確かめる。 */
+  assert.equal(/\$2,900\.00/.test(sum), false, "JPの給与がドル書式でUS画面に出ている");
+  assert.equal(/\$600\.00/.test(sum), false, "JPの家賃がドル書式でUS画面に出ている");
+  assert.equal((sum.match(/data-edit=|Groceries|Salary/g) || []).length <= 6, true,
+    "US画面に多すぎる行が出ている（ほかの国の記録が混ざっている）");
 
   const jp = plain(screen({ country: "JP" }, OLD_TX.concat(US_TX), "summary"));
   assert.match(jp, /¥290,000/);
   assert.equal(/4,200/.test(jp), false, "USの給与がJP画面に出ている");
+  assert.equal(/¥420,000/.test(jp), false, "USの給与が円書式でJP画面に出ている");
 });
 
 test("カレンダーの印も、いまの国の記録だけを見る", () => {
@@ -277,7 +289,7 @@ test("その日の中身も、いまの国の記録だけを出す", () => {
   const jp = Core.dayDetail({ settings: { country: "JP" }, tx: both }, D(3));
   const us = Core.dayDetail({ settings: { country: "US" }, tx: both }, D(3));
   assert.equal(jp.expenseTotal, 12345);
-  assert.equal(us.expenseTotal, 1234);
+  assert.equal(us.expenseTotal, 123400);
 });
 
 test("分析も国ごとに分かれる", () => {
@@ -285,7 +297,7 @@ test("分析も国ごとに分かれる", () => {
   const jp = Core.analyzeMonth({ country: "JP" }, both, YM, { today: D(28) });
   const us = Core.analyzeMonth({ country: "US" }, both, YM, { today: D(28) });
   assert.equal(jp.month.spendTotal, 12345 + 60000);
-  assert.equal(us.month.spendTotal, 1234);
+  assert.equal(us.month.spendTotal, 123400);
   /* 気づきの文章も、その国のことばで出る */
   assert.equal(us.insights.some((i) => /[぀-ヿ一-鿿]/.test(i.text)), false, "USの気づきに日本語が混ざっている");
   assert.equal(jp.insights.length > 0, true);

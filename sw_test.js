@@ -7,7 +7,15 @@
    ========================================================================= */
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { bootSW, ORIGIN, swSrc } = require("./boot-sw.cjs");
+const { bootSW, ORIGIN, swSrc, CACHE_NAME } = require("./boot-sw.cjs");
+
+/* 版数はテストに打ち込まず、sw.js から読む。
+   打ち込むと、版数を上げるたびにテストが赤くなり、
+   「テストのほうを直す」癖がついてしまう。 */
+const CACHE = CACHE_NAME;
+const CACHE_NO = Number(/kakeibo-v(\d+)$/.exec(CACHE)[1]);
+/* いま使っている版より前の版は、1つ残らず sw.js から消えていること。 */
+const OLD_CACHES = Array.from({ length: CACHE_NO - 1 }, (_, i) => "kakeibo-v" + (i + 1));
 
 const INDEX = ORIGIN + "/index.html";
 const ROOT = ORIGIN + "/";
@@ -15,9 +23,10 @@ const CORE = ORIGIN + "/core.js";
 const ICON = ORIGIN + "/android-chrome-192x192.png";
 
 /* ---------- 1. キャッシュ名 ---------- */
-test("キャッシュ名が新しくなっている（kakeibo-v37）", () => {
-  assert.match(swSrc, /const CACHE = "kakeibo-v37";/, "版数が上がっていない");
-  for (const old of ["kakeibo-v1", "kakeibo-v2", "kakeibo-v3", "kakeibo-v4", "kakeibo-v5", "kakeibo-v6", "kakeibo-v7", "kakeibo-v8", "kakeibo-v9", "kakeibo-v10", "kakeibo-v11", "kakeibo-v12", "kakeibo-v13", "kakeibo-v14", "kakeibo-v15", "kakeibo-v16", "kakeibo-v17", "kakeibo-v18", "kakeibo-v19", "kakeibo-v20", "kakeibo-v28", "kakeibo-v29", "kakeibo-v30", "kakeibo-v33", "kakeibo-v34", "kakeibo-v35", "kakeibo-v36", "kakeibo-v32"]) {
+test("キャッシュ名が新しくなっている", () => {
+  assert.match(CACHE, /^kakeibo-v\d+$/, "キャッシュ名の形が違う: " + CACHE);
+  assert.ok(CACHE_NO >= 38, "版数が上がっていない: " + CACHE);
+  for (const old of OLD_CACHES) {
     assert.equal(swSrc.includes('"' + old + '"'), false, "古い版数が残っている: " + old);
   }
 });
@@ -25,7 +34,7 @@ test("キャッシュ名が新しくなっている（kakeibo-v37）", () => {
 test("install で必要な部品が先に取り込まれる", async () => {
   const sw = bootSW({});
   await sw.install();
-  const urls = sw.cachedUrls("kakeibo-v37");
+  const urls = sw.cachedUrls(CACHE);
   for (const must of [ROOT, INDEX, CORE, ORIGIN + "/manifest.webmanifest", ICON]) {
     assert.ok(urls.includes(must), must + " が取り込まれていない");
   }
@@ -33,15 +42,15 @@ test("install で必要な部品が先に取り込まれる", async () => {
 
 /* ---------- 2. activate で古いキャッシュを消す ---------- */
 test("activate で古いキャッシュを削除する", async () => {
-  const sw = bootSW({ oldCaches: ["kakeibo-v1", "kakeibo-v2", "kakeibo-v3", "kakeibo-v4", "kakeibo-v5", "kakeibo-v6", "kakeibo-v7", "kakeibo-v8", "kakeibo-v9", "kakeibo-v10", "kakeibo-v11", "kakeibo-v12", "kakeibo-v13", "kakeibo-v14", "kakeibo-v15", "kakeibo-v16", "kakeibo-v17", "kakeibo-v18", "kakeibo-v19", "kakeibo-v20", "kakeibo-v28", "kakeibo-v29", "kakeibo-v30", "kakeibo-v33", "kakeibo-v34", "kakeibo-v35", "kakeibo-v36", "kakeibo-v32"] });
+  const sw = bootSW({ oldCaches: OLD_CACHES });
   await sw.seedOld();
-  assert.equal(sw.cacheNames().length, 28, "前提の古いキャッシュが用意できていない");
+  assert.equal(sw.cacheNames().length, OLD_CACHES.length, "前提の古いキャッシュが用意できていない");
 
   await sw.install();
   await sw.activate();
 
   const names = sw.cacheNames();
-  assert.deepEqual(names, ["kakeibo-v37"], "古いキャッシュが残っている: " + names.join(", "));
+  assert.deepEqual(names, [CACHE], "古いキャッシュが残っている: " + names.join(", "));
 });
 
 test("activate 後、すぐに制御を引き継ぐ", async () => {
@@ -74,7 +83,7 @@ test("画面を取り直したら、その内容をキャッシュに入れ直�
   const sw = bootSW({});
   await sw.install();
   await sw.fetchEvent(INDEX, { mode: "navigate" });
-  const stored = await (await sw.caches.open("kakeibo-v37")).match(INDEX);
+  const stored = await (await sw.caches.open(CACHE)).match(INDEX);
   assert.equal(stored.body, "network:" + INDEX, "新しい画面がキャッシュに反映されていない");
 });
 
@@ -83,7 +92,7 @@ test("index.html を更新すれば、次に開いたとき新しい画面にな
   await sw.install();
   await sw.activate();
   // 初回：キャッシュには install 時の内容が入っている
-  const cachedFirst = await (await sw.caches.open("kakeibo-v37")).match(INDEX);
+  const cachedFirst = await (await sw.caches.open(CACHE)).match(INDEX);
   assert.match(cachedFirst.body, /^precached:/);
   // 画面を開くとネットワークの新しい内容になる
   const res = await sw.fetchEvent(INDEX, { mode: "navigate" });
@@ -126,7 +135,7 @@ test("core.js を取り直したら、その内容をキャッシュに入れ直
   const sw = bootSW({});
   await sw.install();
   await sw.fetchEvent(CORE);
-  const stored = await (await sw.caches.open("kakeibo-v37")).match(CORE);
+  const stored = await (await sw.caches.open(CACHE)).match(CORE);
   assert.equal(stored.body, "network:" + CORE, "新しい core.js がキャッシュに反映されていない");
 });
 
@@ -293,4 +302,55 @@ test("初回判定を入れても、更新の仕組みは残っている", () =>
   assert.match(code, /registration\.update\(\)/, "update() が消えた");
   assert.match(code, /if \(refreshing\) return;/, "無限リロード防止が消えた");
   assert.match(code, /window\.location\.reload\(\)/, "読み直しが消えた");
+});
+
+/* =========================================================================
+   失敗した返事を焼き付けない／オフラインでも真っ白にしない
+   -------------------------------------------------------------------------
+   デプロイの最中に一瞬 404 や 500 が返ることがある。それをそのまま
+   index.html としてキャッシュへ入れてしまうと、以後オフラインで開くたびに
+   エラー画面が出続け、キャッシュ名を上げるまで直らない。
+   ========================================================================= */
+test("404が返っても、画面としてキャッシュへ入れない", async () => {
+  const sw = bootSW({});
+  await sw.install();                       // まず正しい画面を入れておく
+  await sw.fetchEvent(INDEX, { mode: "navigate" });
+  const good = await (await sw.caches.open(CACHE)).match(INDEX);
+  assert.equal(good.body, "network:" + INDEX, "前提が崩れている");
+
+  sw.setNetStatus(404);                     // デプロイ中に404が返る
+  const res = await sw.fetchEvent(INDEX, { mode: "navigate" });
+  assert.equal(res.status, 404, "画面には返事をそのまま渡す");
+
+  const stored = await (await sw.caches.open(CACHE)).match(INDEX);
+  assert.equal(stored.body, "network:" + INDEX, "404がキャッシュに焼き付いた");
+  assert.equal(stored.status, 200, "失敗した返事がキャッシュに残っている");
+});
+
+test("500が返っても、アプリのコードとしてキャッシュへ入れない", async () => {
+  const sw = bootSW({});
+  await sw.install();
+  await sw.fetchEvent(CORE);
+  sw.setNetStatus(500);
+  await sw.fetchEvent(CORE);
+  const stored = await (await sw.caches.open(CACHE)).match(CORE);
+  assert.equal(stored.status, 200, "失敗した返事がキャッシュに残っている");
+});
+
+test("オフラインでキャッシュにも無いときは、真っ白にせず返事を返す", async () => {
+  const sw = bootSW({ offline: true });     // install もできない＝キャッシュは空
+  const res = await sw.fetchEvent(ORIGIN + "/unknown.js");
+  assert.notEqual(res, undefined, "respondWith(undefined) になっている（画面が真っ白になる）");
+  assert.notEqual(res, null, "返事を返していない");
+  assert.equal(res.status, 503, "オフラインだと分かる返事になっていない");
+});
+
+test("オフラインでも、入れてある画面なら開ける", async () => {
+  const sw = bootSW({});
+  await sw.install();
+  await sw.activate();
+  sw.setOffline(true);
+  const res = await sw.fetchEvent(INDEX, { mode: "navigate" });
+  assert.ok(res && res.body, "オフラインで画面が出ない");
+  assert.notEqual(res.status, 503, "キャッシュがあるのにオフライン返事になっている");
 });

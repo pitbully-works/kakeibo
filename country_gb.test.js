@@ -63,7 +63,7 @@ test('GB home is English and does not count JP or US records',()=>{
   const tx=[
     {id:'j',type:'income',amount:9999,cat:'salary',date:'2026-08-02'},
     {id:'u',type:'income',amount:8888,cat:'salary',date:'2026-08-02',country:'US'},
-    {id:'g',type:'income',amount:1200,cat:'salary',date:'2026-08-02',country:'GB'},
+    {id:'g',type:'income',amount:120000,cat:'salary',date:'2026-08-02',country:'GB'},
   ];
   const h=plain(screen({country:'GB',cycleStart:1},tx,'home'));
   assert.match(h,/Hello/);

@@ -338,7 +338,7 @@ test("目標が設定済みでも「目標記入」から入れ直せる", () =>
 test("すべて初期設定に戻す：二度たずねて、どちらか断れば何も消えない", () => {
   const make = () => bootApp({ state: {
     settings: { goalName: "車", goalTarget: 1000000 },
-    tx: [{ id: "1", d: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
+    tx: [{ id: "1", date: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
     diary: { "2026-08-01": { text: "あ" } } } });
   let app = make();
   app.run(`globalThis.confirm=()=>false; resetAll();`);
@@ -352,7 +352,7 @@ test("すべて初期設定に戻す：二度たずねて、どちらか断れ�
 test("すべて初期設定に戻す：両方たずねに答えたら、端末の中まで消える", () => {
   const app = bootApp({ state: {
     settings: { goalName: "車", goalTarget: 1000000 },
-    tx: [{ id: "1", d: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
+    tx: [{ id: "1", date: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
     diary: { "2026-08-01": { text: "あ" } } } });
   app.run(`globalThis.confirm=()=>true; resetAll();`);
   assert.strictEqual(app.run(`state.tx.length`), 0, "記録が残っている");
@@ -375,7 +375,7 @@ test("すべて初期設定に戻す：保存に失敗したら、データは�
      開き直すと元に戻る、という食い違いを防ぐ。 */
   const app = bootApp({ storageFull: true, state: {
     settings: { goalName: "車", goalTarget: 1000000 },
-    tx: [{ id: "1", d: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
+    tx: [{ id: "1", date: "2026-08-01", amount: 1000, type: "expense", cat: "food" }],
     diary: { "2026-08-01": { text: "あ" } } } });
   app.run(`globalThis.confirm=()=>true; resetAll();`);
   assert.strictEqual(app.run(`state.tx.length`), 1, "記録が消えたままになっている");

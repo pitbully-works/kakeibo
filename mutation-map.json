@@ -871,5 +871,110 @@
  ],
  "AUの月区切り表示を米国順にする": [
   "country_au.test.js"
+ ],
+ "写真の検証を先頭だけにする": [
+  "audit_test.js"
+ ],
+ "日記の写真をエスケープせず出す": [
+  "audit_test.js"
+ ],
+ "escapeHtml が引用符を逃がさない": [
+  "audit_test.js"
+ ],
+ "金額の上限を効かせない": [
+  "audit_test.js"
+ ],
+ "記録を整えずに保存する": [
+  "audit_test.js"
+ ],
+ "読み込んだ記録を整えない": [
+  "audit_test.js"
+ ],
+ "編集で記録の国を取り違える": [
+  "audit_test.js"
+ ],
+ "グラフの左端を月ずらしで出す": [
+  "audit_test.js"
+ ],
+ "グラフの左端をUTCで書き出す": [
+  "audit_test.js"
+ ],
+ "許可待ちの映像を捨てない": [
+  "audit_test.js",
+  "pulse_test.js"
+ ],
+ "停止で世代を進めない": [
+  "audit_test.js",
+  "pulse_test.js"
+ ],
+ "度の特別扱いをやめる": [
+  "sci_test.js"
+ ],
+ "弧度でも度の丸めを使う": [
+  "sci_test.js"
+ ],
+ "失敗した返事もキャッシュに入れる": [
+  "sw_test.js",
+  "audit_test.js"
+ ],
+ "JPにも100を掛ける": [
+  "minor_units_test.js"
+ ],
+ "GBだけ倍率を取り違える": [
+  "minor_units_test.js"
+ ],
+ "記録をいまの国で一括換算する": [
+  "minor_units_test.js"
+ ],
+ "プロファイルをいまの国で一括換算する": [
+  "minor_units_test.js"
+ ],
+ "移行済みでも、もう一度換算する": [
+  "minor_units_test.js"
+ ],
+ "移行しても印を付けない": [
+  "minor_units_test.js"
+ ],
+ "％や年齢にも100を掛ける": [
+  "minor_units_test.js"
+ ],
+ "お金の欄をひとつ換算し忘れる": [
+  "minor_units_test.js"
+ ],
+ "古いバックアップを最小単位として読む": [
+  "minor_units_test.js"
+ ],
+ "新しすぎるバックアップも読み込む": [
+  "minor_units_test.js"
+ ],
+ "ライフプランへ最小単位のまま渡す": [
+  "minor_units_test.js"
+ ],
+ "渡す前の検算をやめる": [
+  "minor_units_test.js"
+ ],
+ "ライフプラン入力を最小単位のまま渡す": [
+  "minor_units_test.js"
+ ],
+ "控えが取れなくても移行する": [
+  "minor_units_test.js"
+ ],
+ "控えを書けたか確かめない": [
+  "minor_units_test.js"
+ ],
+ "移行を見送っても保存してしまう": [
+  "minor_units_test.js"
+ ],
+ "見送ったのに印を付ける": [
+  "minor_units_test.js"
+ ],
+ "画面へ主単位に戻さず出す": [
+  "minor_units_test.js"
+ ],
+ "打ち込みを最小単位へ直さない": [
+  "minor_units_test.js"
+ ],
+ "直すときいまの国で換算する": [
+  "minor_units_test.js"
  ]
 }

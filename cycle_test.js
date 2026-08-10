@@ -15,8 +15,11 @@ const Core = require("./core.js");
 const { bootApp } = require("./boot-app.cjs");
 
 const S = (cycleStart) => ({ currency: "JPY", cycleStart: cycleStart });
-const exp = (id, amount, date) => ({ id, type: "expense", amount, cat: "food", date });
-const salary = (id, amount, date) => ({ id, type: "income", amount, cat: "salary", date });
+/* 端末に実際に保存される形（memo と photo のキーは必ず付く）に揃える。
+   ここを欠けた形にしておくと、読み込み時の正規化と比べたときに
+   「書き換わった」と誤って判定してしまう。 */
+const exp = (id, amount, date) => ({ id, type: "expense", amount, cat: "food", date, memo: "", photo: null });
+const salary = (id, amount, date) => ({ id, type: "income", amount, cat: "salary", date, memo: "", photo: null });
 
 /* ---------- 1. 起点1日は、これまでどおり ---------- */
 

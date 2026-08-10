@@ -28,10 +28,23 @@ function makeEl(id) {
  */
 function bootApp(opts) {
   const o = opts || {};
+  /* 端末に前回の続きが入っている状態から起動する（再起動の再現） */
+  const seedStore = o.store || null;
   const els = {};
   const get = (id) => (els[id] = els[id] || makeEl(id));
   const store = {};
-  if (o.state) store["kakeibo:v1:state"] = JSON.stringify(o.state);
+  /* 作りものの保存データは「いまのアプリが保存した形」＝最小通貨単位とみなす。
+     印（dataVersion）を付けておかないと、起動のたびに移行が走って
+     JP以外の金額が100倍になってしまう。
+     移行そのものを試したいテストは、fixture 側で dataVersion を
+     わざと省く（または古い値にする）ことで、移行の経路を通せる。 */
+  if (seedStore) Object.keys(seedStore).forEach((k) => { store[k] = seedStore[k]; });
+  if (o.rawState !== undefined) store["kakeibo:v1:state"] = o.rawState;
+  if (o.state) {
+    const seed = Object.assign({}, o.state);
+    if (!("dataVersion" in seed)) seed.dataVersion = 2;
+    store["kakeibo:v1:state"] = JSON.stringify(seed);
+  }
 
   const quota = () => {
     const e = new Error("QuotaExceededError");
@@ -39,6 +52,10 @@ function bootApp(opts) {
     throw e;
   };
   const setItem = (k, v) => {
+    /* 特定の鍵だけ書けない状況（移行の控えだけが置けない、など）。
+       storageFull だと何も書けなくなり、
+       「控えが取れないときに本体を守れているか」を試し分けられない。 */
+    if (Array.isArray(o.failKeys) && o.failKeys.indexOf(k) >= 0) quota();
     if (o.storageFull) quota();
     if (o.maxBytes && String(v).length > o.maxBytes) quota();
     store[k] = String(v);
@@ -96,6 +113,10 @@ function bootApp(opts) {
     htmlLang: () => docEl["attr:lang"],
     toastText: () => get("toast").innerHTML,
     saved: () => store["kakeibo:v1:state"],
+    /* 移行の控え（移行直前の、そのままの保存データ） */
+    migrationBackup: () => store["kakeibo:v1:backup-before-minor-units"],
+    /* 端末に残っているものを、そのまま次の起動へ渡す（再起動の再現） */
+    storeDump: () => JSON.parse(JSON.stringify(store)),
     /* 記録シートを開き、金額を入れて保存する */
     record: async (amount, photo, photoHi) => {
       vm.runInContext(`openRecord(null);`, ctx);

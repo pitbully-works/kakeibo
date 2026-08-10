@@ -61,6 +61,43 @@ test("三角関数は、はじめは度で計算する", () => {
   assert.equal(val("cos", "6", "0", ")"), "0.5");
 });
 
+test("度で計算するとき、90の倍数はきっちり 0・1・エラーになる", () => {
+  /* 90° を弧度へ直しても π/2 ちょうどにはならないため、
+     そのまま Math に渡すと sin(180) が 1.224647e-16、
+     tan(90) が 1.633124e+16 のような値になって画面に出てしまう。
+     市販の関数電卓と同じく、0 と「計算できません」を返す。 */
+  assert.equal(val("sin", "1", "8", "0", ")"), "0", "sin(180) に誤差が出ている");
+  assert.equal(val("sin", "3", "6", "0", ")"), "0", "sin(360) に誤差が出ている");
+  assert.equal(val("cos", "9", "0", ")"), "0", "cos(90) に誤差が出ている");
+  assert.equal(val("cos", "2", "7", "0", ")"), "0", "cos(270) に誤差が出ている");
+  assert.equal(val("tan", "0", ")"), "0");
+  assert.equal(val("sin", "9", "0", ")"), "1");
+  assert.equal(val("cos", "1", "8", "0", ")"), "-1");
+  assert.equal(val("sin", "2", "7", "0", ")"), "-1");
+});
+
+test("度で計算するとき、tan(90) は答えを出さない", () => {
+  for (const deg of [["9", "0"], ["2", "7", "0"], ["4", "5", "0"], ["-", "9", "0"]]) {
+    const s = run.apply(null, ["tan"].concat(deg, [")", "="]));
+    assert.equal(s.result, null, "tan(" + deg.join("") + ") が答えを出している");
+    assert.equal(s.error, "計算できません", "理由が出ていない: " + deg.join(""));
+  }
+});
+
+test("ふつうの角度は、これまでどおりの値が出る", () => {
+  assert.equal(val("sin", "3", "0", ")"), "0.5");
+  assert.equal(val("cos", "6", "0", ")"), "0.5");
+  assert.equal(val("tan", "4", "5", ")"), "1");
+  assert.equal(val("sin", "4", "5", ")"), "0.7071067812");
+});
+
+test("弧度モードでは 90の倍数の丸めを持ち込まない", () => {
+  /* 弧度のときの 90 は π/2 ではないので、0 に丸めてはいけない。 */
+  let s = Core.sciPress(Core.newSci(), "deg");
+  ["sin", "9", "0", ")", "="].forEach((k) => { s = Core.sciPress(s, k); });
+  assert.equal(Core.sciFormat(s.result), "0.8939966636", "弧度なのに度として丸めている");
+});
+
 test("Deg と Rad を切り替えられる", () => {
   let s = Core.sciPress(Core.newSci(), "deg");
   assert.equal(s.deg, false);

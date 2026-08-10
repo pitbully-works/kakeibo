@@ -136,7 +136,10 @@ test("銀行・借入・民間年金の合計が出る", () => {
 test("家計簿から来たデータだと分かる印をつける", () => {
   const out = Core.buildLifePlanInputs(Core.normalizeSettings({ lp: SAMPLE }));
   assert.equal(out.source, "kakeibo", "通常のバックアップ復元と見分けがつかない");
-  assert.equal(out.schemaVersion, 1);
+  assert.equal(out.schemaVersion, 2);
+  /* 渡す数値の単位を明示する（値そのものは従来どおり主単位） */
+  assert.equal(out.amount_unit, "major");
+  assert.equal(out.minor_unit_scale, 1, "JPは 1 = 1円");
   assert.ok(out.inputs, "inputs が無いと読み込んでもらえない");
   assert.deepEqual(Object.keys(out.inputs).sort(), [
     "banks", "gold", "loans", "privatePensionPlans",

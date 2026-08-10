@@ -261,6 +261,33 @@ test("収入に切り替えて記録すると、印は落ちる", async () => {
   assert.equal("recurring" in saved.tx[0], false, "収入に固定費の印が付いている");
 });
 
+test("収入のときは、画面側でも印を落としてから計算コアへ渡す", async () => {
+  /* 印を落とす場所は2つある。
+       ① 画面（index.html）… 収入に切り替えたら印を作らない
+       ② 計算コア（normalizeTransaction）… 収入に印が付いていても外す
+     ②があるので①を消しても保存結果は変わらない。それでも①は要る。
+     画面側が印を持ったまま渡すと、渡す途中の値（下書き・自動保存・
+     将来の別の入り口）に印が残ってしまうため。
+     そこで、コアへ何を渡しているかを直接見張る。 */
+  const app = bootApp({});
+  app.run(`
+    globalThis.__handed = null;
+    const orig = Core.normalizeTransaction;
+    Core.normalizeTransaction = function (rec) { globalThis.__handed = JSON.parse(JSON.stringify(rec)); return orig(rec); };
+  `);
+  app.run(`openRecord(null);`);
+  app.run(`handleAct("toggle-recurring");`);
+  app.run(`
+    sheetState.type="income"; sheetState.cat="salary";
+    document.getElementById("s-amt").value="300000";
+    document.getElementById("s-date").value=${JSON.stringify("2026-08-25")};
+  `);
+  await app.run(`saveTx()`);
+  const handed = app.run(`globalThis.__handed`);
+  assert.ok(handed, "計算コアへ渡していない");
+  assert.equal("recurring" in handed, false, "収入なのに印を付けたまま渡している");
+});
+
 test("記録をなおすとき、印の状態がそのまま出る", () => {
   const state = {
     settings: S,

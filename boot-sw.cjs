@@ -13,11 +13,18 @@ const swSrc = fs.readFileSync(path.join(__dirname, "sw.js"), "utf8");
 const ORIGIN = "https://kakeibo.example.app";
 
 /* --- 最小の Response / Request --- */
+/* 本物の Response に近づける。ok / status / type を持たせないと、
+   sw.js 側の「失敗した返事はキャッシュに入れない」判定を試せない。 */
 function makeResponse(body, meta) {
+  const m = meta || {};
+  const status = m.status === undefined ? 200 : m.status;
   return {
     body,
-    from: (meta && meta.from) || "network",
-    clone() { return makeResponse(body, { from: this.from }); },
+    status,
+    ok: status >= 200 && status < 300,
+    type: m.type || "basic",
+    from: m.from || "network",
+    clone() { return makeResponse(body, { from: this.from, status: this.status, type: this.type }); },
   };
 }
 function makeRequest(url, opts) {
@@ -64,17 +71,26 @@ function bootSW(opts) {
   const cachesApi = makeCaches();
   const fetchLog = [];
   let offline = !!o.offline;
+  let netStatus = o.netStatus || 200;
 
   const sandbox = {
     console,
     caches: cachesApi,
     URL,
     Promise,
+    /* sw.js がオフライン時に返す「返事らしい返事」。
+       本物の Response と同じように new できる形にしておく。 */
+    Response: function (body, init) {
+      const o = init || {};
+      return makeResponse(body === undefined ? "" : body, { status: o.status, from: "fallback" });
+    },
     location: { origin: ORIGIN },
     fetch: async (req) => {
       const url = typeof req === "string" ? req : req.url;
       fetchLog.push(url);
       if (offline) throw new Error("offline");
+      /* サーバーが失敗を返す場面（デプロイ中の404など）も再現できるようにする */
+      if (netStatus !== 200) return makeResponse("network:" + url, { from: "network", status: netStatus });
       return makeResponse("network:" + url, { from: "network" });
     },
   };
@@ -110,10 +126,13 @@ function bootSW(opts) {
     return responded ? await responded : null;
   };
 
+  const CACHE_NAME = (/const CACHE = "([^"]+)"/.exec(swSrc) || [])[1];
+
   return {
-    ctx, listeners, caches: cachesApi, fetchLog,
+    ctx, listeners, caches: cachesApi, fetchLog, CACHE_NAME,
     seedOld,
     setOffline: (v) => { offline = v; },
+    setNetStatus: (v) => { netStatus = v; },
     install: () => fire("install"),
     activate: () => fire("activate"),
     fetchEvent: (url, opts2) => fire("fetch", makeRequest(url, opts2)),
@@ -123,4 +142,9 @@ function bootSW(opts) {
   };
 }
 
-module.exports = { bootSW, ORIGIN, swSrc };
+/* sw.js に書いてある今のキャッシュ名。テスト側で版数を打ち込まないための入口。
+   打ち込んでおくと、版数を上げるたびにテストが赤くなって
+   「テストのほうを直す」癖がついてしまう。 */
+const CACHE_NAME = (/const CACHE = "([^"]+)"/.exec(swSrc) || [])[1];
+
+module.exports = { bootSW, ORIGIN, swSrc, CACHE_NAME };

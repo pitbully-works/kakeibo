@@ -580,15 +580,72 @@ const defaultState = ()=>{
     diary:{},  // { 'YYYY-MM-DD': '本文' } 1日1件・編集可
     plans:{},  // { 'YYYY-MM-DD': [{id,time,text,done}] } 予定。1日に何件でも
     pulse:[],  // 心拍数（カメラ測定）の履歴。1日に何件でも。数値だけで映像は持たない
-    calcHistory:[]  // 関数電卓の履歴 [{expr,value}]。式そのものは持ち歩かない
+    calcHistory:[],  // 関数電卓の履歴 [{expr,value}]。式そのものは持ち歩かない
+    dataVersion: Core.DATA_VERSION  // 新しく入れた端末は最初から最小単位。移行を通らない
   };
 };
+let lastSaveError=null;
+const MIGRATION_BACKUP_KEY = "kakeibo:v1:backup-before-minor-units";
+let migrationBlocked = false;      // 控えが取れず、移行を見送った
+let migrationDone = null;          // 移行できたときの件数（画面で知らせる）
+
+/* 控えを取る。書けたら必ず読み戻して、1文字も違わないことまで確かめる。
+   「書けたつもり」で移行を始めるのが、いちばん危ないため。 */
+function backupBeforeMigration(raw){
+  const put = (text) => {
+    try{
+      localStorage.setItem(MIGRATION_BACKUP_KEY, text);
+      return localStorage.getItem(MIGRATION_BACKUP_KEY) === text;
+    }catch(e){ return false; }
+  };
+  if(put(raw)) return true;
+  /* 写真で場所が足りないことがある。金額を戻すのに写真は要らないので、
+     写真だけ外した控えでもう一度試す。 */
+  try{
+    const lite = JSON.parse(raw);
+    if(Array.isArray(lite.tx)) lite.tx = lite.tx.map(t => Object.assign({}, t, { photo: null }));
+    if(lite.diary && typeof lite.diary === "object"){
+      Object.keys(lite.diary).forEach(d => {
+        if(lite.diary[d] && typeof lite.diary[d] === "object") lite.diary[d] = { text: lite.diary[d].text || "" };
+      });
+    }
+    return put(JSON.stringify(lite));
+  }catch(e){ return false; }
+}
+
 let state = load();
+/* 移行できたときは、その場で書き込んで印を確定させる。
+   ここで書けなかったら印も付かないので、次に開いたときにやり直す
+   （＝金額だけ移行されて印が無い、という状態にはならない）。 */
+if(migrationDone && !save()) migrationDone=null;
 let view = "home";
 let sumTab = "month";   // まとめ画面のタブ： "month"（今月）／"analysis"（分析）
 
+/* =========================================================================
+   最小通貨単位への移行（一度きり）
+   -------------------------------------------------------------------------
+   移行は、保存データの金額を書き換える唯一の処理。だから2つ守る。
+
+     ① 移行の直前に、移行前のまま控えを取る。控えが取れなければ移行しない
+     ② 控えと dataVersion の印は、金額と同じ1回の setItem で入る
+        （＝「金額だけ移行されて印が無い」状態は作れない＝二重移行しない）
+
+   控えが取れなかったときは移行せず、保存もいったん止める。
+   古い単位のまま書き込むと、次に開いたときに二重移行の判断ができなくなるため。
+   空きを作ってから開き直せば、そこで移行が完了する。
+   ========================================================================= */
 function load(){
-  try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const s=JSON.parse(raw);
+  try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ let s=JSON.parse(raw);
+    /* --- 移行はここ。整える前の、保存されたそのままの形に対してかける --- */
+    if(Core.needsMinorUnitMigration(s)){
+      if(backupBeforeMigration(raw)){
+        const m = Core.migrateToMinorUnits(s);
+        s = m.state;
+        migrationDone = { tx: m.txConverted, profiles: m.profilesConverted };
+      }else{
+        migrationBlocked = true;   // 控えが取れなかった。移行しない
+      }
+    }
     const legacy=Core.normalizeSettings(s.settings||{});
     /* JPだけを使ってきた端末は、保存サイズも形もできるだけ従来のままにする。
        moneyProfiles がある場合だけ国別プロファイルを復元する。
@@ -603,13 +660,17 @@ function load(){
       active=Core.settingsForCountry(profiles, legacy.country, legacy.birth);
       profiles[active.country]=Core.normalizeSettings(active);
     }
-    const out={ settings:active, tx:Array.isArray(s.tx)?s.tx:[], health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans), pulse:Core.normalizePulseList(s.pulse), calcHistory:Core.normalizeSciHistory(s.calcHistory) };
+    /* 記録も health/diary/plans/pulse と同じように整えてから使う。
+       ここだけ素通しにすると、壊れた金額や不正な写真が
+       再起動しても消えずに残ってしまう。 */
+    const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans), pulse:Core.normalizePulseList(s.pulse), calcHistory:Core.normalizeSciHistory(s.calcHistory) };
     if(profiles) out.moneyProfiles=profiles;
+    /* 移行を見送ったときは印を付けない。次に開いたとき、もう一度やり直す。 */
+    if(!migrationBlocked) out.dataVersion=Core.DATA_VERSION;
     return out; } }
   catch(e){ /* ignore */ }
   return defaultState();
 }
-let lastSaveError=null;
 function syncMoneyProfile(){
   if(!state || !state.settings) return;
   const c=Core.normalizeCountry(state.settings.country);
@@ -619,6 +680,9 @@ function syncMoneyProfile(){
   state.moneyProfiles[c]=Core.normalizeSettings(Object.assign({},state.settings,{country:c}));
 }
 function save(){
+  /* 移行を見送っている間は書き込まない。古い単位のまま上書きすると、
+     次に開いたときに移行済みかどうかを判断できなくなる。 */
+  if(migrationBlocked){ lastSaveError = new Error("QuotaExceededError"); lastSaveError.name="QuotaExceededError"; return false; }
   try{ syncMoneyProfile(); localStorage.setItem(STORE_KEY, JSON.stringify(state)); lastSaveError=null; return true; }
   catch(e){ lastSaveError=e; return false; }
 }
@@ -664,8 +728,16 @@ function errText(o){
 }
 function ageRangeLabel(from, to){ return L(`${from}歳 〜 ${to}歳`, `age ${from} to ${to}`); }
 function wd(dow){ return Core.weekdayShort(dow, state.settings); }
-/* 金額。日本のときは今までと1文字も変わらない「¥1,234」。USは「$1,234.56」。 */
-function yen(v){ return Core.formatMoney(v, state.settings); }
+/* 金額。日本のときは今までと1文字も変わらない「¥1,234」。USは「$1,234.56」。
+   -----------------------------------------------------------------------
+   内部の金額は最小通貨単位（JPは円、USはセント）で持っている。
+   画面へ出すときは、必ずここで主単位へ戻す。
+   金額を出す場所はすべて yen() を通しているので、境目はこの1か所だけ。 */
+function yen(v){ return Core.formatAmount(v, state.settings); }
+/* 打ち込まれた主単位の数を、内部の最小単位へ直す。受け取る境目はここだけ。 */
+function toMinor(v){ return Core.toMinor(v, state.settings); }
+/* 内部の最小単位を、打ち込み欄やグラフの目もりに出す主単位へ戻す。 */
+function toMajor(v){ return Core.toMajor(v, state.settings); }
 /* 今の区切りが終わるまで、あと何日か */
 function daysLeftInCycle(){
   const r=Core.cycleRange(curYM(), cycleStart());
@@ -707,13 +779,32 @@ function applyLang(){
     if(gear&&typeof gear.setAttribute==="function") gear.setAttribute("aria-label", T("nav.settings"));
     const root=document.documentElement;
     if(root&&typeof root.setAttribute==="function") root.setAttribute("lang", isEn()?"en":"ja");
+
+    /* ホーム画面に追加したときの名前も、いまのことばに合わせる。
+       manifest は静的ファイルなので中身を多言語にはできない。
+       そこで、ことばごとのファイルを用意して差し替える。 */
+    const man=document.querySelector('link[rel="manifest"]');
+    if(man&&typeof man.setAttribute==="function"){
+      man.setAttribute("href", isEn()?"./manifest-en.webmanifest":"./manifest.webmanifest");
+    }
+    /* iPhone はホーム画面の名前を manifest ではなくこの meta から取る */
+    const appTitle=document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if(appTitle&&typeof appTitle.setAttribute==="function"){
+      appTitle.setAttribute("content", isEn()?"Kakeibo":"かけいぼ");
+    }
+    if(typeof document.title==="string"){
+      document.title=isEn()?"Kakeibo — a budget that gets you closer to your dream":"かけいぼ ― 夢に近づく家計簿";
+    }
   }catch(e){ /* 最小DOMでも落とさない */ }
 }
 
 function render(){
   applyLang();
-  /* 心拍の画面から離れるときは、必ずカメラとライトを止める */
-  if(view!=="pulse" && pRunning) pulseStopAll();
+  /* 心拍の画面から離れるときは、必ずカメラとライトを止める。
+     pRunning は「許可が下りたあと」に立つので、それだけを条件にすると
+     許可を待っている最中に画面を移られたときに止め損ねる。
+     待っている最中かどうか（pGen が進んでいるか）も一緒に見る。 */
+  if(view!=="pulse" && (pRunning || pStream || pGen!==pStopGen)) pulseStopAll();
   document.querySelectorAll("#nav button").forEach(b=>navMark(b, b.dataset.nav===view));
   const gear=$("gearbtn"); if(gear&&gear.classList) gear.classList.toggle("on", view==="settings");
   const app=$("app");
@@ -1101,7 +1192,11 @@ function sumTabs(){
 
 /* 使うペース：つかった累計の線と、予算のペース（点線）を重ねる。
    縦＝金額の目もり（万単位）／横＝日にち。目もりの決め方は core.js（chartScale）が正。 */
-function yenTick(v){
+/* グラフの目もり。渡ってくる v は内部の最小単位なので、
+   ここで主単位へ戻してから「万」「k」に丸める。
+   直さないと、USの軸だけが100倍の数字になる。 */
+function yenTick(minorValue){
+  const v = toMajor(minorValue);
   if(v===0) return "0";
   /* 英語圏は「万」を使わないので、1000区切りの k で出す */
   if(isEn()){
@@ -1414,13 +1509,13 @@ function renderDiary(){
   const listHtml = list.length ? list.map(d=>{
     const md=d.date.slice(5).replace("-","/");
     const preview=escapeHtml(d.text.length>60?d.text.slice(0,60)+"…":d.text);
-    const thumb=d.photo?`<img src="${d.photo}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex:0 0 auto">`:"";
+    const thumb=d.photo?`<img src="${escapeAttr(d.photo)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex:0 0 auto">`:"";
     return `<div class="krow diary-row" data-act="edit-diary" data-date="${d.date}" style="cursor:pointer;align-items:flex-start;gap:8px">
       <span style="min-width:40px;color:var(--sub);font-weight:700">${md}</span>
       <span style="flex:1;white-space:pre-wrap;line-height:1.5">${preview||(d.photo?L("（写真のみ）","Photo only"):"")}</span>${thumb}</div>`;
   }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">${L("まだ日記がありません","No diary entries yet")}</div>`;
   const photoBlock = curPhoto
-    ? `<div style="margin-top:8px"><img src="${curPhoto}" style="width:100%;border-radius:10px;display:block"><button class="btn-quiet" data-act="rm-diary-photo" style="margin-top:6px">${L("🗑 写真を外す","🗑 Remove the photo")}</button></div>`
+    ? `<div style="margin-top:8px"><img src="${escapeAttr(curPhoto)}" style="width:100%;border-radius:10px;display:block"><button class="btn-quiet" data-act="rm-diary-photo" style="margin-top:6px">${L("🗑 写真を外す","🗑 Remove the photo")}</button></div>`
     : `<button class="photobtn" data-act="add-diary-photo">
         <span class="pi">📷</span>
         <span>${L("写真を追加","Add a photo")}<small>${L("撮影・ライブラリから選べます","Take one or pick from your library")}</small></span>
@@ -1504,12 +1599,23 @@ async function saveDiary(){
 
 /* ---------- 健康ページ ---------- */
 let healthRange="month";   // day / week / month
+/* グラフの左端の日付。
+   -----------------------------------------------------------------------
+   ここは2つ間違えやすいところがある。どちらも実際に踏んだ。
+
+   ① setMonth(月-1) を使ってはいけない。
+      3月31日に「2月31日」を指すと、JavaScript は3月3日へ繰り越してしまう。
+      31日に開いたときだけ、1か月グラフが数日ぶんしか出なくなる。
+   ② toISOString() を使ってはいけない。
+      ローカルの日付をUTCへ直してしまうので、日本では1日多く、
+      アメリカなどでは「昨日」がまるごと消える。
+      アプリの他の場所はすべて todayISO()（ローカル）で数えている。
+
+   そこで、日数で引いて todayISO() で書き出す。 */
+const HEALTH_RANGE_DAYS={ day:1, week:7, month:30 };
 function healthFromDate(){
-  const now=new Date(); const d=new Date(now);
-  if(healthRange==="day") d.setDate(now.getDate()-1);
-  else if(healthRange==="week") d.setDate(now.getDate()-7);
-  else d.setMonth(now.getMonth()-1);
-  return d.toISOString().slice(0,10);
+  const back=HEALTH_RANGE_DAYS[healthRange]||HEALTH_RANGE_DAYS.month;
+  return Core.shiftDate(todayISO(), -back);
 }
 /* 日付 "2026-07-25" → "7/25" */
 function mdLabel(iso){ return `${Number(iso.slice(5,7))}/${Number(iso.slice(8,10))}`; }
@@ -1774,9 +1880,9 @@ function renderSettings(){
       <input id="f-gname" value="${escapeAttr(s.goalName||"")}" placeholder="${escapeAttr(T("set.goalNamePh"))}"></div>
     <div class="row2">
       <div class="field"><label>${T("set.goalTarget")}</label><div class="row"><span class="yen">${Core.countryRule(s.country).symbol}</span>
-        <input class="mono" id="f-gtarget" inputmode="numeric" value="${s.goalTarget||""}" placeholder="0"></div></div>
+        <input class="mono" id="f-gtarget" inputmode="numeric" value="${s.goalTarget?sheetMajor(s.goalTarget):""}" placeholder="0"></div></div>
       <div class="field"><label>${T("set.goalCurrent")}</label><div class="row"><span class="yen">${Core.countryRule(s.country).symbol}</span>
-        <input class="mono" id="f-gcur" inputmode="numeric" value="${s.goalCurrent||""}" placeholder="0"></div></div>
+        <input class="mono" id="f-gcur" inputmode="numeric" value="${s.goalCurrent?sheetMajor(s.goalCurrent):""}" placeholder="0"></div></div>
     </div>
 
     <div class="stitle">${T("set.data")}</div>
@@ -1802,9 +1908,18 @@ function renderSettings(){
 
 /* ---------- 記録シート ---------- */
 let sheetState=null; // {mode:'add'|'edit', id?, type, amount, cat, date, memo, photo}
+/* シートの amount は「打ち込む側の数」＝主単位（ドル・円）で持つ。
+   内部（最小単位）との行き来は、この2つだけを通す。
+   第1段階では小数を打てないので、主単位は必ず整数になる
+   （セントを打てるようにするのは第2段階）。 */
+function sheetMajor(minorValue, country){ return Math.round(Core.toMajor(minorValue, country||state.settings)); }
+/* その記録がどの国のものか。国の印が無ければ日本。
+   打ち込みの換算は「いま選んでいる国」ではなく **その記録の国** で決める。
+   ここを取り違えると、US画面で日本の記録を直したときに100倍になる。 */
+function txCountryOf(t){ return Core.normalizeCountry(t && t.country); }
 function openRecord(editId){
   if(editId){ const t=state.tx.find(x=>x.id===editId); if(!t) return;
-    sheetState={mode:"edit", id:t.id, type:t.type, amount:String(t.amount), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null, shot:"total", recurring:t.recurring===true};
+    sheetState={mode:"edit", id:t.id, type:t.type, amount:String(sheetMajor(t.amount, txCountryOf(t))), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null, shot:"total", recurring:t.recurring===true};
   } else {
     sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total", recurring:false};
   }
@@ -1844,13 +1959,13 @@ function renderSheet(){
   const choicesHtml = (st.ocrChoices&&st.ocrChoices.length)
     ? `<div class="choices">
          <div class="cl">${TJ("rec.choices","タップして金額を入れます（記録はまだされません）")}</div>
-         ${st.ocrChoices.map(a=>`<button class="choice mono" data-pick="${a}">${yen(a)}</button>`).join("")}
+         ${st.ocrChoices.map(a=>`<button class="choice mono" data-pick="${a}">${yen(toMinor(a))}</button>`).join("")}
          <button class="choice manual" data-act="manual-amount">${T("rec.manual")}</button>
        </div>`
     : "";
   const photoHtml = st.photo
     ? `<div class="cropwrap" id="cropwrap">
-         <img id="cropimg" src="${st.photo}" alt="レシート">
+         <img id="cropimg" src="${escapeAttr(st.photo)}" alt="レシート">
          <div class="cropbox" id="cropbox"><span class="h tl"></span><span class="h br"></span></div>
        </div>
        <div class="shothint">${T("rec.cropHint")}
@@ -2248,8 +2363,24 @@ async function saveTx(){
   readSheetInputs(); const st=sheetState;
   /* ＝ を押さずに「記録する」を押しても、待っている計算を済ませてから記録する */
   if(st.calc && st.calc.op) st.amount=String(Core.calcValue(st.calc));
-  const amount=parseInt(String(st.amount).replace(/[^\d]/g,""),10);
-  if(!amount||amount<=0){ toast(L("金額を入れてね","Please enter an amount")); const ai=$("s-amt"); if(ai) ai.focus(); return; }
+  const typedMajor=parseInt(String(st.amount).replace(/[^\d]/g,""),10);
+  if(!typedMajor||typedMajor<=0){ toast(L("金額を入れてね","Please enter an amount")); const ai=$("s-amt"); if(ai) ai.focus(); return; }
+  /* 直すときは、その記録がもともと持っていた国で換算する。
+     新しく作るときは、いま選んでいる国。 */
+  const editIdx = st.mode==="edit" ? state.tx.findIndex(x=>x.id===st.id) : -1;
+  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();
+  /* ここが「打ち込み → 内部」の境目。以降はすべて最小単位で扱う。 */
+  const typed=Core.toMinor(typedMajor, recCountry);
+  /* 上限で止める。電卓は 9桁×9桁 のような掛け算ができてしまうので、
+     ここで切り詰めないと 18桁の金額がそのまま残り、集計がすべて壊れる。
+     黙って切り詰めず、切り詰めたことを必ず伝える。 */
+  const cap=Core.amountMax(recCountry);
+  const amount=Math.min(typed, cap);
+  if(amount!==typed){
+    const capText=Core.formatAmount(cap, recCountry);
+    toast(L(`金額が大きすぎます。${capText} までにしました`,
+            `That's too large — capped at ${capText}`));
+  }
 
   /* 保存用に写真を小さくする（そのままだと保存領域を超えて何も残らない）。
      読み取り用の高解像度画像は、保存が成功してから手放す。
@@ -2262,16 +2393,25 @@ async function saveTx(){
   const recurring = st.type==="expense" && st.recurring===true;
 
   const before = JSON.stringify(state.tx);
-  if(st.mode==="edit"){
-    const t=state.tx.find(x=>x.id===st.id);
-    if(t){ t.type=st.type; t.amount=amount; t.cat=st.cat; t.date=st.date; t.memo=st.memo; t.photo=photo;
-           if(recurring) t.recurring=true; else delete t.recurring; }
-  } else {
-    const rec={id:uid(),type:st.type,amount,cat:st.cat,date:st.date,memo:st.memo,photo:photo};
-    if(recurring) rec.recurring=true;   // オフのときはキーごと持たない（保存を軽くする）
-    if(curCountry()!=="JP") rec.country=curCountry();   // JPは印を持たない
-    state.tx.push(rec);
-  }
+  /* 国の印。直すときは、その記録がもともと持っていた国を必ず引き継ぐ
+     （US滞在中に日本の記録を直しても、日本の記録のままにする）。 */
+  const idx = editIdx;
+
+  const rec={id:uid(),type:st.type,amount,cat:st.cat,date:st.date,memo:st.memo,photo:photo};
+  if(recurring) rec.recurring=true;   // オフのときはキーごと持たない（保存を軽くする）
+  if(recCountry!=="JP") rec.country=recCountry;   // JPは印を持たない
+  if(st.mode==="edit") rec.id=st.id;
+
+  /* 記録は必ず core.js の normalizeTransaction を通してから state に入れる。
+     復元のときだけ整えて、手で入れたときは素通し、という作りにすると、
+     同じ内容でも経路によって中身が変わってしまう。整える場所はひとつだけにする。 */
+  const safe=Core.normalizeTransaction(rec);
+  if(!safe){ toast(L("この内容では記録できません","That can't be recorded as it is")); return; }
+  Object.keys(rec).forEach(k=>{ if(!(k in safe)) delete rec[k]; });   // 落とされた印を消す
+  Object.assign(rec, safe);
+
+  if(st.mode==="edit"){ if(idx>=0) state.tx[idx]=rec; }
+  else state.tx.push(rec);
 
   if(save()){
     releaseOcrImage(st);            // 記録が確定した。高解像度はここで手放す
@@ -2357,7 +2497,8 @@ function readSettingsForm(base){
   const s=Object.assign({}, base||state.settings);
   s.birth=Core.normalizeBirth(g("f-birth"));
   s.goalName=(g("f-gname")||"").slice(0,24);
-  s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));
+  /* 打ち込みは主単位。内部の最小単位へ直してから設定に入れる。 */
+  s.goalTarget=toMinor(num(g("f-gtarget"))); s.goalCurrent=toMinor(num(g("f-gcur")));
   s.cycleStart=Core.normalizeCycleStart(g("f-cycle"));
   return Core.normalizeSettings(s);
 }
@@ -2521,8 +2662,11 @@ function focusField(id){
 let toastT=null;
 function toast(msg){ const el=$("toast"); el.innerHTML=`<span class="ck">✓</span>${escapeHtml(msg).replace("✓","")}`;
   el.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove("show"),1900); }
-function escapeHtml(s){ return String(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
+/* ' も逃がす。いまは属性をすべて " で囲んでいるので実害は無いが、
+   将来どこか1か所を ' で囲んだ瞬間に穴になるため、ここで塞いでおく。 */
+function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+/* 属性に入れる値。escapeHtml が " も ' も逃がすので、そのまま使える。 */
+function escapeAttr(s){ return escapeHtml(s); }
 
 /* =========================================================================
    心拍数（β版）― カメラ(PPG)で測る
@@ -2551,6 +2695,13 @@ let pulseErr    = "";      // 中止・失敗の理由
 /* 測定中だけ持つもの。止めたら必ず全部片づける。 */
 let pStream = null, pTrack = null, pRafId = null, pRvfcId = null, pTickId = null, pWake = null;
 let pRunning = false, pSamples = [], pT0 = 0, pWatch = null, pLastSettings = "";
+/* 測定の「何回目か」。カメラの許可を待っている間に画面を離れたり
+   中止を押したりしたら、あとから届いた映像を捨てるために使う。
+   pRunning だけを見張っていると、許可を待っている最中は false のままなので
+   停止処理が走らず、カメラとライトが点いたまま残ってしまう。 */
+let pGen = 0;
+/* 最後に止めたときの世代。pGen と食い違っていれば「いま動かそうとしている最中」。 */
+let pStopGen = 0;
 let pCtx = null, pVideo = null, pLiveBpm = null, pGuideKey = "", pGuideAt = 0, pTickN = 0;
 
 /* 端末の見分けがつく程度の短い文字列（個人が特定される情報は入れない） */
@@ -2770,16 +2921,27 @@ async function pulseStart(){
      iPhoneのホーム画面アプリ（PWA）では「ボタンを押した直後」でないと
      許可の確認が出ず、そのまま NotAllowedError になってしまう。
      そのため getUserMedia を最初に呼び、映像が取れてから測定画面へ移る。 */
+  const gen=++pGen;
+  let stream;
   try{
-    pStream=await navigator.mediaDevices.getUserMedia({
+    stream=await navigator.mediaDevices.getUserMedia({
       audio:false,
       video:{ facingMode:{ideal:"environment"}, width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30,max:30} },
     });
   }catch(e){
+    if(gen!==pGen) return;                 // もう中止されている。エラーも出さない
     pulseFail(pulseCamError(e));
     return;
   }
 
+  /* 許可を待っている間に、中止を押されたか、別の画面へ移っていないか。
+     移っていたら、届いた映像はその場で捨てる（点けっぱなしにしない）。 */
+  if(gen!==pGen || view!=="pulse"){
+    try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    return;
+  }
+
+  pStream=stream;
   pulseStage="measure"; render(); pulseMountVideo();
   pTrack=pStream.getVideoTracks()[0];
   if(pVideo){
@@ -2982,6 +3144,8 @@ function pulseDrawWave(el){
 
 /* ---------- 停止（測定終了・中止・画面移動のすべてでここを通す） ---------- */
 function pulseStopAll(){
+  pGen++;              // 許可を待っている最中の測定も、ここで無効にする
+  pStopGen=pGen;
   pRunning=false;
   if(pTickId){ clearInterval(pTickId); pTickId=null; }
   if(pWatch){ clearInterval(pWatch); pWatch=null; }
@@ -3171,7 +3335,13 @@ const LP_KINDS = ["nisa", "ideco", "gold", "banks", "loans", "insurance", "pensi
 let lpKind = "gold";     // 内訳画面で開いている種類
 
 /* いまの設定にある資産（未入力なら空の形） */
-function lpAssets(){ return Core.normalizeLifePlanAssets(state.settings.lp); }
+/* ライフプラン欄の編集は、打ち込む側の数＝**主単位**でやりとりする。
+   内部（最小単位）との行き来を、読み(lpAssets)と書き(lpSave)の2か所だけに閉じる。
+   ここを画面のあちこちでやると、必ずどこかで掛け忘れ・掛けすぎが出る。 */
+function lpAssets(){
+  const major = Core.settingsToMajor(state.settings);
+  return Core.normalizeLifePlanAssets(major.lp);
+}
 
 /* 「この内容で保存する」で呼ぶ保存。名前も金額も入っていない行はここで捨てる。
    「＋ 足す」で作った直後の空行まで消してしまわないよう、
@@ -3184,7 +3354,10 @@ function lpSave(next){
   /* 行のしるし（id）を、まだ無い行にだけ付ける。
      これが無いとライフプラン側が名前で照合するしかなく、
      名前が空・同名だと、渡すたびに同じ行が増えてしまう。 */
-  state.settings = Core.normalizeSettings(Object.assign({}, state.settings, { lp: Core.lpEnsureIds(next) }));
+  /* 打ち込まれた主単位を、ここで内部の最小単位へ直す。 */
+  const merged = Core.settingsToMinor(
+    Object.assign({}, Core.settingsToMajor(state.settings), { lp: Core.lpEnsureIds(next) }));
+  state.settings = Core.normalizeSettings(merged);
   if(!save()){
     state.settings = before;
     toast(L("保存できませんでした","Could not save"));
@@ -3712,8 +3885,8 @@ function lpRefreshTotals(){
 const SETTING_FIELD = {
   "f-birth":   (s,v)=>{ s.birth = Core.normalizeBirth(v); },
   "f-gname":   (s,v)=>{ s.goalName = String(v||"").slice(0,24); },
-  "f-gtarget": (s,v)=>{ s.goalTarget = settingNum(v); },
-  "f-gcur":    (s,v)=>{ s.goalCurrent = settingNum(v); },
+  "f-gtarget": (s,v)=>{ s.goalTarget = Core.toMinor(settingNum(v), s); },
+  "f-gcur":    (s,v)=>{ s.goalCurrent = Core.toMinor(settingNum(v), s); },
   "f-cycle":   (s,v)=>{ s.cycleStart = Core.normalizeCycleStart(v); },
   "f-country": (s,v)=>{ s.country = Core.pickCountry(v); },
 };
@@ -3757,7 +3930,7 @@ document.addEventListener("change",(e)=>{
 
 document.addEventListener("visibilitychange",()=>{
   /* 画面を離れたら測定を中止する（カメラとライトを点けっぱなしにしない） */
-  if(document.hidden){ if(pRunning){ pulseFail("画面を離れたので測定を中止しました。"); } return; }
+  if(document.hidden){ if(pRunning || pStream || pGen!==pStopGen){ pulseFail("画面を離れたので測定を中止しました。"); } return; }
   if(!calSyncToToday()) return;
   if(view==="calendar"||view==="home"||view==="summary") render();
 });
@@ -3893,7 +4066,7 @@ function handleAct(a,e){
 /* ページを閉じる・アプリを切り替えるときも、カメラとライトを必ず止める。
    （テスト用の最小DOMには window.addEventListener が無いので存在を確かめる） */
 if(typeof window!=="undefined" && typeof window.addEventListener==="function"){
-  window.addEventListener("pagehide",()=>{ if(pRunning) pulseStopAll(); });
+  window.addEventListener("pagehide",()=>{ if(pRunning || pStream || pGen!==pStopGen) pulseStopAll(); });
 }
 $("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
 $("backupInput").addEventListener("change",e=>{ onBackupPicked(e.target.files&&e.target.files[0]); });

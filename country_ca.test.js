@@ -66,7 +66,7 @@ test('CA home is English and does not count other-country records',()=>{
     {id:'j',type:'income',amount:9999,cat:'salary',date:'2026-08-02'},
     {id:'u',type:'income',amount:8888,cat:'salary',date:'2026-08-02',country:'US'},
     {id:'g',type:'income',amount:7777,cat:'salary',date:'2026-08-02',country:'GB'},
-    {id:'c',type:'income',amount:1200,cat:'salary',date:'2026-08-02',country:'CA'},
+    {id:'c',type:'income',amount:120000,cat:'salary',date:'2026-08-02',country:'CA'},
   ];
   const h=plain(screen({country:'CA',cycleStart:1},tx,'home'));
   assert.match(h,/Hello/);

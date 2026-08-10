@@ -113,10 +113,14 @@ test("バックアップ→復元でもJP/US両プロファイルを保持する
 
 test("USのライフプラン連携にはUSプロファイルの金額だけを使う", () => {
   const profiles=Core.normalizeMoneyProfiles(null,jpLegacy());
-  profiles.US=Core.normalizeSettings({country:"US",lp:{banks:[{name:"US",balance:1200}]}});
+  /* 内部は最小単位（セント）。$1,200.00 は 120000。
+     ライフプランへ渡すときは主単位へ戻すので、向こうへは 1200 が届く。 */
+  profiles.US=Core.normalizeSettings({country:"US",lp:{banks:[{name:"US",balance:120000}]}});
   const us=Core.settingsForCountry(profiles,"US","1968-11-13");
   const out=Core.buildLifePlanInputs(us,"2026-08-10");
   assert.equal(out.countryCode,"US");
   assert.equal(out.baseCurrency,"USD");
-  assert.equal(out.inputs.banks[0].balance,1200);
+  assert.equal(out.inputs.banks[0].balance,1200,"主単位へ戻して渡していない");
+  assert.equal(out.amount_unit,"major","単位を明示していない");
+  assert.equal(out.minor_unit_scale,100);
 });

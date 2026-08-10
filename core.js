@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.7.0";
+  const APP_VERSION = "1.8.0";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -221,6 +221,52 @@
      画面（ことば・カテゴリ表示）を用意できた国だけをここに出す。
      GB / CA / AU を出すときは、この配列に足して翻訳を足すだけでよい。 */
   const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB", "CA", "AU"]);
+
+  /* =======================================================================
+     最小通貨単位（第1段階：内部の持ち方だけを変える）
+     -----------------------------------------------------------------------
+     【なぜ変えるか】
+     ドルやポンドには「セント」がある。主単位（ドル）の小数で持つと、
+     0.1 + 0.2 が 0.30000000000000004 になり、足すたびに1セントずれる。
+     そこで内部はすべて **最小単位の整数** で持つ。
+       日本   … 1 = 1円          （scale = 1。既存の金額は1円も変わらない）
+       米英加豪 … 1 = 1セント/ペニー （scale = 100）
+
+     【外との境目】
+     ・画面に出すとき      … toMajor して formatMoney（＝ formatAmount）
+     ・打ち込みを受けるとき … toMinor
+     ・ライフプランへ渡すとき … toMajor（相手の受け取る数値はこれまでと同じ）
+     境目の外では、いっさい最小単位を見せない。
+
+     【移行の判定】
+     金額の値からは絶対に判定しない。1234 は「$1,234.00（移行前）」とも
+     「$12.34（移行後）」とも読めるため、推測した瞬間に誰かの金額が
+     100倍か1/100になる。判定は state.dataVersion の印だけで行う。
+     ======================================================================= */
+  const DATA_VERSION = 2;   // 2 = 最小単位。印が無い保存データは移行前（主単位）
+  const MINOR_UNIT_SCALE = Object.freeze({ JPY: 1, USD: 100, GBP: 100, CAD: 100, AUD: 100 });
+
+  function minorScale(settingsOrCountry) {
+    const cur = countryRule(countryOf(settingsOrCountry)).currency;
+    const s = MINOR_UNIT_SCALE[cur];
+    return s === undefined ? 1 : s;
+  }
+
+  /* 主単位 → 最小単位。$12.34 → 1234 */
+  function toMinor(major, settingsOrCountry) {
+    const n = Number(major);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * minorScale(settingsOrCountry));
+  }
+
+  /* 最小単位 → 主単位。1234 → 12.34（日本は 1234 のまま） */
+  function toMajor(minor, settingsOrCountry) {
+    const n = Number(minor);
+    if (!Number.isFinite(n)) return 0;
+    const s = minorScale(settingsOrCountry);
+    return s === 1 ? n : n / s;
+  }
+
 
   /* 設定オブジェクトでも国コードの文字列でも受け取れるようにする */
   function countryOf(settingsOrCountry) {
@@ -709,6 +755,74 @@
     }
   }
 
+  /* 内部の金額（最小単位）を、そのまま画面に出せる形にする。
+     画面から金額を出すときは、必ずこちらを通す。
+     formatMoney は「主単位を書式にするだけ」の道具として据え置く
+     （これまでの呼び出しと意味を変えないため）。 */
+  function formatAmount(minorValue, settingsOrCountry) {
+    return formatMoney(toMajor(minorValue, settingsOrCountry), settingsOrCountry);
+  }
+
+  /* =======================================================================
+     保存データを最小単位へ移す（一度きり）
+     -----------------------------------------------------------------------
+     決めごとは3つ。どれか1つでも外すと、誰かの金額が100倍になる。
+
+       ① 移行済みかは dataVersion だけで決める。金額から推測しない
+       ② 記録は **その記録自身の国**（tx.country。無ければJP）で換算する
+       ③ 設定は **そのプロファイル自身の国** で換算する
+          （settings と moneyProfiles[国] は同じ中身を2か所に持つので、両方）
+
+     いま選んでいる国で一括換算してはいけない。US滞在中に移行すると、
+     日本の記録まで100倍になる。
+
+     戻り値の changed が false のときは、何も変えていない（移行済み）。
+     ======================================================================= */
+  function needsMinorUnitMigration(state) {
+    const st = state || {};
+    return Number(st.dataVersion) !== DATA_VERSION;
+  }
+
+  function migrateToMinorUnits(state) {
+    const st = state || {};
+    if (!needsMinorUnitMigration(st)) {
+      return { state: st, changed: false, txConverted: 0, profilesConverted: [] };
+    }
+
+    const out = Object.assign({}, st);
+    let txConverted = 0;
+
+    /* ② 記録：その記録自身の国で換算する */
+    out.tx = (Array.isArray(st.tx) ? st.tx : []).map(function (t) {
+      if (!t || typeof t !== "object") return t;
+      const scale = minorScale(normalizeCountry(t.country));   // 印が無ければJP＝1
+      if (scale === 1) return t;                               // 日本の記録は1円も変えない
+      const n = Number(t.amount);
+      if (!Number.isFinite(n)) return t;
+      txConverted++;
+      return Object.assign({}, t, { amount: Math.round(n * scale) });
+    });
+
+    /* ③ 設定：それぞれの国で換算する */
+    const profilesConverted = [];
+    if (st.settings) out.settings = settingsToMinor(st.settings);
+    if (st.moneyProfiles && typeof st.moneyProfiles === "object" && !Array.isArray(st.moneyProfiles)) {
+      const mp = {};
+      Object.keys(st.moneyProfiles).forEach(function (c) {
+        const p = st.moneyProfiles[c];
+        /* 鍵の国ではなく、中身が名乗る国でもなく、**両方が一致する国**で換算する。
+           食い違っていたら鍵を正とする（保存の場所が正）。 */
+        const country = normalizeCountry(c);
+        mp[c] = settingsToMinor(Object.assign({}, p, { country: country }));
+        if (minorScale(country) !== 1) profilesConverted.push(country);
+      });
+      out.moneyProfiles = mp;
+    }
+
+    out.dataVersion = DATA_VERSION;
+    return { state: out, changed: true, txConverted: txConverted, profilesConverted: profilesConverted };
+  }
+
   /* ---------- 設定の正規化 ---------- */
   /* 設定に持つのは「先取り（予定額）」と「夢・目標」だけ。
      旧版の手取り収入(incomeNet)・固定費(fixedCost / fixed)は読み捨てる。
@@ -896,6 +1010,90 @@
       payoutStartAge: lpAge(i.payoutStartAge),
       payoutYears: lpNum(i.payoutYears, 60),
     };
+  }
+
+  /* =======================================================================
+     どの欄が「お金」か
+     -----------------------------------------------------------------------
+     移行で100倍事故が起きるのは、ほぼここの取り違えによる。
+     ライフプラン欄には、お金でない数値が混ざっている。
+       ％（interestPct / annualRatePct）、年齢（fromAge …）、
+       グラム（currentGrams）、年数（payoutYears）
+     これらに 100 を掛けたら、利率5%が500%になる。
+     そこで **お金の欄だけを、この1つの表で決める**。
+     移行も検算も、必ずこの表を読む。表に無い欄は絶対に触らない。
+     ======================================================================= */
+  const MONEY_FIELDS = Object.freeze({
+    /* 設定そのもの */
+    settings: Object.freeze(["nisaMonthly", "goalTarget", "goalCurrent"]),
+    /* settings.lp の中。obj = 単体、list = 配列の各行 */
+    lpObj: Object.freeze({
+      gold: Object.freeze(["pricePerGram", "monthlyYen"]),          // currentGrams はグラム
+      ideco: Object.freeze(["currentValue", "principalTotal", "monthlyContribution"]),
+    }),
+    lpList: Object.freeze({
+      banks: Object.freeze(["balance", "monthlyDeposit"]),          // interestPct は％
+      loans: Object.freeze(["principal", "monthlyPayment"]),        // annualRatePct は％
+      privatePensionPlans: Object.freeze(["monthlyContribution", "monthlyPayout"]),
+      lumpSums: Object.freeze(["amount"]),
+      insurancePolicies: Object.freeze(["monthlyPremium"]),
+    }),
+    /* 年齢の区間。中に銘柄の配列を持つ */
+    lpSchedule: Object.freeze(["tsumitateSchedule", "growthSchedule"]),
+    lpScheduleFields: Object.freeze(["monthlyYen"]),
+    lpFundFields: Object.freeze(["amount"]),
+  });
+
+  /* 設定1つぶんのお金の欄に、同じ変換をかける。
+     conv は「その欄の数をどう変えるか」だけを受け持つ純粋関数。
+     元の設定は書き換えず、写しを返す。 */
+  function mapSettingsMoney(settings, conv) {
+    const s = JSON.parse(JSON.stringify(settings || {}));
+    const at = function (obj, keys) {
+      if (!obj || typeof obj !== "object") return;
+      keys.forEach(function (k) { if (k in obj) obj[k] = conv(obj[k]); });
+    };
+    at(s, MONEY_FIELDS.settings);
+    const lp = s.lp;
+    if (lp && typeof lp === "object") {
+      Object.keys(MONEY_FIELDS.lpObj).forEach(function (k) { at(lp[k], MONEY_FIELDS.lpObj[k]); });
+      Object.keys(MONEY_FIELDS.lpList).forEach(function (k) {
+        if (Array.isArray(lp[k])) lp[k].forEach(function (row) { at(row, MONEY_FIELDS.lpList[k]); });
+      });
+      MONEY_FIELDS.lpSchedule.forEach(function (k) {
+        if (!Array.isArray(lp[k])) return;
+        lp[k].forEach(function (row) {
+          at(row, MONEY_FIELDS.lpScheduleFields);
+          if (Array.isArray(row && row.funds)) {
+            row.funds.forEach(function (f) { at(f, MONEY_FIELDS.lpFundFields); });
+          }
+        });
+      });
+    }
+    return s;
+  }
+
+  /* 設定の金額を、主単位 → 最小単位へ（移行用）。
+     基準にする国は **その設定自身の国**。いま画面で選んでいる国ではない。 */
+  function settingsToMinor(settings) {
+    const country = normalizeCountry((settings || {}).country);
+    const scale = minorScale(country);
+    if (scale === 1) return JSON.parse(JSON.stringify(settings || {}));   // JPは1つも変えない
+    return mapSettingsMoney(settings, function (v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n * scale) : v;
+    });
+  }
+
+  /* 設定の金額を、最小単位 → 主単位へ（ライフプランへ渡すときだけ使う） */
+  function settingsToMajor(settings) {
+    const country = normalizeCountry((settings || {}).country);
+    const scale = minorScale(country);
+    if (scale === 1) return JSON.parse(JSON.stringify(settings || {}));
+    return mapSettingsMoney(settings, function (v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n / scale : v;
+    });
   }
 
   function normalizeLifePlanAssets(raw) {
@@ -1284,7 +1482,11 @@
      年齢や年金など向こうで入れた値は消えない。 */
   function buildLifePlanInputs(settings, onDate) {
     const s = settings || {};
-    const a = normalizeLifePlanAssets(s.lp);
+    /* ライフプランへ渡す数値は、これまでどおり **主単位** にする。
+       内部を最小単位にしても、相手のアプリは1行も直さなくてよい。
+       日本は scale=1 なので、渡す数値は1円も変わらない。 */
+    const major = settingsToMajor(s);
+    const a = normalizeLifePlanAssets(major.lp);
     /* 基準日。指定が無ければ今日（銘柄の内訳は「いま積み立てている区間」のものを渡す）。 */
     const on = validateDateString(onDate) ? onDate : new Date().toISOString().slice(0, 10);
     const age = ageFromBirth(s.birth, on);
@@ -1315,7 +1517,11 @@
       /* 家計簿から来たデータだと分かるようにする。
          通常のバックアップ復元と同じ扱いにさせないための目印。 */
       source: "kakeibo",
-      schemaVersion: 1,
+      schemaVersion: 2,
+      /* 渡している数値がどの単位かを明示する。
+         受け取る側が取り違えないための宣言（値そのものは従来と同じ）。 */
+      amount_unit: "major",
+      minor_unit_scale: minorScale(normalizeSettings(s).country),
       appVersion: APP_VERSION,
       generatedAt: on,
       /* どの国のデータかを必ず添える。JPとUSのデータが混ざらないようにするため。 */
@@ -1630,6 +1836,21 @@
   const PHOTO_VIEW_MAX = 1600;   // 画面表示に使う長辺
   const PHOTO_STORE_MAX = 900;   // 保存する長辺
   const STORE_SOFT_LIMIT = 3.6 * 1024 * 1024; // これを超えたら警告
+
+  /* 写真として受け入れてよい文字列かどうか。
+     -----------------------------------------------------------------------
+     ここは「先頭だけ」を見てはいけない。先頭さえ合っていれば通す作りにすると、
+       data:image/png;base64,AAAA" onerror="…
+     のような文字列がそのまま残り、画面が属性へ埋めたときに
+     引用符が閉じて別の属性が生まれてしまう（細工したバックアップを
+     1回復元させるだけで、端末内のデータを外へ出せる）。
+     そこで **末尾まで** 見て、base64 に使える字だけで出来ていることを確かめる。
+     画面側でもエスケープするが、そもそも変な値を持たないのが本筋。 */
+  const PHOTO_MAX_CHARS = 8 * 1024 * 1024;   // 桁違いに長い文字列で正規表現を走らせない
+  const PHOTO_DATA_URL = /^data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+  function isPhotoDataUrl(v) {
+    return typeof v === "string" && v.length <= PHOTO_MAX_CHARS && PHOTO_DATA_URL.test(v);
+  }
 
   /* 長辺を maxEdge に収めた寸法（拡大はしない） */
   function fitSize(w, h, maxEdge) {
@@ -2142,9 +2363,17 @@
      壊れた値・悪意のある値が来てもアプリが壊れないよう、ここで必ず正規化する。
      ======================================================================= */
 
-  const BACKUP_VERSION = 1;
+  /* 1 = 主単位（移行前）。2 = 最小単位。
+     読み込むときは、この版数だけで単位を決める。金額からは推測しない。 */
+  const BACKUP_VERSION = 2;
+  const BACKUP_VERSION_MAJOR_UNITS = 1;   // これ以下は主単位で書かれている
   const MEMO_MAX = 60;            // メモの上限文字数（記録画面と同じ）
-  const AMOUNT_MAX = 999999999;   // 金額の上限（これ以上は切り詰める）
+  const AMOUNT_MAX = 999999999;   // 金額の上限（主単位。JPは円、USはドル）
+  /* 内部は最小単位なので、上限も最小単位に直して比べる。
+     $999,999,999.99 まで入る（JPは 999,999,999円 のまま変わらない）。 */
+  function amountMax(settingsOrCountry) {
+    return AMOUNT_MAX * minorScale(settingsOrCountry) + (minorScale(settingsOrCountry) - 1);
+  }
   const TX_MAX = 20000;           // 記録件数の上限（読み込み時の暴走防止）
 
   /* 書き出す形。version と exportedAt を付ける。 */
@@ -2152,6 +2381,9 @@
     const st = state || {};
     return {
       version: BACKUP_VERSION,
+      /* 読む側が単位を取り違えないよう、必ず明示する */
+      amountUnit: "minor",
+      minorUnitScale: MINOR_UNIT_SCALE,
       exportedAt: new Date().toISOString(),
       settings: normalizeSettings(st.settings),
       moneyProfiles: normalizeMoneyProfiles(st.moneyProfiles, st.settings),
@@ -2199,7 +2431,10 @@
     let amount = Number(tx.amount);
     if (!Number.isFinite(amount)) return null;                // 文字列・NaN・Infinity は捨てる
     amount = Math.floor(Math.abs(amount));                    // 負数・小数は整数の絶対値へ
-    if (amount > AMOUNT_MAX) amount = AMOUNT_MAX;             // 巨大値は上限で止める
+    /* 上限はその記録の国で決める。内部は最小単位なので、
+       日本は 999,999,999円、USは $999,999,999.99 が上限になる。 */
+    const max = amountMax(normalizeCountry(tx.country));
+    if (amount > max) amount = max;             // 巨大値は上限で止める
 
     if (!validateDateString(tx.date)) return null;            // 日付が不正なら捨てる
 
@@ -2210,11 +2445,9 @@
 
     const memo = String(tx.memo == null ? "" : tx.memo).slice(0, MEMO_MAX);
 
-    /* 写真は data URL の画像だけを受け入れる。それ以外は捨てる。 */
-    let photo = null;
-    if (typeof tx.photo === "string" && /^data:image\/[a-z+.-]+;base64,/i.test(tx.photo)) {
-      photo = tx.photo;
-    }
+    /* 写真は data URL の画像だけを受け入れる。それ以外は捨てる。
+       末尾まで確かめる（isPhotoDataUrl のコメントを参照）。 */
+    const photo = isPhotoDataUrl(tx.photo) ? tx.photo : null;
 
     const id = (typeof tx.id === "string" && tx.id) ? tx.id.slice(0, 64) : null;
 
@@ -2230,6 +2463,30 @@
     return out;
   }
 
+  /* 記録の並びを安全な形に整える。
+     -----------------------------------------------------------------------
+     復元のときも、端末から読み込むときも、必ずここを通す。
+     片方だけ整える作りにすると、同じ内容の記録が経路によって
+     別の中身になってしまう（金額の上限が効く／効かない、など）。
+     戻り値の dropped は「捨てた件数」。 */
+  function normalizeTxListWithCount(list) {
+    const src = Array.isArray(list) ? list : [];
+    const seen = {};
+    const tx = [];
+    let dropped = 0;
+    src.slice(0, TX_MAX).forEach(function (raw) {
+      const t = normalizeTransaction(raw);
+      if (!t) { dropped++; return; }
+      /* id が無い・重複しているものには新しい id を振る */
+      if (!t.id || seen[t.id]) t.id = "r" + tx.length + "-" + Math.random().toString(36).slice(2, 8);
+      seen[t.id] = true;
+      tx.push(t);
+    });
+    if (src.length > TX_MAX) dropped += src.length - TX_MAX;
+    return { tx: tx, dropped: dropped };
+  }
+  function normalizeTxList(list) { return normalizeTxListWithCount(list).tx; }
+
   /* バックアップ全体を安全な形に整える。形が違えば理由つきで投げる。 */
   function normalizeBackup(data) {
     if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -2242,28 +2499,43 @@
     if (!Array.isArray(data.tx)) {
       throw new Error("記録が入っていません");
     }
-    const seen = {};
-    const tx = [];
-    let dropped = 0;
-    data.tx.slice(0, TX_MAX).forEach(function (raw) {
-      const t = normalizeTransaction(raw);
-      if (!t) { dropped++; return; }
-      /* id が無い・重複しているものには新しい id を振る */
-      if (!t.id || seen[t.id]) t.id = "r" + tx.length + "-" + Math.random().toString(36).slice(2, 8);
-      seen[t.id] = true;
-      tx.push(t);
-    });
-    if (data.tx.length > TX_MAX) dropped += data.tx.length - TX_MAX;
+    /* 単位は version だけで決める。金額の値からは推測しない。
+         印なし / 1 … 主単位で書かれている → JP以外を最小単位へ直す
+         2         … 最小単位。そのまま
+         3 以上    … このアプリより新しい。黙って誤変換せず、はっきり断る */
+    const ver = Number(data.version) || 0;
+    if (ver > BACKUP_VERSION) {
+      throw new Error("このバックアップは新しすぎます。アプリを更新してからお試しください");
+    }
+
+    let src = {
+      settings: settings,
+      moneyProfiles: data.moneyProfiles,
+      tx: data.tx,
+    };
+    if (ver <= BACKUP_VERSION_MAJOR_UNITS) {
+      /* 移行前のバックアップ。端末の移行とまったく同じ決めごとで直す
+         （記録は tx.country、設定は各プロファイルの国）。 */
+      src = migrateToMinorUnits({
+        settings: settings,
+        moneyProfiles: data.moneyProfiles,
+        tx: data.tx,
+      }).state;
+    }
+
+    const r = normalizeTxListWithCount(src.tx);
+    const tx = r.tx;
+    const dropped = r.dropped;
     return {
-      settings: normalizeSettings(settings),
-      moneyProfiles: normalizeMoneyProfiles(data.moneyProfiles, settings),
+      settings: normalizeSettings(src.settings),
+      moneyProfiles: normalizeMoneyProfiles(src.moneyProfiles, src.settings),
       tx: tx,
       health: normalizeHealth(data.health),   // 旧バックアップに health が無ければ空
       diary: normalizeDiary(data.diary),       // 旧バックアップに diary が無ければ空
       plans: normalizePlans(data.plans),       // 旧バックアップに plans が無ければ空
       pulse: normalizePulseList(data.pulse),   // 旧バックアップに pulse が無ければ空
       dropped: dropped,
-      version: Number(data.version) || 0,   // 旧形式は version が無い＝0
+      version: ver,   // 旧形式は version が無い＝0
     };
   }
 
@@ -2881,10 +3153,9 @@
       text = raw;                                    // 旧形式：文字列だけ
     } else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
       if (typeof raw.text === "string") text = raw.text;
-      /* 写真は画像の data URL だけ受け入れる（XSS・不正値を弾く） */
-      if (typeof raw.photo === "string" && /^data:image\/[a-z+.-]+;base64,/i.test(raw.photo)) {
-        photo = raw.photo;
-      }
+      /* 写真は画像の data URL だけ受け入れる（XSS・不正値を弾く）。
+         末尾まで確かめる（isPhotoDataUrl のコメントを参照）。 */
+      if (isPhotoDataUrl(raw.photo)) photo = raw.photo;
     } else {
       return null;
     }
@@ -3192,7 +3463,29 @@
     return out;
   }
 
+  /* 度で計算するとき、90の倍数は先に answer を決めてしまう。
+     -----------------------------------------------------------------------
+     90° を弧度へ直すと π/2 ちょうどにはならないので、そのまま Math に渡すと
+       tan(90)  → 1.633124e+16   （本当は定義できない）
+       sin(180) → 1.224647e-16   （本当は 0）
+       cos(90)  → 6.123234e-17   （本当は 0）
+     のような値が画面に出る。市販の関数電卓は Error と 0 を返すので、
+     そちらに合わせる。弧度モードのときは、この分岐を通さない
+     （π は近似値なので、0 に丸めてしまうとかえって嘘になる）。 */
+  function sciDegSpecial(name, x) {
+    const m = ((x % 360) + 360) % 360;
+    if (!Number.isInteger(m)) return undefined;      // 90の倍数だけを見る
+    if (name === "sin") { if (m === 0 || m === 180) return 0; if (m === 90) return 1; if (m === 270) return -1; }
+    if (name === "cos") { if (m === 90 || m === 270) return 0; if (m === 0) return 1; if (m === 180) return -1; }
+    if (name === "tan") { if (m === 0 || m === 180) return 0; if (m === 90 || m === 270) return NaN; }
+    return undefined;
+  }
+
   function sciCallFunc(name, x, deg) {
+    if (deg && (name === "sin" || name === "cos" || name === "tan") && Number.isFinite(x)) {
+      const special = sciDegSpecial(name, x);
+      if (special !== undefined) return special;
+    }
     const a = deg ? (x * Math.PI) / 180 : x;
     if (name === "sin") return Math.sin(a);
     if (name === "cos") return Math.cos(a);
@@ -3936,6 +4229,19 @@
   /* ---------- ライフプラン連携スナップショット ---------- */
   function buildSnapshot(settings, txs, ym) {
     const c = computeMonth(settings, txs, ym);
+    /* 渡す数値は主単位に戻す。日本は scale=1 なので1円も変わらない。
+       内部（最小単位）と食い違っていないことを、渡す直前に必ず検算する。
+       黙って100倍の数を渡すくらいなら、渡さないほうが良い。 */
+    const scale = minorScale(c.settings.country);
+    const M = function (minorValue) {
+      const n = Number(minorValue) || 0;
+      const out = scale === 1 ? n : n / scale;
+      if (Math.round(out * scale) !== Math.round(n)) {
+        throw new Error("金額の単位が合いません（ライフプランへ渡すのを中止しました）");
+      }
+      return out;
+    };
+
     const accounts = [];
     /* 「先取り貯金」の欄は廃止した。貯金の予定額は、ライフプラン欄の
        銀行貯金（毎月の入金）から出す。書ける場所をひとつにするため。 */
@@ -3945,17 +4251,20 @@
     if (bankPlanned > 0) {
       accounts.push({
         type: "CASH_SAVINGS", local: "貯金",
-        basis: "planned", planned_contribution: bankPlanned,
+        basis: "planned", planned_contribution: M(bankPlanned),
       });
     }
     if (c.nisaPlanned > 0) {
       accounts.push({
         type: "TAX_FREE_INVEST", local: "NISA",
-        basis: "planned", planned_contribution: c.nisaPlanned,
+        basis: "planned", planned_contribution: M(c.nisaPlanned),
       });
     }
     return {
-      schema_version: "2.2",
+      schema_version: "2.3",
+      /* この数値がどの単位かを明示する。値そのものは従来と同じ。 */
+      amount_unit: "major",
+      minor_unit_scale: scale,
       country_code: c.settings.country,
       base_currency: c.currency,
       locale: countryLocale(c.settings),
@@ -3966,35 +4275,35 @@
       period_to: c.periodTo,
 
       /* 収入：通常／臨時／当月実収入合計を分けて出力（すべて記録の実績） */
-      income_regular: c.incomeRegular,
+      income_regular: M(c.incomeRegular),
       income_regular_basis: "actual",
       income_regular_recorded: c.incomeRegularRecorded,
-      income_extra: c.incomeExtra,
-      income_actual_total: c.incomeTotal,
+      income_extra: M(c.incomeExtra),
+      income_actual_total: M(c.incomeTotal),
       /* 後方互換。旧 income_net は「当月の実収入合計」を指す */
-      income_net: c.incomeTotal,
+      income_net: M(c.incomeTotal),
 
       /* 支出：すべて記録した実績。
          fixed_cost … 「🔁 毎月固定」の印が付いた記録の合計（印が無ければ0）
          variable_spend … それ以外
          どちらも足すと spend_total になる。 */
-      fixed_cost: c.recurringSpend,
+      fixed_cost: M(c.recurringSpend),
       fixed_cost_items: Object.keys(c.byCatRecurring).map(function (k) {
         /* key は国が変わっても同じ内部ID。name は表示用にその国のことばで添える。 */
-        return { key: k, name: catName("expense", k, c.settings), amount: c.byCatRecurring[k] };
+        return { key: k, name: catName("expense", k, c.settings), amount: M(c.byCatRecurring[k]) };
       }),
-      variable_spend: c.spotSpend,
-      spend_total: c.spendTotal,
-      expense_total: c.spendTotal,
+      variable_spend: M(c.spotSpend),
+      spend_total: M(c.spendTotal),
+      expense_total: M(c.spendTotal),
       by_category: Object.keys(c.byCat).map(function (k) {
-        return { key: k, name: catName("expense", k, c.settings), amount: c.byCat[k] };
+        return { key: k, name: catName("expense", k, c.settings), amount: M(c.byCat[k]) };
       }),
 
       /* 先取りは「予定額」であることを構造で明示 */
-      planned_set_aside: c.setAside,
+      planned_set_aside: M(c.setAside),
       accounts: accounts,
 
-      available_to_spend: c.available,
+      available_to_spend: M(c.available),
     };
   }
 
@@ -4135,6 +4444,7 @@
     parseBackupJson: parseBackupJson,
     validateDateString: validateDateString,
     normalizeTransaction: normalizeTransaction,
+    normalizeTxList: normalizeTxList,
     normalizeBackup: normalizeBackup,
     HEALTH_FIELDS: HEALTH_FIELDS,
     normalizeHealthEntry: normalizeHealthEntry,
@@ -4226,6 +4536,19 @@
     APP_VERSION: APP_VERSION,
     MEMO_MAX: MEMO_MAX,
     AMOUNT_MAX: AMOUNT_MAX,
+    amountMax: amountMax,
+    DATA_VERSION: DATA_VERSION,
+    MINOR_UNIT_SCALE: MINOR_UNIT_SCALE,
+    MONEY_FIELDS: MONEY_FIELDS,
+    minorScale: minorScale,
+    toMinor: toMinor,
+    toMajor: toMajor,
+    formatAmount: formatAmount,
+    settingsToMinor: settingsToMinor,
+    settingsToMajor: settingsToMajor,
+    needsMinorUnitMigration: needsMinorUnitMigration,
+    migrateToMinorUnits: migrateToMinorUnits,
+    BACKUP_VERSION: BACKUP_VERSION,
     TX_MAX: TX_MAX,
     OCR_PLAN: OCR_PLAN,
     OCR_MAX_RUNS: OCR_MAX_RUNS,

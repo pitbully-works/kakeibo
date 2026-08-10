@@ -503,9 +503,27 @@ test("止めるときは、ライトを消してカメラも止める", () => {
 });
 
 test("画面を離れる・別の画面へ移るときも必ず止める", () => {
-  assert.match(appSrc, /if\(view!=="pulse" && pRunning\) pulseStopAll\(\);/, "画面を移ったときに止めていない");
-  assert.match(appSrc, /if\(document\.hidden\)\{ if\(pRunning\)/, "画面を離れたときに止めていない");
+  /* 止める条件は pRunning だけでは足りない。
+     pRunning はカメラの許可が下りたあとに立つので、許可を待っている最中は
+     false のまま。その隙に画面を移られると止め損ね、あとから届いた映像で
+     カメラとライトが点いたまま残る。待機中（pStream / pGen!==pStopGen）も見る。 */
+  const stopCond = String.raw`\(pRunning \|\| pStream \|\| pGen!==pStopGen\)`;
+  assert.match(appSrc, new RegExp(`if\\(view!=="pulse" && ${stopCond}\\) pulseStopAll\\(\\);`),
+    "画面を移ったときに止めていない");
+  assert.match(appSrc, new RegExp(`if\\(document\\.hidden\\)\\{ if${stopCond}`),
+    "画面を離れたときに止めていない");
+  assert.match(appSrc, new RegExp(`"pagehide",\\(\\)=>\\{ if${stopCond}`),
+    "閉じるときに止めていない");
   assert.match(appSrc, /"pagehide"/, "閉じるときに止めていない");
+});
+
+test("カメラの許可を待っている間に離れたら、届いた映像はその場で捨てる", () => {
+  /* 世代トークンで守る。許可待ちの最中に中止・画面移動があったら、
+     あとから解決した stream を state に入れず、その場で止める。 */
+  assert.match(appSrc, /const gen=\+\+pGen;/, "世代トークンを取っていない");
+  assert.match(appSrc, /if\(gen!==pGen \|\| view!=="pulse"\)\{/, "届いた映像を捨てる判定が無い");
+  assert.match(appSrc, /stream\.getTracks\(\)\.forEach\(t=>t\.stop\(\)\);/, "捨てる側で止めていない");
+  assert.match(appSrc, /pGen\+\+;\s*\/\/ 許可を待っている最中の測定も/, "停止時に世代を進めていない");
 });
 
 test("映像・画像を保存も送信もしない", () => {
