@@ -59,14 +59,19 @@ function makeWorkspace() {
 
   /* ci_test.js も通常テストの一部。
      そのテストは GitHub Actions の設定ファイルを読むため、
-     一時フォルダにも .github/workflows/test.yml を同じ場所へ写す。
-     これが無いと、元リポジトリでは965件PASSでも mutation の
-     ベースラインだけ ENOENT で落ちる。 */
-  const workflow = path.join(ROOT, ".github", "workflows", "test.yml");
-  if (fs.existsSync(workflow)) {
+     一時フォルダにも .github/workflows/ を丸ごと同じ場所へ写す。
+     これが無いと、元リポジトリでは全件PASSでも mutation の
+     ベースラインだけ ENOENT で落ちる。
+     ワークフローは2本（ふだん用・完全検査用）あるので、
+     1本だけ写す作りにはしない。 */
+  const workflowSrc = path.join(ROOT, ".github", "workflows");
+  if (fs.existsSync(workflowSrc)) {
     const workflowDir = path.join(dir, ".github", "workflows");
     fs.mkdirSync(workflowDir, { recursive: true });
-    fs.copyFileSync(workflow, path.join(workflowDir, "test.yml"));
+    for (const name of fs.readdirSync(workflowSrc)) {
+      const from = path.join(workflowSrc, name);
+      if (fs.statSync(from).isFile()) fs.copyFileSync(from, path.join(workflowDir, name));
+    }
   }
   return dir;
 }
@@ -106,12 +111,35 @@ async function runMutation(m, opts) {
   const dir = makeWorkspace();
   try {
     const target = path.join(dir, m.file);
-    fs.writeFileSync(target, original.replace(m.from, m.to));
+    /* 置き換えは関数で渡す。文字列のままだと、壊した後のコードに
+       "$&" のような記号が入っていたとき勝手に別の意味になってしまう。 */
+    fs.writeFileSync(target, original.replace(m.from, function () { return m.to; }));
+
+    /* ① まず「この変異を捕まえるはずのテスト」だけを走らせる。
+       ここで落ちれば、その時点で「検出」と確定できる。
+       落ちたテストは全テストにも含まれているので、
+       全部走らせたときの判定と結果は同じになる（甘くならない）。 */
+    if (Array.isArray(o.quickFiles) && o.quickFiles.length) {
+      const quick = await runTests(dir, o.quickFiles);
+      if (!quick.ok) {
+        return {
+          status: "検出",
+          failedCount: quick.failedCount,
+          detectedBy: quick.detectedBy,
+          checkedBy: "早期検出（" + o.quickFiles.join(" / ") + "）",
+        };
+      }
+    }
+
+    /* ② 早く落ちなかったときだけ、指定のテスト（無指定なら全テスト）で確かめる。
+       「見逃し」と判定するのは、必ずこちらを通ったときだけ。 */
     const res = await runTests(dir, o.testFiles);
     return {
       status: res.ok ? "見逃し" : "検出",
       failedCount: res.failedCount,
       detectedBy: res.detectedBy,
+      checkedBy: Array.isArray(o.testFiles) && o.testFiles.length
+        ? o.testFiles.join(" / ") : "全テスト",
     };
   } finally {
     removeWorkspace(dir);
@@ -131,7 +159,8 @@ async function runMutations(list, opts) {
       if (i >= list.length) return;
       const m = list[i];
       const testFiles = o.testFilesFor ? o.testFilesFor(m) : null;
-      results[i] = { ...m, ...(await runMutation(m, { testFiles: testFiles })) };
+      const quickFiles = o.quickFilesFor ? o.quickFilesFor(m) : null;
+      results[i] = { ...m, ...(await runMutation(m, { testFiles, quickFiles })) };
       if (o.onDone) o.onDone(results[i], i, list.length);
     }
   }

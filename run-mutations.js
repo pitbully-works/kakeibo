@@ -91,7 +91,7 @@ if (FAST && changed) {
   scopeNote = "すべての変異（変えたファイルの指定が無いため絞らなかった）";
 }
 
-const map = FAST ? loadMap() : {};
+const map = loadMap();
 
 /* ---------- ここから実行 ---------- */
 (async function main() {
@@ -121,6 +121,16 @@ const map = FAST ? loadMap() : {};
       const files = map[m.name];
       return Array.isArray(files) && files.length ? files : null;
     },
+    /* 完全検査のときは、テストは減らさない（全テストで確かめる）。
+       ただし「捕まえるはずのテスト」を先に1回だけ走らせ、
+       そこで落ちた変異は、その時点で「検出」と確定して打ち切る。
+       落ちたテストは全テストにも入っているので判定は変わらない。
+       これは検査を甘くする短縮ではなく、同じ答えに早く着くための短縮。 */
+    quickFilesFor: (m) => {
+      if (FAST) return null;
+      const files = map[m.name];
+      return Array.isArray(files) && files.length ? files : null;
+    },
     onDone: (r, i, n) => console.log(`[${i + 1}/${n}] ${r.status}: ${r.name}`),
   });
   const took = (Date.now() - started) / 1000;
@@ -133,8 +143,14 @@ const map = FAST ? loadMap() : {};
      ふだんのCIで勝手にファイルが増えると「差分が残っている」検査に引っかかるため。
        node run-mutations.js --write-map */
   if (!FAST && has("--write-map")) {
-    const next = {};
+    /* 前の対応表は捨てずに重ねる。早期検出で打ち切った回は
+       「そのテストが捕まえた」ことしか分からないため、
+       上書きすると分かっていた対応まで消えてしまう。 */
+    const next = { ...map };
     results.forEach((r) => { if (r.detectedBy && r.detectedBy.length) next[r.name] = r.detectedBy; });
+    /* もう存在しない変異の行は残さない */
+    const alive = new Set(MUTATIONS.map((m) => m.name));
+    Object.keys(next).forEach((k) => { if (!alive.has(k)) delete next[k]; });
     fs.writeFileSync(MAP_FILE, JSON.stringify(next, null, 1) + "\n");
     console.log(`対応表を作り直しました：${MAP_FILE}`);
   }

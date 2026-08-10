@@ -8,6 +8,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const wf = fs.readFileSync(path.join(__dirname, ".github/workflows/test.yml"), "utf8");
+const wfFull = fs.readFileSync(path.join(__dirname, ".github/workflows/mutation-full.yml"), "utf8");
 const files = fs.readdirSync(__dirname);
 
 /* ---------- mutation スクリプトの一本化 ---------- */
@@ -66,6 +67,95 @@ test("テスト補助ファイルも重複していない", () => {
   const dup = [];
   helpers.forEach((f) => { const k = key(f); if (seen[k]) dup.push(seen[k] + " と " + f); seen[k] = f; });
   assert.deepEqual(dup, [], "補助ファイルが重複している: " + dup.join(" / "));
+});
+
+/* ---------- 2段構え（①ふだんの検査 ②完全検査） ---------- */
+test("ふだんのワークフローは高速mutation（--fast）を使う", () => {
+  assert.match(wf, /node run-mutations\.js --fast/, "高速検査になっていない");
+});
+
+test("ふだんのワークフローは、変えたファイルを mutation へ渡している", () => {
+  assert.match(wf, /CHANGED_FILES:/, "変更ファイルを渡していない（絞り込みが効かない）");
+});
+
+test("完全検査のワークフローがあり、全変異を試す", () => {
+  assert.match(wfFull, /run: node run-mutations\.js/, "完全検査が mutation を実行していない");
+  assert.equal(/node run-mutations\.js[^\n]*--fast/.test(wfFull), false,
+    "完全検査なのに --fast が付いている（全変異を試さなくなる）");
+});
+
+test("完全検査は Actions の画面から手で走らせられる", () => {
+  assert.match(wfFull, /^on:\s*\n\s*workflow_dispatch:/m, "手動実行の設定が無い");
+});
+
+test("完全検査も外部APIやシークレットを使わない", () => {
+  assert.equal(/secrets\./.test(wfFull), false, "シークレットを参照している");
+});
+
+test("完全検査も、レポートが無いまま保存しようとしない", () => {
+  assert.match(wfFull, /if-no-files-found: error/);
+});
+
+test("2つのワークフローは、名前だけで見分けられる", () => {
+  assert.match(wf, /^name: .*①/m, "ふだん用の名前に①が無い");
+  assert.match(wfFull, /^name: .*②/m, "完全検査の名前に②が無い");
+  const nameOf = (y) => (/^name: (.+)$/m.exec(y) || [])[1];
+  assert.notEqual(nameOf(wf), nameOf(wfFull), "2つの名前が同じ");
+});
+
+/* ---------- 速くするために検査を弱めていないか ---------- */
+test("変異の一覧は減らされていない", () => {
+  const list = require("./mutations.js");
+  assert.ok(Array.isArray(list), "mutations.js が一覧を返していない");
+  assert.ok(list.length >= 279, "変異が減っている: " + list.length + " 件");
+});
+
+test("高速検査も、変異の一覧は同じものを使っている", () => {
+  const runner = fs.readFileSync(path.join(__dirname, "run-mutations.js"), "utf8");
+  assert.match(runner, /require\("\.\/mutations\.js"\)/, "別の一覧を使っている");
+});
+
+test("早期検出は「検出」しか決められない（見逃しの判定は全テストのまま）", () => {
+  const libSrc = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");
+  const at = libSrc.indexOf("quickFiles");
+  assert.ok(at > 0, "早期検出の仕組みが無い");
+  /* 説明の文（コメント）には「見逃し」の語が出てくるので、判定にはコードだけを見る */
+  const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const quickBlock = stripComments(libSrc.slice(at, libSrc.indexOf("const res = await runTests")));
+  assert.equal(quickBlock.includes("見逃し"), false,
+    "早期検出だけで「見逃し」を決めている（判定が甘くなる）");
+  assert.match(libSrc, /status: res\.ok \? "見逃し" : "検出"/,
+    "見逃しの判定が全テストの結果から外れている");
+});
+
+/* ---------- 対応表 ---------- */
+test("対応表は、実在するテストファイルだけを指している", () => {
+  const mapPath = path.join(__dirname, "mutation-map.json");
+  if (!fs.existsSync(mapPath)) return; // 無くても動く（そのとき高速検査は全テストで試す）
+  const map = JSON.parse(fs.readFileSync(mapPath, "utf8"));
+  const bad = [];
+  Object.keys(map).forEach((k) => {
+    (map[k] || []).forEach((f) => { if (!files.includes(f)) bad.push(k + " → " + f); });
+  });
+  assert.deepEqual(bad, [], "対応表が存在しないテストを指している: " + bad.join(" / "));
+});
+
+test("対応表は、いまある変異の名前だけを持っている", () => {
+  const mapPath = path.join(__dirname, "mutation-map.json");
+  if (!fs.existsSync(mapPath)) return;
+  const map = JSON.parse(fs.readFileSync(mapPath, "utf8"));
+  const names = new Set(require("./mutations.js").map((m) => m.name));
+  const stale = Object.keys(map).filter((k) => !names.has(k));
+  assert.deepEqual(stale, [], "もう無い変異が対応表に残っている: " + stale.join(" / "));
+});
+
+test("元のソースをその場で書き換える作りに戻っていない", () => {
+  const libSrc = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");
+  assert.match(libSrc, /makeWorkspace/, "一時フォルダへ写す作りになっていない");
+  assert.match(libSrc, /removeAllWorkspaces/, "後始末の仕組みが無い");
+  ["SIGINT", "SIGTERM"].forEach((sig) => {
+    assert.ok(libSrc.includes(sig), sig + " で後始末していない（中断で壊れたまま残る）");
+  });
 });
 
 /* ---------- ワークフロー ---------- */
