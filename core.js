@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.11.0";
+  const APP_VERSION = "1.12.0";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -3272,6 +3272,34 @@
     return Number(intPart) * Math.pow(10, d) + frac;
   }
 
+  /* 打ち込みの字 → 最小単位。通貨の桁より下は **四捨五入** する。
+     -----------------------------------------------------------------------
+     切り捨てにすると、円で "1.5" と打ったときに黙って ¥1 になる。
+     打った額と残る額が違うのに何も知らされない、がいちばん困る。
+     ここも字のまま桁を組むので、掛け算の誤差は入らない。 */
+  function majorTextToMinorRound(text, dec) {
+    const d = Math.max(0, Math.floor(Number(dec) || 0));
+    const t = String(text == null ? "" : text).replace(/[^\d.]/g, "");
+    const m = /^(\d*)(?:\.(\d*))?/.exec(t) || [];
+    const intPart = m[1] || "0";
+    const frac = m[2] || "";
+    const keep = d === 0 ? 0 : Number((frac.slice(0, d) + "0".repeat(d)).slice(0, d));
+    let v = Number(intPart) * Math.pow(10, d) + keep;
+    if (Number(frac.charAt(d) || "0") >= 5) v += 1;   // 次の桁で繰り上げる
+    return v;
+  }
+
+  /* その通貨で表せる細かさより下の桁を打っているか。
+     円で "1.5"、ドルで "1.234" のような場合に true。
+     四捨五入で額が変わるので、記録したあとに必ず知らせるために使う。 */
+  function majorTextHasExtraDecimals(text, dec) {
+    const d = Math.max(0, Math.floor(Number(dec) || 0));
+    const t = String(text == null ? "" : text).replace(/[^\d.]/g, "");
+    const m = /^\d*(?:\.(\d*))?/.exec(t) || [];
+    const frac = m[1] || "";
+    return /[1-9]/.test(frac.slice(d));
+  }
+
   /* 最小単位の整数 → 打ち込み欄に出す字（主単位）。 */
   function minorToMajorText(value, dec) {
     const d = Math.max(0, Math.floor(Number(dec) || 0));
@@ -3294,8 +3322,13 @@
 
   /* 打ち込みの字を、桁数の決まりに収める。
      整数部は CALC_DIGITS_MAX 桁まで、小数部はその通貨の桁数まで。 */
+  /* 打てる小数の桁数。通貨に小数が無くても2桁までは打てるようにする。
+     5か国で電卓の操作を同じにするため（円は、記録するときに1円へ丸める）。 */
+  const CALC_INPUT_DEC = 2;
+  function calcInputDec(c) { return Math.max((c && c.dec) || 0, CALC_INPUT_DEC); }
+
   function calcTrimEntry(text, c) {
-    const d = (c && c.dec) || 0;
+    const d = calcInputDec(c);
     const t = String(text).replace(/[^\d.]/g, "");
     const dot = t.indexOf(".");
     let intPart = dot < 0 ? t : t.slice(0, dot);
@@ -3329,7 +3362,7 @@
 
   /* いま打ち込んでいる数（最小単位）。未入力なら acc、それも無ければ 0。 */
   function calcEntry(c) {
-    if (c.cur !== "") return majorTextToMinor(c.cur, c.dec || 0);
+    if (c.cur !== "") return majorTextToMinorRound(c.cur, c.dec || 0);
     if (c.acc !== null) return c.acc;
     return 0;
   }
@@ -3346,7 +3379,7 @@
   function calcValue(c) {
     if (!c) return 0;
     if (c.op && c.acc !== null && c.cur !== "") {
-      const r = calcApply(c.acc, c.op, majorTextToMinor(c.cur, c.dec || 0), calcScale(c));
+      const r = calcApply(c.acc, c.op, majorTextToMinorRound(c.cur, c.dec || 0), calcScale(c));
       return r === null ? c.acc : r;
     }
     return calcEntry(c);
@@ -3368,9 +3401,9 @@
       return c;
     }
 
-    /* 小数点。小数の無い通貨（円）では、押しても何も起きない。 */
+    /* 小数点。5か国とも同じように打てる。
+       円のように小数の無い通貨では、記録するときに1円へ四捨五入する。 */
     if (k === "." || k === "．") {
-      if (!c.dec) return c;
       if (c.done) { c.acc = null; c.op = ""; c.cur = ""; c.done = false; c.expr = ""; }
       if (c.cur.indexOf(".") >= 0) return c;           // 2つ目の小数点は置かない
       c.cur = (c.cur === "" ? "0" : c.cur) + ".";
@@ -3387,7 +3420,7 @@
 
     if (CALC_OPS.indexOf(k) >= 0) {
       if (c.op && c.acc !== null && c.cur !== "") {
-        const r = calcApply(c.acc, c.op, majorTextToMinor(c.cur, c.dec), scale);
+        const r = calcApply(c.acc, c.op, majorTextToMinorRound(c.cur, c.dec), scale);
         if (r === null) { c.error = "0では割れません"; return c; }
         c.acc = r;
       } else {
@@ -3402,7 +3435,7 @@
 
     if (k === "=") {
       if (!c.op || c.acc === null) return c;          // 計算するものが無い
-      const b = c.cur === "" ? c.acc : majorTextToMinor(c.cur, c.dec);
+      const b = c.cur === "" ? c.acc : majorTextToMinorRound(c.cur, c.dec);
       const r = calcApply(c.acc, c.op, b, scale);
       if (r === null) { c.error = "0では割れません"; return c; }
       c.expr = calcFmt(c.acc, c) + " " + CALC_OP_LABEL[c.op] + " " + calcFmt(b, c) + " ＝";
@@ -3724,10 +3757,15 @@
     if (v === null || v === undefined || !Number.isFinite(v)) return null;
     const d = Math.max(0, Math.floor(Number(dec) || 0));
     const scale = Math.pow(10, d);
+    /* その通貨で表せる細かさへ丸める。
+       -----------------------------------------------------------------------
+       以前は「ちょうど表せる答え」しか記録させなかった。そのため日本では
+       1000÷3 や √2 や sin30 のように割り切れない答えでボタンが出ず、
+       関数電卓で計算した額をそのまま記録できなかった。
+       いまは丸めて記録できるようにし、**丸めたあとの額をボタンに出す**ので、
+       いくらで記録されるかは押す前に必ず見える。 */
     const minor = Math.round(v * scale);
-    if (!(minor > 0)) return null;
-    /* その通貨で表せる細かさに収まっているか（$12.345 は表せない） */
-    if (Math.abs(v * scale - minor) > 1e-6) return null;
+    if (!(minor > 0)) return null;      // 0円以下は記録しない
     return minor;
   }
 
@@ -4625,6 +4663,9 @@
     newCalc: newCalc,
     newCalcFor: newCalcFor,
     majorTextToMinor: majorTextToMinor,
+    majorTextToMinorRound: majorTextToMinorRound,
+    majorTextHasExtraDecimals: majorTextHasExtraDecimals,
+    CALC_INPUT_DEC: CALC_INPUT_DEC,
     minorToMajorText: minorToMajorText,
     calcFrom: calcFrom,
     calcPress: calcPress,

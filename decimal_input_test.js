@@ -39,9 +39,15 @@ test("円の電卓は、これまでとまったく同じ", () => {
   assert.equal(press(0, ["1", "/", "0", "="]).error, "0では割れません");
 });
 
-test("円では、小数点キーを押しても何も起きない", () => {
-  assert.equal(shown(0, ["1", ".", "5"]), "15", "円に小数が入ってしまった");
-  assert.equal(value(0, ["1", ".", "5"]), 15);
+test("円でも小数点キーが効き、記録するときに1円へ四捨五入する", () => {
+  /* 5か国で操作を同じにするため、円でも小数点を打てる。
+     円に小数は無いので、記録する額は1円へ四捨五入する。
+     切り捨てにすると "1.5" が黙って ¥1 になり、打った額と残る額が食い違う。 */
+  assert.equal(shown(0, ["1", ".", "5"]), "1.5", "円で小数点が打てない");
+  assert.equal(value(0, ["1", ".", "5"]), 2, "1円へ四捨五入していない");
+  assert.equal(value(0, ["1", ".", "4"]), 1);
+  assert.equal(value(0, ["0", ".", "5"]), 1);
+  assert.equal(value(0, ["1", "2", "3"]), 123, "整数の円が変わっている");
 });
 
 test("電卓のキーの並びは、5か国とも同じ", () => {
@@ -59,10 +65,12 @@ test("電卓のキーの並びは、5か国とも同じ", () => {
   }
 });
 
-test("円では、小数点キーを押しても金額は変わらない", () => {
-  /* キーは出すが、円に小数は無いので何も起きない。 */
-  assert.equal(shown(0, ["1", ".", "5"]), "15");
-  assert.equal(value(0, ["1", ".", "5"]), 15);
+test("円で小数を打っても、計算そのものは整数の円で進む", () => {
+  /* 打っている途中は "1.5" と見えるが、演算に渡るときは1円へ丸める。
+     こうしないと、円の集計に小数が混ざってしまう。 */
+  const c = press(0, ["1", ".", "5", "+", "2", "="]);
+  assert.equal(Core.calcDisplay(c), "4", "1.5 + 2 が ¥4 になっていない");
+  assert.equal(Core.calcValue(c), 4);
 });
 
 /* =========================================================================
@@ -221,10 +229,12 @@ test("金額の欄は、通貨に合わせたキーボードを出す", () => {
   assert.match(us.run(`document.getElementById("app").innerHTML`), /id="f-gtarget"[^>]*inputmode="decimal"/,
     "ドルなのに小数を打てないキーボードが出ている");
 
+  /* 円も同じキーボードにする（5か国で操作を揃えるため）。
+     円に小数は無いので、打った小数は保存するときに1円へ四捨五入する。 */
   const jp = bootApp({ state: { settings: { country: "JP" }, tx: [] } });
   jp.run(`view="settings"; render();`);
-  assert.match(jp.run(`document.getElementById("app").innerHTML`), /id="f-gtarget"[^>]*inputmode="numeric"/,
-    "円なのに小数のキーボードが出ている");
+  assert.match(jp.run(`document.getElementById("app").innerHTML`), /id="f-gtarget"[^>]*inputmode="decimal"/,
+    "円だけキーボードが違う");
 });
 
 /* =========================================================================
@@ -341,4 +351,60 @@ test("小数を打って保存しても、バックアップの往復で1セン�
   const state = JSON.parse(app.saved());
   const back = Core.normalizeBackup(JSON.parse(JSON.stringify(Core.buildBackup(state))));
   assert.equal(back.tx[0].amount, 1234, "往復でセントが変わった");
+});
+
+/* =========================================================================
+   6. 丸めたことを必ず知らせる（A案の要）
+   -------------------------------------------------------------------------
+   5か国で操作を同じにするため、円でも小数点を打てるようにした。
+   円に小数は無いので1円へ四捨五入するが、**黙って額を変えない**。
+   打った額と残る額が違うのに何も知らされない、がいちばん困る。
+   ========================================================================= */
+
+const saveWith = async (country, keys) => {
+  const app = bootApp({ state: { settings: { country: country }, tx: [] } });
+  app.run(`globalThis.__t=[]; const t0=toast; toast=(m)=>{ globalThis.__t.push(m); return t0(m); };`);
+  app.run(`openRecord(null);`);
+  keys.forEach((k) => app.run(
+    `handleAct("calc",{target:{closest:(s)=>String(s).indexOf("data-key")>=0?{dataset:{key:${JSON.stringify(k)}}}:null}});`));
+  app.run(`
+    document.getElementById("s-amt").value=Core.calcDisplay(sheetState.calc);
+    document.getElementById("s-date").value=${JSON.stringify(D(10))};
+  `);
+  await app.run(`saveTx()`);
+  return { amount: JSON.parse(app.saved()).tx[0].amount, said: app.run(`JSON.stringify(globalThis.__t)`) };
+};
+
+test("円で小数を打って記録したら、丸めたことを知らせる", async () => {
+  const r = await saveWith("JP", ["1", ".", "5"]);
+  assert.equal(r.amount, 2, "1円へ四捨五入していない");
+  assert.match(r.said, /四捨五入/, "丸めたことを知らせていない: " + r.said);
+  assert.match(r.said, /¥2/, "いくらで記録したかを出していない: " + r.said);
+});
+
+test("丸めていないときは、余計な知らせを出さない", async () => {
+  const jp = await saveWith("JP", ["1", "2", "3"]);
+  assert.equal(jp.amount, 123);
+  assert.equal(/四捨五入/.test(jp.said), false, "丸めていないのに知らせている: " + jp.said);
+
+  const us = await saveWith("US", ["1", "2", ".", "3", "4"]);
+  assert.equal(us.amount, 1234);
+  assert.equal(/rounded/i.test(us.said), false, "丸めていないのに知らせている: " + us.said);
+});
+
+test("その通貨より細かい桁を打っているかを、正しく見分ける", () => {
+  /* 円は0桁、ドルは2桁。ここを取り違えると、知らせが出たり出なかったりする。 */
+  assert.equal(Core.majorTextHasExtraDecimals("1.5", 0), true);
+  assert.equal(Core.majorTextHasExtraDecimals("1.0", 0), false, "0だけの小数で知らせている");
+  assert.equal(Core.majorTextHasExtraDecimals("123", 0), false);
+  assert.equal(Core.majorTextHasExtraDecimals("12.34", 2), false);
+  assert.equal(Core.majorTextHasExtraDecimals("12.345", 2), true);
+  assert.equal(Core.majorTextHasExtraDecimals("12.340", 2), false, "末尾の0で知らせている");
+  assert.equal(Core.majorTextHasExtraDecimals("", 2), false);
+});
+
+test("電卓は、その通貨より2桁多くは打たせない", () => {
+  /* 打てる小数は通貨の桁と2桁の大きいほう。ドルで3桁目は入らない。 */
+  assert.equal(shown(2, ["1", ".", "2", "3", "4"]), "1.23", "ドルで小数3桁が打てる");
+  assert.equal(shown(0, ["1", ".", "2", "3", "4"]), "1.23", "円で小数3桁が打てる");
 });

@@ -368,31 +368,52 @@ test("関数電卓の答えを、そのまま記録として保存できる", as
   }
 });
 
-test("記録に使えない答えのときは、ボタンを出さずに案内を出す", () => {
-  /* 円で 1.5、ドルで 0.001 のように、その通貨で表せない答えは入れられない。 */
-  const jp = bootApp({ state: { settings: { country: "JP" }, tx: [] } });
-  jp.run(`view="calc"; render();`);
-  sciPress(jp, ["3", "/", "2", "="]);   // 1.5 円は入れられない
-  const jpHtml = String(jp.run(`document.getElementById("app").innerHTML`));
-  assert.equal(/data-act="sci-record"/.test(jpHtml), false, "円で 1.5 を記録できてしまう");
-  assert.match(jpHtml, /calcnote/, "案内が出ていない");
-
-  /* ドルなら 1.50 として入れられる */
-  const us = bootApp({ state: { settings: { country: "US" }, tx: [] } });
-  us.run(`view="calc"; render();`);
-  sciPress(us, ["3", "/", "2", "="]);
-  assert.match(String(us.run(`document.getElementById("app").innerHTML`)), /data-act="sci-record"/,
-    "ドルで 1.50 を記録できない");
+test("割り切れない答えでも、丸めた額でボタンが出る（5か国とも）", () => {
+  /* 前は「ちょうど表せる答え」しか記録させなかった。そのため円では
+     1000÷3・√2・sin30 のような答えでボタンが出ず、
+     関数電卓で出した額をそのまま記録できなかった。
+     いまは丸めて記録でき、**丸めたあとの額がボタンに出る**ので、
+     いくらで記録されるかは押す前に必ず見える。 */
+  for (const [c, keys, label] of [
+    ["JP", ["1", "0", "0", "0", "/", "3", "="], "¥333"],
+    ["US", ["1", "0", "0", "0", "/", "3", "="], "$333.33"],
+    ["GB", ["3", "/", "2", "="], "£1.50"],
+    ["JP", ["3", "/", "2", "="], "¥2"],
+  ]) {
+    const app = bootApp({ state: { settings: { country: c }, tx: [] } });
+    app.run(`view="calc"; render();`);
+    sciPress(app, keys);
+    const html = String(app.run(`document.getElementById("app").innerHTML`));
+    assert.match(html, /data-act="sci-record"/, c + "：ボタンが出ていない");
+    assert.ok(html.includes(label), c + "：丸めたあとの額がボタンに出ていない（期待 " + label + "）");
+  }
 });
 
-test("記録に使える答えかは、その通貨の細かさで決める", () => {
+test("0円以下になる答えでは、ボタンを出さずに案内を出す", () => {
+  for (const [c, keys] of [["JP", ["1", "-", "5", "="]], ["JP", ["0", "*", "5", "="]],
+                           ["US", ["1", "-", "5", "="]]]) {
+    const app = bootApp({ state: { settings: { country: c }, tx: [] } });
+    app.run(`view="calc"; render();`);
+    sciPress(app, keys);
+    const html = String(app.run(`document.getElementById("app").innerHTML`));
+    assert.equal(/data-act="sci-record"/.test(html), false, c + "：0円以下を記録できてしまう");
+    assert.match(html, /calcnote/, c + "：案内が出ていない");
+  }
+});
+
+test("記録できる額は、その通貨の細かさへ丸める", () => {
   const mk = (v) => ({ result: v });
   assert.equal(Core.sciRecordAmount(mk(15), 0), 15);
-  assert.equal(Core.sciRecordAmount(mk(1.5), 0), null, "円に小数が入っている");
+  assert.equal(Core.sciRecordAmount(mk(1.5), 0), 2, "円へ四捨五入していない");
+  assert.equal(Core.sciRecordAmount(mk(1.4), 0), 1);
+  assert.equal(Core.sciRecordAmount(mk(333.333), 0), 333);
   assert.equal(Core.sciRecordAmount(mk(12.34), 2), 1234);
-  assert.equal(Core.sciRecordAmount(mk(12.345), 2), null, "セントより細かい額が入っている");
+  assert.equal(Core.sciRecordAmount(mk(12.345), 2), 1235, "セントへ四捨五入していない");
   assert.equal(Core.sciRecordAmount(mk(0.05), 2), 5);
+  /* 0円以下と、数でないものは記録しない */
   assert.equal(Core.sciRecordAmount(mk(0), 2), null);
+  assert.equal(Core.sciRecordAmount(mk(0.001), 0), null, "0円になる答えを記録できてしまう");
   assert.equal(Core.sciRecordAmount(mk(-5), 2), null);
   assert.equal(Core.sciRecordAmount(mk(null), 2), null);
+  assert.equal(Core.sciRecordAmount(mk(Infinity), 2), null);
 });

@@ -328,7 +328,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: "const CACHE = \"kakeibo-v42\";",
+    file: "sw.js", from: "const CACHE = \"kakeibo-v43\";",
     to: "const CACHE = \"kakeibo-v20\";" },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "  if(!save()) state.settings = before;        // 失敗したら元のまま",
@@ -582,7 +582,7 @@ const MUTATIONS = [
     file: "core.js", from: '    if (op === "/") return b === 0 ? null : Math.round((a / b) * s);',
     to: '    if (op === "/") return Math.round((a / b) * s);' },
   { name: "＝を押さないと計算されない", guards: "待っている計算を済ませて記録する",
-    file: "core.js", from: '    if (c.op && c.acc !== null && c.cur !== "") {\n      const r = calcApply(c.acc, c.op, majorTextToMinor(c.cur, c.dec || 0), calcScale(c));\n      return r === null ? c.acc : r;\n    }',
+    file: "core.js", from: "    if (c.op && c.acc !== null && c.cur !== \"\") {\n      const r = calcApply(c.acc, c.op, majorTextToMinorRound(c.cur, c.dec || 0), calcScale(c));\n      return r === null ? c.acc : r;\n    }",
     to: "" },
   { name: "打ち込める桁数の上限を外す", guards: "桁数に上限がある",
     file: "core.js", from: "    intPart = intPart.slice(0, CALC_DIGITS_MAX);", to: "    intPart = intPart;" },
@@ -946,7 +946,7 @@ const MUTATIONS = [
     file: "index.html", from: "function yen(v){ return Core.formatAmount(v, state.settings); }",
     to: "function yen(v){ return Core.formatMoney(v, state.settings); }" },
   { name: "打ち込みを最小単位へ直さない", guards: "打ち込みは最小単位へ直す",
-    file: "index.html", from: "  const typed=Core.majorTextToMinor(st.amount, decOf(recCountry));",
+    file: "index.html", from: "  const typed=Core.majorTextToMinorRound(st.amount, decOf(recCountry));",
     to: "  const typed=Math.round(Number(String(st.amount).replace(/[^0-9.]/g,\"\"))||0);" },
   { name: "直すときいまの国で換算する", guards: "直すときも記録の国で換算",
     file: "index.html", from: "  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();",
@@ -962,8 +962,9 @@ const MUTATIONS = [
   { name: "小数点キーを出さない", guards: "5か国とも小数点キーがある",
     file: "index.html", from: '${k("0","0")}${k(".",".","zero")}${k("00","00","zero")}',
     to: '${k("0","0")}${k("00","00","zero")}${k("000","000","zero")}' },
-  { name: "円でも小数点を受け付ける", guards: "円は小数を持たない",
-    file: "core.js", from: "      if (!c.dec) return c;", to: "      if (false) return c;" },
+  { name: "円でも小数点を受け付ける", guards: "5か国とも小数点キーが効く",
+    file: "core.js", from: "    if (k === \".\" || k === \"．\") {\n      if (c.done)",
+    to: "    if (k === \".\" || k === \"．\") {\n      if (!c.dec) return c;\n      if (c.done)" },
   { name: "小数点を2つ置けるようにする", guards: "小数点は1つだけ",
     file: "core.js", from: '      if (c.cur.indexOf(".") >= 0) return c;           // 2つ目の小数点は置かない',
     to: "      if (false) return c;" },
@@ -1001,14 +1002,11 @@ const MUTATIONS = [
     file: "index.html", from: "    sheetState.amount=Core.minorToMajorText(pick.dataset.pick, sheetDec());",
     to: "    sheetState.amount=String(pick.dataset.pick);" },
   { name: "設定の小数を切り捨てる", guards: "設定にも小数を入れられる",
-    file: "index.html", from: "function settingMinor(v, settings){ return Core.majorTextToMinor(v, decOf(settings)); }",
+    file: "index.html", from: "function settingMinor(v, settings){ return Core.majorTextToMinorRound(v, decOf(settings)); }",
     to: "function settingMinor(v, settings){ return Core.toMinor(settingNum(v), settings); }" },
-  { name: "金額の欄に小数のキーボードを出さない", guards: "通貨に合わせたキーボード",
-    file: "index.html", from: 'function moneyInputMode(){ return decOf()>0 ? "decimal" : "numeric"; }',
-    to: 'function moneyInputMode(){ return "numeric"; }' },
-
-  /* ---- ⑤第3段階：グラフの目もり・英語レシートの語彙 ---- */
-
+  { name: "金額の欄に小数のキーボードを出さない", guards: "5か国とも同じキーボード",
+    file: "index.html", from: "function moneyInputMode(){ return \"decimal\"; }",
+    to: "function moneyInputMode(){ return decOf()>0 ? \"decimal\" : \"numeric\"; }" },
   { name: "英語圏の目もりに M を出さない", guards: "1,500,000は1.5M",
     file: "index.html", from: '    if(v>=1000000){ return tickShort(v/1000000)+"M"; }', to: "" },
   { name: "英語圏の目もりに k を出さない", guards: "1,500は1.5k",
@@ -1045,10 +1043,31 @@ const MUTATIONS = [
   { name: "記録画面へ最小単位のまま渡す", guards: "記録画面には主単位の字で入る",
     file: "index.html", from: "    sheetState.amount=Core.minorToMajorText(minor, sheetDec());",
     to: "    sheetState.amount=String(minor);" },
-  { name: "その通貨で表せない答えも記録させる", guards: "円に1.5は入れない",
-    file: "core.js", from: "    if (Math.abs(v * scale - minor) > 1e-6) return null;", to: "" },
+  /* 旧「その通貨で表せない答えも記録させる」は差し替えた。
+     以前は割り切れない答えを門前払いしていたが、そのせいで日本では
+     1000÷3 や √2 の答えを記録できなかった。いまは丸めて記録する。
+     代わりに「丸め方が切り捨てになっていないか」を見張る
+     （切り捨てだと ¥1.5 が黙って ¥1 になる）。 */
+  { name: "その通貨で表せない答えも記録させる", guards: "割り切れない答えは丸めて記録する",
+    file: "core.js", from: "    const minor = Math.round(v * scale);",
+    to: "    const minor = Math.floor(v * scale);" },
   { name: "0や負の答えも記録させる", guards: "1以上の金額だけ記録する",
     file: "core.js", from: "    if (!(minor > 0)) return null;", to: "" },
+
+  /* ---- 円でも小数点が打てる（A案：丸めたことを必ず知らせる） ---- */
+
+  { name: "丸めたことを知らせない", guards: "黙って額を変えない",
+    file: "index.html", from: "    if(rounded){", to: "    if(false){" },
+  { name: "丸めたかどうかを見ない", guards: "黙って額を変えない",
+    file: "index.html", from: "  const rounded=Core.majorTextHasExtraDecimals(st.amount, decOf(recCountry));",
+    to: "  const rounded=false;" },
+  { name: "細かい桁の判定を通貨の桁で切らない", guards: "その通貨の桁で見分ける",
+    file: "core.js", from: "    return /[1-9]/.test(frac.slice(d));", to: "    return /[1-9]/.test(frac);" },
+  { name: "打ち込みを切り捨てにする", guards: "1円へ四捨五入する",
+    file: "core.js", from: '    if (Number(frac.charAt(d) || "0") >= 5) v += 1;   // 次の桁で繰り上げる', to: "" },
+  { name: "打てる小数の桁を通貨まかせにする", guards: "5か国とも同じだけ打てる",
+    file: "core.js", from: "  function calcInputDec(c) { return Math.max((c && c.dec) || 0, CALC_INPUT_DEC); }",
+    to: "  function calcInputDec(c) { return (c && c.dec) || 0; }" },
 ];
 
 module.exports = MUTATIONS;

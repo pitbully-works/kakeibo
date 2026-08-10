@@ -2394,7 +2394,9 @@ async function saveTx(){
   const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();
   /* ここが「打ち込み → 内部」の境目。以降はすべて最小単位で扱う。
      小数点を含む字（"12.34"）も、字のまま桁を組んで整数にするので誤差が出ない。 */
-  const typed=Core.majorTextToMinor(st.amount, decOf(recCountry));
+  const typed=Core.majorTextToMinorRound(st.amount, decOf(recCountry));
+  /* その通貨で表せない桁を打っていたか（円の "1.5" など）。あとで知らせる。 */
+  const rounded=Core.majorTextHasExtraDecimals(st.amount, decOf(recCountry));
   if(!typed||typed<=0){ toast(L("金額を入れてね","Please enter an amount")); const ai=$("s-amt"); if(ai) ai.focus(); return; }
   /* 上限で止める。電卓は 9桁×9桁 のような掛け算ができてしまうので、
      ここで切り詰めないと 18桁の金額がそのまま残り、集計がすべて壊れる。
@@ -2443,7 +2445,15 @@ async function saveTx(){
 
   if(save()){
     releaseOcrImage(st);            // 記録が確定した。高解像度はここで手放す
-    showSheet(false); render(); toast(st.mode==="edit"?L("更新しました","Updated"):L("記録できました ✓","Recorded ✓"));
+    showSheet(false); render();
+    /* その通貨より細かい桁を打っていたら、四捨五入したことを必ず知らせる。
+       黙って額が変わるのがいちばん困る（円で 1.5 と打つと ¥2 になる）。 */
+    if(rounded){
+      toast(L(`${yen(amount)} として記録しました（${roundUnit()}未満は四捨五入）`,
+              `Recorded as ${yen(amount)} — rounded to the nearest ${roundUnit()}`));
+    }else{
+      toast(st.mode==="edit"?L("更新しました","Updated"):L("記録できました ✓","Recorded ✓"));
+    }
     return;
   }
 
@@ -3920,10 +3930,13 @@ const SETTING_FIELD = {
 };
 /* 設定の金額欄。打ち込みは主単位。小数の無い通貨では、これまでどおり整数だけ。
    字のまま桁を組むので、$300.50 も誤差なく 30050 になる。 */
-function settingMinor(v, settings){ return Core.majorTextToMinor(v, decOf(settings)); }
+function settingMinor(v, settings){ return Core.majorTextToMinorRound(v, decOf(settings)); }
 function settingNum(v){ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; }
 /* 金額の欄でスマホに出すキーボード。小数のある通貨だけ小数点を出す。 */
-function moneyInputMode(){ return decOf()>0 ? "decimal" : "numeric"; }
+/* 金額の欄でスマホに出すキーボード。5か国とも小数点を出す（円は記録時に1円へ丸める）。 */
+function moneyInputMode(){ return "decimal"; }
+/* 四捨五入の単位の呼び名（円 / セント …）。知らせる文言に使う。 */
+function roundUnit(){ return decOf()>0 ? L("1セント","cent") : L("1円","yen"); }
 /* 国は「押す」ではなく「選ぶ」操作なので change で受ける。
    選んだその場で保存し、ことば・通貨・日付の出し方を入れ替えるため画面を作り直す。
    （打つたびの自動保存に任せると、ことばが古いままになる） */

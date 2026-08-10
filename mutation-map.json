@@ -1092,10 +1092,22 @@
  "記録画面へ最小単位のまま渡す": [
   "chart_ocr_i18n_test.js"
  ],
- "その通貨で表せない答えも記録させる": [
-  "chart_ocr_i18n_test.js"
- ],
  "0や負の答えも記録させる": [
   "chart_ocr_i18n_test.js"
+ ],
+ "丸めたことを知らせない": [
+  "decimal_input_test.js"
+ ],
+ "丸めたかどうかを見ない": [
+  "decimal_input_test.js"
+ ],
+ "細かい桁の判定を通貨の桁で切らない": [
+  "decimal_input_test.js"
+ ],
+ "打ち込みを切り捨てにする": [
+  "decimal_input_test.js"
+ ],
+ "打てる小数の桁を通貨まかせにする": [
+  "decimal_input_test.js"
  ]
 }
