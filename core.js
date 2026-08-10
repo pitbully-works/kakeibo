@@ -166,10 +166,12 @@
   function cycleLabel(ym, startDay, settingsOrCountry) {
     if (normalizeCycleStart(startDay) === 1) return "";
     const r = cycleRange(ym, startDay);
-    const gb = countryOf(settingsOrCountry) === "GB";
+    const country = countryOf(settingsOrCountry);
     const f = function (iso) {
       const m = Number(iso.slice(5, 7)), d = Number(iso.slice(8, 10));
-      return gb ? d + "/" + m : m + "/" + d;
+      if (country === "GB" || country === "AU") return d + "/" + m;
+      if (country === "CA") return pad2(m) + "-" + pad2(d);
+      return m + "/" + d;
     };
     return f(r.from) + "〜" + f(r.to);
   }
@@ -218,7 +220,7 @@
   /* せっていの「国」で選べる国。土台は5カ国あるが、
      画面（ことば・カテゴリ表示）を用意できた国だけをここに出す。
      GB / CA / AU を出すときは、この配列に足して翻訳を足すだけでよい。 */
-  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB", "CA"]);
+  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB", "CA", "AU"]);
 
   /* 設定オブジェクトでも国コードの文字列でも受け取れるようにする */
   function countryOf(settingsOrCountry) {
@@ -278,14 +280,17 @@
     const s = String(iso || "");
     const m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
     if (!Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
-    return countryOf(settingsOrCountry) === "GB" ? d + "/" + m : m + "/" + d;
+    const country = countryOf(settingsOrCountry);
+    if (country === "GB" || country === "AU") return d + "/" + m;
+    if (country === "CA") return pad2(m) + "-" + pad2(d);
+    return m + "/" + d;
   }
   /* 見出しの日付。JP「8月10日」／US「August 10」。 */
   function formatDateHeading(iso, settingsOrCountry) {
     const s = String(iso || "");
     const m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
     if (!Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
-    if (countryOf(settingsOrCountry) === "GB") return d + " " + MONTH_EN[m - 1];
+    if (["GB","AU"].includes(countryOf(settingsOrCountry))) return d + " " + MONTH_EN[m - 1];
     return countryLang(settingsOrCountry) === "en" ? MONTH_EN[m - 1] + " " + d : m + "月" + d + "日";
   }
   /* 年つきの日付。JP「2026/8/10」／US「8/10/2026」。 */
@@ -293,8 +298,9 @@
     const s = String(iso || "");
     const y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
     if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
-    if (countryOf(settingsOrCountry) === "GB") return d + "/" + m + "/" + y;
-    if (countryOf(settingsOrCountry) === "CA") return y + "-" + pad2(m) + "-" + pad2(d);
+    const country = countryOf(settingsOrCountry);
+    if (country === "GB" || country === "AU") return d + "/" + m + "/" + y;
+    if (country === "CA") return String(y).padStart(4,"0") + "-" + pad2(m) + "-" + pad2(d);
     return countryLang(settingsOrCountry) === "en" ? m + "/" + d + "/" + y : y + "/" + m + "/" + d;
   }
   /* 年月。JP「2026年8月」／US「August 2026」。 */
@@ -562,6 +568,7 @@
     "set.countryUS":   { ja: "アメリカ（ドル）", en: "United States · USD" },
     "set.countryGB":   { ja: "イギリス（ポンド）", en: "United Kingdom · GBP" },
     "set.countryCA":   { ja: "カナダ（カナダドル）", en: "Canada · CAD" },
+    "set.countryAU":   { ja: "オーストラリア（豪ドル）", en: "Australia · AUD" },
     "set.countryMix":  { ja: "記録は国ごとに分かれています。いま選んでいる国の記録だけが集計されます。",
                          en: "Records are kept per country. Only records for the selected country are counted." },
     "set.birth":       { ja: "生年月日", en: "Date of birth" },
@@ -685,17 +692,16 @@
       return "¥" + Math.round(Number(v) || 0).toLocaleString("en-US");
     }
     const n = Math.round((Number(v) || 0) * Math.pow(10, dec)) / Math.pow(10, dec);
-    /* en-CA の Intl は環境によって "$" だけになるため、CAD は CA$ と明示する。 */
-    if (rule.currency === "CAD") {
-      const parts = Math.abs(n).toFixed(dec).split(".");
-      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-      return (n < 0 ? "-" : "") + "CA$" + parts.join(".");
-    }
     try {
-      return new Intl.NumberFormat(rule.locale, {
+      const shown = new Intl.NumberFormat(rule.locale, {
         style: "currency", currency: rule.currency,
         minimumFractionDigits: dec, maximumFractionDigits: dec,
       }).format(n);
+      /* en-CA の Intl は CAD でも「$」だけを返す。多国対応画面では
+         USD と見分けられるよう Canada は CA$ と明示する。 */
+      if (rule.currency === "CAD") return shown.replace("$", "CA$");
+      if (rule.currency === "AUD") return shown.replace("$", "A$");
+      return shown;
     } catch (e) {
       const parts = Math.abs(n).toFixed(dec).split(".");
       parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");

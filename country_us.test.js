@@ -176,27 +176,26 @@ test("USのカレンダーは英語の曜日と月で出る", () => {
   assert.equal(/日 月 火 水 木 金 土/.test(cal), false, "曜日が日本語のまま");
 });
 
-test("せっていに国の選択があり、JP・US・GB・CAを出す", () => {
+test("せっていに国の選択があり、5カ国すべてを出す", () => {
   const set = screen({ country: "JP" }, [], "settings");
   assert.match(set, /id="f-country"/, "国の選択欄が無い");
   assert.match(set, /value="JP"/);
   assert.match(set, /value="US"/);
   assert.match(set, /value="GB"/);
   assert.match(set, /value="CA"/);
-  assert.equal(set.includes('value="AU"'), false);
+  assert.match(set, /value="AU"/);
 });
 
-test("画面で選べる国はJP・US・GB・CAの4つ（土台の5カ国は残す）", () => {
-  assert.deepEqual([...Core.SUPPORTED_COUNTRIES], ["JP", "US", "GB", "CA"]);
+test("画面で選べる国はJP・US・GB・CA・AUの5カ国", () => {
+  assert.deepEqual([...Core.SUPPORTED_COUNTRIES], ["JP", "US", "GB", "CA", "AU"]);
   assert.deepEqual(Object.keys(Core.COUNTRY_RULES), ["JP", "US", "GB", "CA", "AU"]);
   assert.equal(Core.isSupportedCountry("US"), true);
   assert.equal(Core.isSupportedCountry("GB"), true);
-  assert.equal(Core.isSupportedCountry("CA"), true);
-  /* 画面に出せない国を選ぼうとしたら、安全にJPへ寄せる */
+  /* 5カ国すべて選択可能 */
   assert.equal(Core.pickCountry("GB"), "GB");
-  assert.equal(Core.pickCountry("US"), "US");
   assert.equal(Core.pickCountry("CA"), "CA");
-  assert.equal(Core.pickCountry("AU"), "JP");
+  assert.equal(Core.pickCountry("US"), "US");
+  assert.equal(Core.pickCountry("AU"), "AU");
 });
 
 /* =======================================================================
