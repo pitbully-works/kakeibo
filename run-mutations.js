@@ -3,791 +3,193 @@
    -------------------------------------------------------------------------
    ※ mutation testing 全体を網羅するものではありません。
       あらゆる変異を機械的に生成するのではなく、壊れると困る重要な
-      パターンを手作業で列挙したものです。選んだ範囲の外に穴が残る
-      可能性はあります。
+      パターンを手作業で列挙したものです（一覧は mutations.js）。
+      選んだ範囲の外に穴が残る可能性はあります。
    -------------------------------------------------------------------------
    仕組み：
-     1. ソースの一部をわざと壊す（変異させる）
-     2. その状態で `node --test` を走らせる
-     3. テストが落ちれば「その壊れ方を検出できる」＝合格
+     1. 作業用の一時フォルダへソースを丸ごと写す
+     2. その **写しだけ** をわざと壊す（元のソースには絶対に触らない）
+     3. その状態でテストを走らせる
+     4. テストが落ちれば「その壊れ方を検出できる」＝合格
         テストが通ってしまえば「見逃す」＝不合格（テストの穴）
-     4. 元に戻す
-   実行： node run-mutations.js
+     5. 一時フォルダを消す（正常終了・失敗・中断のどれでも消す）
+
+   -------------------------------------------------------------------------
+   2つの使い方
+   -------------------------------------------------------------------------
+   ① ふだんの検査（高速）   node run-mutations.js --fast
+        変えたファイルに関わる変異だけを、
+        「その変異を捕まえられるテストファイル」だけで試す。
+        対応表（mutation-map.json）は完全検査の実測から作られる。
+        数分で終わるので、ふだんの変更はこちらでよい。
+
+   ② 完全検査             node run-mutations.js
+        すべての変異を、すべてのテストで試す。
+        同時に対応表 mutation-map.json を作り直す。
+        リリース前と、大きな変更のあとはこちら。
+
+   -------------------------------------------------------------------------
+   高速版が甘くならない理由
+   -------------------------------------------------------------------------
+     テストを減らすと「捕まえにくくなる」方向にしか動かない。
+     つまり高速版で見逃しが出たら、それは本物の警告か、
+     対応表が古くなったかのどちらか。どちらの場合も **赤くなる**。
+     見逃しを見落とす方向には壊れない（安全側に倒れる）。
+
+   オプション：
+     --fast                高速検査
+     --write-map           対応表 mutation-map.json を作り直す（完全検査のときだけ）
+     --changed=a.js,b.html 変えたファイルを指定（省略時は環境変数 CHANGED_FILES）
+     --jobs=N              同時に走らせる本数（既定：CPU数と4の小さいほう）
    結果： MUTATION-REPORT.md に書き出す
    ========================================================================= */
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const MUTATIONS = require("./mutations.js");
+const lib = require("./mutation-lib.js");
 
 const dir = __dirname;
+const MAP_FILE = path.join(dir, "mutation-map.json");
 
-/* 変異の一覧。それぞれ「守りたい振る舞い」に1対1で対応させる。 */
-const MUTATIONS = [
-  /* ---- 先取りと支出の分け方・iDeCo・各種保険 ---- */
-  { name: "借入を先取りに戻す", guards: "出ていくお金は支出として数える",
-    file: "core.js", from: '    if (loan > 0) rows.push({ key: "loans", name: "借入の返済", amount: loan });', to: "" },
-  { name: "各種保険を支出に入れない", guards: "保険料は毎月固定の支出",
-    file: "core.js", from: '    if (ins > 0) rows.push({ key: "insurance", name: "各種保険の保険料", amount: ins });', to: "" },
-  { name: "出ていくお金を毎月固定に数えない", guards: "毎月固定に入る",
-    file: "core.js", from: "    const recurringSpend = sum(expRecs.filter(isRecurring), function (t) { return t.amount; }) + lpSpendSum;",
-    to: "    const recurringSpend = sum(expRecs.filter(isRecurring), function (t) { return t.amount; });" },
-  { name: "出ていくお金を先取りにも足す", guards: "二重に引かない",
-    file: "core.js", from: "    const setAside = nisaPlanned + lpSetAsideSum;",
-    to: "    const setAside = nisaPlanned + lpSetAsideSum + lpSpendSum;" },
-  { name: "iDeCoの掛金を先取りに入れない", guards: "iDeCoの掛金も先取りとして引く",
-    file: "core.js", from: '    if (ide > 0) rows.push({ key: "ideco", name: "iDeCoの掛金", amount: ide });', to: "" },
-  { name: "iDeCo・各種保険を渡さない", guards: "ライフプランへ渡す",
-    file: "core.js", from: "        insurancePolicies: a.insurancePolicies,", to: "" },
-  { name: "記録の選択に保険を残す", guards: "入力口はライフプラン欄だけ",
-    file: "core.js", from: '    { k: "insure",   e: "🛟", n: "保険", hidden: true },', to: '    { k: "insure",   e: "🛟", n: "保険" },' },
-  { name: "記録の選択に私年金を残す", guards: "入力口はライフプラン欄だけ",
-    file: "core.js", from: '    { k: "pension",  e: "💰", n: "私年金", hidden: true },', to: '    { k: "pension",  e: "💰", n: "私年金" },' },
-  { name: "まとめで先取りと支出を分けない", guards: "先取りと毎月固定の支出を分けて出す",
-    file: "index.html", from: '    html += `<div class="stitle">毎月固定（支出）</div>', to: '    html += `<div class="stitle">先取り（貯まるお金）</div>' },
+/* ---------- 引数 ---------- */
+const argv = process.argv.slice(2);
+const has = (n) => argv.includes(n);
+const val = (n) => {
+  const hit = argv.find((a) => a.startsWith(n + "="));
+  return hit ? hit.slice(n.length + 1) : null;
+};
+const FAST = has("--fast");
+const JOBS = Math.max(1, Number(val("--jobs")) || Math.min(4, os.cpus().length || 1));
 
-  /* ---- 毎月の先取り・一括投資・銘柄の内訳 ---- */
-  { name: "毎月の金額を先取りに入れない", guards: "毎月の金額は先取りとして引かれる",
-    file: "core.js", from: "    const setAside = nisaPlanned + lpSetAsideSum;", to: "    const setAside = nisaPlanned;" },
-  { name: "毎月の金額を支出にも足す", guards: "支出には足さない（二重に引かない）",
-    file: "core.js", from: "    const available = incomeTotal - spendTotal - setAside;", to: "    const available = incomeTotal - spendTotal - setAside - lpSetAsideSum;" },
-  { name: "一括投資も毎月の計算に入れる", guards: "一括投資はかけいぼの計算に入れない",
-    file: "core.js", from: '    if (a.gold.monthlyYen > 0) rows.push({ key: "gold", name: "金（きん）の積立", amount: a.gold.monthlyYen });',
-    to: '    if (a.gold.monthlyYen > 0) rows.push({ key: "gold", name: "金（きん）の積立", amount: a.gold.monthlyYen });\n    a.lumpSums.forEach(function (l) { rows.push({ key: "lump", name: "一括投資", amount: l.amount }); });' },
-  { name: "月額を銘柄の合計にしない", guards: "月額は銘柄の合計（打つ場所は1か所）",
-    file: "core.js", from: "        monthlyYen: funds.length ? sum : lpNum(row.monthlyYen, 1e9),", to: "        monthlyYen: lpNum(row.monthlyYen, 1e9)," },
-  { name: "一括投資をライフプランへ渡さない", guards: "一括投資は渡す",
-    file: "core.js", from: "        lumpSums: a.lumpSums,\n        insurancePolicies", to: "        insurancePolicies" },
-  { name: "まとめに先取りの内わけを出さない", guards: "毎月固定（先取り）の内わけを出す",
-    file: "index.html", from: "    ${lpMonthlyCard(c)}", to: "" },
-  { name: "NISAのタイルを古い設定欄へ飛ばす", guards: "NISAの入力口は内訳だけ",
-    file: "index.html", from: '<button class="ds" data-act="lp-open" data-kind="nisa">',
-    to: '<button class="ds" data-go="settings" data-focus="f-nisa">' },
-
-  /* ---- 生年月日とNISA積立のスケジュール ---- */
-  { name: "年齢の数え方を1年ずらす", guards: "生年月日から出す年齢",
-    file: "core.js", from: "    return years + (nt - from) / span;", to: "    return years + (nt - from) / span + 1;" },
-  { name: "おかしな生年月日も受け入れる", guards: "妥当な生年月日だけ残す",
-    file: "core.js", from: "    return validateDateString(s) ? s : \"\";", to: "    return s;" },
-  { name: "未来の生年月日を受け入れる", guards: "未来の生年月日は使わない",
-    file: "core.js", from: "    if (!Number.isFinite(bt) || !Number.isFinite(nt) || nt < bt) return null;",
-    to: "    if (!Number.isFinite(bt) || !Number.isFinite(nt)) return null;" },
-  { name: "区間の終わりを含めない", guards: "終了年齢は含む",
-    file: "core.js", from: "      return (age >= r.fromAge && age <= r.toAge) ? sum + r.monthlyYen : sum;",
-    to: "      return (age >= r.fromAge && age < r.toAge) ? sum + r.monthlyYen : sum;" },
-  { name: "逆さまの区間をそのまま通す", guards: "終わりが始まりより前なら、始まりにそろえる",
-    file: "core.js", from: "        toAge: to < from ? from : to,", to: "        toAge: to," },
-  { name: "生年月日が無くても自動にする", guards: "そろっていないうちは手入力のまま",
-    file: "core.js", from: "    return !!normalizeBirth(s.birth) && hasSchedule;", to: "    return hasSchedule;" },
-  { name: "NISAのスケジュールを渡さない", guards: "スケジュールと銘柄もライフプランへ渡す",
-    file: "core.js", from: "        tsumitateSchedule: a.tsumitateSchedule.map(strip),\n        growthSchedule: a.growthSchedule.map(strip),", to: "" },
-  { name: "生年月日を拾わない", guards: "生年月日を保存できる",
-    file: "index.html", from: '  s.birth=Core.normalizeBirth(g("f-birth"));\n  s.goalName=(g("f-gname")||"").slice(0,24);\n  s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));\n  s.cycleStart=Core.normalizeCycleStart(g("f-cycle"));\n  state.settings = Core.normalizeSettings(s);\n  if(!save()) state.settings = before;',
-    to: '  s.goalName=(g("f-gname")||"").slice(0,24);\n  s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));\n  s.cycleStart=Core.normalizeCycleStart(g("f-cycle"));\n  state.settings = Core.normalizeSettings(s);\n  if(!save()) state.settings = before;' },
-  { name: "先取り貯金の欄を設定へ戻す（銀行貯金と二重）", guards: "打ち込む欄はひとつだけ",
-    file: "index.html", from: '    <div class="stitle" style="margin-top:6px">生年月日</div>',
-    to: '    <div class="field"><label>先取り貯金（月・予定額）</label><input id="f-save"></div>\n    <div class="stitle" style="margin-top:6px">生年月日</div>' },
-  { name: "タイルを横スクロールに戻す（隠れた分に気づけない）", guards: "隠れずに全部見える2段の並び",
-    file: "index.html", from: "  .dreamstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}",
-    to: "  .dreamstrip{display:flex;gap:8px;overflow-x:auto}" },
-  { name: "生年月日を保存しない", guards: "生年月日を保存できる",
-    file: "index.html", from: '  s.birth=Core.normalizeBirth(g("f-birth"));\n  s.goalName=(g("f-gname")||"").slice(0,24);\n  s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));\n  s.cycleStart=Core.normalizeCycleStart(g("f-cycle"));\n  /* normalizeSettings',
-    to: '  s.goalName=(g("f-gname")||"").slice(0,24);\n  s.goalTarget=num(g("f-gtarget")); s.goalCurrent=num(g("f-gcur"));\n  s.cycleStart=Core.normalizeCycleStart(g("f-cycle"));\n  /* normalizeSettings' },
-
-  /* ---- ライフプランへ渡す資産（金・銀行貯金・借入金・民間年金） ---- */
-  { name: "渡す形の入れものを変える", guards: "ライフプランが受け取れる { inputs: ... } の形",
-    file: "core.js", from: '      source: "kakeibo",', to: '      source: "other",' },
-  { name: "ライフプランの入力まで上書きする", guards: "渡すのは4つだけ",
-    file: "core.js", from: "        insurancePolicies: a.insurancePolicies,\n      }),", to: "        insurancePolicies: a.insurancePolicies,\n        banksExtra: [{ x: 1 }],\n      })," },
-  { name: "件数の上限を外す", guards: "1種類あたりの行数に上限がある",
-    file: "core.js", from: "  const LP_MAX_ROWS = 20;", to: "  const LP_MAX_ROWS = 100000;" },
-  { name: "マイナスの金額を受け入れる", guards: "読み取れない値・マイナスは0にする",
-    file: "core.js", from: "    if (!Number.isFinite(n) || n < 0) return 0;", to: "    if (!Number.isFinite(n)) return 0;" },
-  { name: "金の評価額を足し算にする", guards: "金は「量 × 1グラムの値段」",
-    file: "core.js", from: "    return Math.round(g.currentGrams * g.pricePerGram);", to: "    return Math.round(g.currentGrams + g.pricePerGram);" },
-  { name: "空でも設定に持たせる", guards: "何も入れていないうちは設定に持たせない",
-    file: "core.js", from: "    if (lpHasAny(lp)) out.lp = lp;", to: "    out.lp = lp;" },
-  { name: "保存に失敗しても巻き戻さない", guards: "失敗したら元の値へ完全に戻す",
-    file: "index.html", from: "    state.settings = before;\n    toast(\"保存できませんでした\");", to: '    toast("保存できませんでした");' },
-  { name: "内訳へ移るときに書きかけを捨てる", guards: "せっていの書きかけを取りこぼさない",
-    file: "index.html", from: "    saveSettingsQuiet();                       // 書きかけの設定を取りこぼさない", to: "" },
-  { name: "確かめずに行を消す", guards: "消す前に確かめる",
-    file: "index.html", from: '  if(typeof confirm==="function" && !confirm(`「${target.name||"（名前なし）"}」を消しますか？`)) return;', to: "" },
-
-  /* ---- 日記の日付えらび・写真ボタン ---- */
-  { name: "書きかけを確かめずに捨てる", guards: "日付を変える前に確かめる",
-    file: "index.html", from: '  if(dirty && typeof confirm==="function" && !confirm("書きかけの内容は保存されません。日付を変えますか？")){',
-    to: "  if(false){" },
-  { name: "おかしな日付でも切り替える", guards: "存在しない日付は受け付けない",
-    file: "index.html", from: '  if(!Core.validateDateString(value)){ toast("日付を選んでください"); return; }', to: "" },
-  { name: "今日を選んでも今日に戻らない", guards: "今日を選んだら今日の日記へ戻る",
-    file: "index.html", from: '  diaryEditDate = (value === todayISO()) ? null : value;', to: "  diaryEditDate = value;" },
-  { name: "日付えらびを受け取らない", guards: "日付を選んだら切り替わる",
-    file: "index.html", from: '  if(el && el.id === "d-date") pickDiaryDate(el.value);', to: "" },
-  { name: "写真ボタンをただの文字に戻す", guards: "押せる場所だと分かる見た目",
-    file: "index.html", from: '    : `<button class="photobtn" data-act="add-diary-photo">',
-    to: '    : `<button class="btn-quiet" data-act="add-diary-photo">' },
-
-  /* ---- いま見ている画面の印（下のタブ） ---- */
-  { name: "いる画面の台の色を消す", guards: "いま見ている画面が色つきの台で分かる",
-    file: "index.html", from: "  .nav button.on{color:var(--green-dd);font-weight:800;background:var(--green-l);",
-    to: "  .nav button.on{color:var(--green-dd);font-weight:800;" },
-  { name: "いる画面の絵文字を大きくしない", guards: "色だけに頼らず大きさでも分かる",
-    file: "index.html", from: "  .nav button.on .ni{transform:scale(1.14)}", to: "" },
-  { name: "いない画面の印を消し忘れる", guards: "前にいた画面の印を残さない",
-    file: "index.html", from: "  else if(typeof btn.removeAttribute===\"function\") btn.removeAttribute(\"aria-current\");", to: "" },
-  { name: "画面を切り替えても印を付け替えない", guards: "描き直しでタブの印を付け替える",
-    file: "index.html", from: '  document.querySelectorAll("#nav button").forEach(b=>navMark(b, b.dataset.nav===view));',
-    to: "" },
-
-  { name: "開始日を経過日数の近似で出す", guards: "その年齢になる日を暦で出す",
-    file: "core.js", from: "    const add = Math.ceil((a - whole) * days - 1e-9);",
-    to: "    const add = Math.round((a - whole) * 365.2425);" },
-  { name: "開始日を切り捨てる（まだ達していない日を返す）", guards: "その年齢に達する最初の日",
-    file: "core.js", from: "    const add = Math.ceil((a - whole) * days - 1e-9);",
-    to: "    const add = Math.floor((a - whole) * days);" },
-  { name: "開始日で満年の分を進めない", guards: "開始日はその年齢の誕生日",
-    file: "core.js", from: "    const from = anniversaryUTC(by, bm, bd, whole);\n    const to = anniversaryUTC(by, bm, bd, whole + 1);\n    const days = (to - from) / 864e5;",
-    to: "    const from = anniversaryUTC(by, bm, bd, 0);\n    const to = anniversaryUTC(by, bm, bd, 1);\n    const days = (to - from) / 864e5;" },
-
-  { name: "旧データのNISA月額を使い続ける", guards: "直せない金額を画面に出さない",
-    file: "core.js", from: "    if (!nisaAuto(s)) return 0;", to: "    if (!nisaAuto(s)) return num(s.nisaMonthly);" },
-  { name: "書き出しでコピーを試さない", guards: "iPhoneでも書き出せる",
-    file: "index.html", from: "    if(navigator.clipboard && navigator.clipboard.writeText){\n      navigator.clipboard.writeText(text).then(()=>toast(doneMsg), toFile);",
-    to: "    if(false){\n      navigator.clipboard.writeText(text).then(()=>toast(doneMsg), toFile);" },
-  { name: "コピーに失敗してもファイルへ落とさない", guards: "どちらかで必ず書き出せる",
-    file: "index.html", from: "      navigator.clipboard.writeText(text).then(()=>toast(doneMsg), toFile);",
-    to: "      navigator.clipboard.writeText(text).then(()=>toast(doneMsg));" },
-
-  { name: "バックアップで共有シートを試さない", guards: "iPhoneでもファイルとして残せる",
-    file: "index.html", from: "    if(navigator.share && navigator.canShare && typeof File === \"function\"){",
-    to: "    if(false){" },
-  { name: "共有を取り消してもダウンロードへ落とさない", guards: "どちらかで必ず書き出せる",
-    file: "index.html", from: "          .then(()=>toast(doneMsg), toDownload);     // 取り消し・失敗ならダウンロードへ",
-    to: "          .then(()=>toast(doneMsg));" },
-  { name: "バックアップをコピーだけにする（ファイルで戻せない）", guards: "バックアップはファイルで残す",
-    file: "index.html", from: "  saveFile(`kakeibo-backup-${todayISO()}.json`,",
-    to: "  shareText(`kakeibo-backup-${todayISO()}.json`," },
-
-  { name: "打っても自動で保存しない", guards: "保存ボタンを押さなくても消えない",
-    file: "index.html", from: "  clearTimeout(autoSaveT); autoSaveT=setTimeout(()=>autoSave(id),350);",
-    to: "  clearTimeout(autoSaveT);" },
-  { name: "内訳の自動保存だけやめる", guards: "内訳もその場で保存される",
-    file: "index.html", from: '  if(view==="lp"){ lpSave(lpReadCurrent()); lpRefreshTotals(); }',
-    to: '  if(false){ lpSave(lpReadCurrent()); lpRefreshTotals(); }' },
-  { name: "せっていの自動保存だけやめる", guards: "せっていもその場で保存される",
-    file: "index.html", from: '  if(view==="settings"){ saveSettingField(id); return; }',
-    to: '  if(false){ saveSettingField(id); return; }' },
-  { name: "自動保存で全部の欄を読み直す（生年月日が消える）", guards: "打った欄だけ書き換える",
-    file: "index.html", from: '  if(view==="settings"){ saveSettingField(id); return; }',
-    to: '  if(view==="settings"){ saveSettingsQuiet(); return; }' },
-  { name: "NISAのタイルだけ色を変える", guards: "先取りのタイルは同じ見た目",
-    file: "index.html", from: '  const nisaTile = `<button class="ds" data-act="lp-open" data-kind="nisa">',
-    to: '  const nisaTile = `<button class="ds blue" data-act="lp-open" data-kind="nisa">' },
-  { name: "自動保存で画面を作り直す（入力中の欄から指が外れる）", guards: "打っている間は作り直さない",
-    file: "index.html", from: "function autoSave(id){", to: "function autoSave(id){ render();" },
-  { name: "NISAの見出しを分かりにくい言い方に戻す", guards: "見出しは「積立」とだけ書く",
-    file: "index.html", from: '${box("つみたて投資枠（積立）"', to: '${box("つみたて投資枠：区間ごとの銘柄"' },
-
-  { name: "銘柄を足しても入力欄へ移らない", guards: "足した欄まで画面が移る",
-    file: "index.html", from: '  if(lpSave(a)){ render(); focusField(`${key==="tsumitateSchedule"?"lp-ts":"lp-gs"}-fn-${i}-${n}`); }',
-    to: "  if(lpSave(a)){ render(); }" },
-  { name: "区間を足しても入力欄へ移らない", guards: "足した区間まで画面が移る",
-    file: "index.html", from: "    if(lpSave(a0)){ render(); focusField(id); }",
-    to: "    if(lpSave(a0)){ render(); }" },
-  { name: "行を足しても入力欄へ移らない", guards: "足した行まで画面が移る",
-    file: "index.html", from: "  if(lpSave(a)){ render(); focusField(id); }",
-    to: "  if(lpSave(a)){ render(); }" },
-  { name: "足した行ではなく先頭の欄へ移る", guards: "足した行そのものへ移る",
-    file: "index.html", from: "  const i = a[key3].length - 1;", to: "  const i = 0;" },
-
-  /* ---- 画面の決めごと ---- */
-  { name: "内訳のカードを入口カードと同じ名前に戻す", guards: "内訳の入力が縦に潰れない",
-    file: "index.html", from: "  .lpseg{display:block;border:1px solid var(--line2)",
-    to: "  .lpseg{border:1px solid var(--line2)" },
-  { name: "目標タイルの色分けをやめる", guards: "目標と先取りを見分けられる",
-    file: "index.html", from: '? `<button class="ds goal" data-go="settings" data-focus="f-gcur">',
-    to: '? `<button class="ds" data-go="settings" data-focus="f-gcur">' },
-  { name: "先取りタイルの文言を戻す", guards: "先取りは固定金額を入れる場所だと分かる",
-    file: "index.html", from: '<div class="dv mono">${value}</div><div class="tapin">固定金額入力</div>',
-    to: '<div class="dv mono">${value}</div><div class="tapin">タップで入力</div>' },
-  { name: "初期化のたずねを一度だけにする", guards: "取り返しのつかない操作は二度たずねる",
-    file: "index.html", from: '  if(!confirm("本当に、すべて消して最初から始めますか？")) return;',
-    to: '  if(false) return;' },
-  { name: "初期化に失敗しても元へ戻さない", guards: "保存できなければデータはそのまま",
-    file: "index.html", from: "    state = before;                                 // 消える前へ完全に戻す",
-    to: "    /* 戻さない */" },
-
-  /* ---- 年齢の境目（誕生日ちょうど） ---- */
-  { name: "年齢を経過日数の近似に戻す", guards: "誕生日ちょうどはきっちり整数",
-    file: "core.js", from: "    return years + (nt - from) / span;",
-    to: "    return (nt - bt) / (365.2425 * 24 * 3600 * 1000);" },
-  { name: "応当日を末日へ寄せない（2月29日生まれ）", guards: "2月29日生まれの扱い",
-    file: "core.js", from: "    return Date.UTC(y, bm - 1, Math.min(bd, lastDayOfMonth(y, bm)));",
-    to: "    return Date.UTC(y, bm - 1, bd);" },
-  { name: "満年数を1つ多く数える", guards: "誕生日の前日はまだ年をとらない",
-    file: "core.js", from: "    if (anniversaryUTC(by, bm, bd, years) > nt) years -= 1;",
-    to: "    if (false) years -= 1;" },
-
-  /* ---- 横スワイプでの画面切り替え ---- */
-  { name: "端でも回り込ませる", guards: "ホーム・心拍の端では行き止まりにする",
-    file: "core.js", from: "    if (next < 0 || next >= SWIPE_VIEWS.length) return null;   // 端では動かさない",
-    to: "    if (false) return null;   // 端では動かさない" },
-  { name: "払う向きを逆にする", guards: "左へ払えば次、右へ払えば前",
-    file: "core.js", from: "    const next = i + (Number(dx) < 0 ? 1 : -1); // 左へ払えば次、右へ払えば前",
-    to: "    const next = i + (Number(dx) < 0 ? -1 : 1); // 左へ払えば次、右へ払えば前" },
-  { name: "せっていもスワイプの並びに入れる", guards: "せっていは右上のボタン専用",
-    file: "core.js", from: '  const SWIPE_VIEWS = ["home", "summary", "calendar", "diary", "health", "calc", "pulse"];',
-    to: '  const SWIPE_VIEWS = ["home", "summary", "calendar", "diary", "health", "calc", "pulse", "settings"];' },
-  { name: "縦スクロールでも切り替える", guards: "縦の動きと取り違えない",
-    file: "index.html", from: "  if(Math.abs(dx) < Math.abs(dy) * 1.5) return null;   // 縦スクロールと取り違えない",
-    to: "  if(false) return null;   // 縦スクロールと取り違えない" },
-  { name: "ほんの少し触れただけで切り替える", guards: "60px以上動かしたときだけ切り替える",
-    file: "index.html", from: "const SWIPE_MIN_X = 60;", to: "const SWIPE_MIN_X = 2;" },
-  { name: "ゆっくりなぞっても切り替える", guards: "ゆっくりした動きでは切り替えない",
-    file: "index.html", from: "  if(ms > SWIPE_MAX_MS) return null;", to: "  if(false) return null;" },
-  { name: "シートを開いていても切り替える", guards: "記録シート中は切り替えない",
-    file: "index.html", from: "  if(sheetState) return true;                       // 記録シートを開いている", to: "" },
-  { name: "測定中でも切り替える", guards: "心拍の測定中は切り替えない",
-    file: "index.html", from: "  if(pRunning) return true;                         // 心拍を測っている最中", to: "" },
-  { name: "つまむ操作でも切り替える", guards: "2本指では切り替えない",
-    file: "index.html", from: "  if(!e.touches || e.touches.length!==1) return;      // つまむ操作は対象外",
-    to: "  if(!e.touches) return;      // つまむ操作は対象外" },
-
-  /* ---- 心拍数（カメラ/PPG・β版） ---- */
-  { name: "採用窓の下限を外す", guards: "採用窓6/9未満は保存しない",
-    file: "core.js", from: "    minKept: 6,             // 採用窓 6/9 以上", to: "    minKept: 0,             // 採用窓 6/9 以上" },
-  { name: "fpsの下限を外す", guards: "25fps未満は保存しない",
-    file: "core.js", from: "    minFps: 25,             // 25fps 以上", to: "    minFps: 0,             // 25fps 以上" },
-  { name: "測定品質の下限を下げる", guards: "★3未満は保存しない",
-    file: "core.js", from: "    minStars: 3,            // 測定品質 ★3（普通）以上", to: "    minStars: 1,            // 測定品質 ★3（普通）以上" },
-  { name: "指が離れた測定も保存する", guards: "途中で指が離れたら保存しない",
-    file: "core.js", from: "    maxBadFrameRate: 0.15,  // 指が途中で離れていない", to: "    maxBadFrameRate: 1,  // 指が途中で離れていない" },
-  { name: "保存できる心拍数の範囲を広げる", guards: "35〜200bpm の外は保存しない",
-    file: "core.js", from: "    bpmMin: 35, bpmMax: 200,", to: "    bpmMin: 1, bpmMax: 400," },
-  { name: "準備時間も計算に使う", guards: "最初の10秒は計算に使わない",
-    file: "core.js", from: "return s && Number.isFinite(s.t) && s.t >= C.PREP_SEC * 1000;",
-    to: "return s && Number.isFinite(s.t);" },
-  { name: "途中で止めた測定も解析する", guards: "最後まで測れていない測定は確定しない",
-    file: "core.js", from: "    if (use[use.length - 1].t < (C.TOTAL_SEC - 1) * 1000) {",
-    to: "    if (false) {" },
-  { name: "解析の長さを固定しない", guards: "窓の数がいつも9になる",
-    file: "core.js", from: "    const sig = pulseResampleFixed(", to: "    const sig = pulseResample(" },
-  { name: "移動平均の末尾を埋めない", guards: "最後の窓が壊れない",
-    file: "core.js", from: "    for (let j = Math.max(1, n - half); j < n; j++) {", to: "    for (let j = n; j < n; j++) {" },
-  { name: "履歴の上限を外す", guards: "心拍数の履歴は上限で頭打ちにする",
-    file: "core.js", from: "    return out.length > PULSE_MAX ? out.slice(out.length - PULSE_MAX) : out;", to: "    return out;" },
-  { name: "止めるときにライトを消さない", guards: "測定を止めたらライトも消す",
-    file: "index.html", from: "  if(pTrack){ try{ pTrack.applyConstraints({advanced:[{torch:false}]}); }catch(e){} }   // ライトを必ず消す",
-    to: "  if(pTrack){ /* 消さない */ }" },
-  { name: "画面を移ってもカメラを止めない", guards: "心拍の画面を離れたら必ず止める",
-    file: "index.html", from: '  if(view!=="pulse" && pRunning) pulseStopAll();', to: "" },
-  { name: "心拍の保存に失敗しても巻き戻さない", guards: "保存できなければ履歴を増やさない",
-    file: "index.html", from: "  if(!save()){ state.pulse=before; return false; }", to: "  if(!save()){ return false; }" },
-  { name: "心拍の削除に失敗しても巻き戻さない", guards: "消せなければ元へ戻す",
-    file: "index.html", from: '  if(!save()){ state.pulse=before; toast("削除できませんでした"); return; }',
-    to: '  if(!save()){ toast("削除できませんでした"); return; }' },
-  { name: "健康記録へ入れて失敗しても巻き戻さない", guards: "入れられなければ元へ戻す",
-    file: "index.html", from: "    state.health=before;     // 入れる前へ完全に戻す", to: "" },
-
-  { name: "拡大枠を効かなくする", guards: "枠3種の座標計算",
-    file: "core.js", from: '{ key: "wide",  pad: 0.05 }', to: '{ key: "wide",  pad: 0.00 }' },
-  { name: "縮小枠を効かなくする", guards: "枠3種の座標計算",
-    file: "core.js", from: '{ key: "tight", pad: -0.10 }', to: '{ key: "tight", pad: 0.00 }' },
-  { name: "枠のはみ出し防止を外す", guards: "画像範囲を超えない",
-    file: "core.js", from: "if (x + w > 1) { w = 1 - x; }", to: "if (false) { w = 1 - x; }" },
-  { name: "一致回数の加点を消す", guards: "同じ金額が複数回出たら点数が上がる",
-    file: "core.js", from: "s += Math.min(30, Math.max(0, (Number(c.agree) || 1) - 1) * 15);", to: "s += 0;" },
-  { name: "桁区切りの検査を外す", guards: "不自然な桁区切りは低評価",
-    file: "core.js", from: "if (commaScore(c.raw) === 0) return 0;", to: "if (false) return 0;" },
-  { name: "低確信でも自動確定する", guards: "低確信度なら候補選択",
-    file: "core.js", from: "if (ranked[0].score < SCORE_CONFIRM) return true;", to: "if (false) return true;" },
-  { name: "1位2位の点差を見ない", guards: "僅差なら候補選択",
-    file: "core.js", from: "if (ranked.length > 1 && ranked[0].score - ranked[1].score < SCORE_GAP) return true;",
-    to: "if (false) return true;" },
-  { name: "1回出ただけで打ち切る", guards: "単独の高信頼では打ち切らない",
-    file: "core.js", from: "if (votes[k] >= 2) return true;", to: "if (votes[k] >= 1) return true;" },
-  { name: "自動反転をやめる", guards: "白抜き文字の反転",
-    file: "core.js", from: "if (shouldInvert(data)) invertForOcr(data);", to: "if (false) invertForOcr(data);" },
-  { name: "反転を二重に適用する", guards: "二重反転が起きない",
-    file: "core.js", from: "if (shouldInvert(data)) invertForOcr(data);",
-    to: "if (shouldInvert(data)) { invertForOcr(data); invertForOcr(data); }" },
-  { name: "読み取り用の高解像度をやめる", guards: "高解像度画像の利用",
-    file: "index.html", from: "const source = st.photoHi || st.photo;", to: "const source = st.photo;" },
-  { name: "読み取り後に高解像度を捨てる", guards: "再試行でも高解像度を維持",
-    file: "index.html", from: "  }finally{\n    /* 高解像度画像はここでは解放しない。",
-    to: "  }finally{\n    releaseOcrImage(st);\n    /* 高解像度画像はここでは解放しない。" },
-  { name: "シートを閉じても解放しない", guards: "解放のタイミング",
-    file: "index.html", from: "if(!on){ releaseOcrImage(sheetState);", to: "if(!on){ (function(){})(sheetState);" },
-  { name: "記録に高解像度画像を混ぜる", guards: "保存データに含めない",
-    file: "index.html", from: "    state.tx.push(rec);",
-    to: "    rec.photoHi=st.photoHi; state.tx.push(rec);" },
-  { name: "候補をタップしたら保存する", guards: "タップだけでは保存しない",
-    file: "index.html", from: "sheetState.ocrChoices=null;\n    sheetState.ocrNote=\"金額を入れました。",
-    to: "sheetState.ocrChoices=null; save();\n    sheetState.ocrNote=\"金額を入れました。" },
-  { name: "保存前の写真縮小をやめる", guards: "容量オーバー対策",
-    file: "index.html", from: "if(photo) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);", to: "" },
-  { name: "保存の失敗を握りつぶす", guards: "保存の成否判定",
-    file: "index.html", from: "catch(e){ lastSaveError=e; return false; }", to: "catch(e){ lastSaveError=e; return true; }" },
-  { name: "スクリプト読み込み関数を消す", guards: "呼んでいる関数が実在するか",
-    file: "index.html", from: "function loadScript(src){", to: "function loadScript_REMOVED(src){" },
-  { name: "保存の成否が出る前に高解像度を解放する", guards: "記録確定時にだけ解放",
-    file: "index.html", from: "  let photo = st.photo || null;", to: "  releaseOcrImage(st);\n  let photo = st.photo || null;" },
-  { name: "保存に失敗しても高解像度を解放する", guards: "失敗時は維持する",
-    file: "index.html", from: "  state.tx = JSON.parse(before);", to: "  releaseOcrImage(st);\n  state.tx = JSON.parse(before);" },
-  { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
-    file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
-  { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: 'const CACHE = "kakeibo-v37";', to: 'const CACHE = "kakeibo-v36";' },
-  { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
-    file: "index.html", from: "    state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す", to: "" },
-  { name: "設定の保存失敗でも成功と表示する", guards: "失敗時に成功メッセージを出さない",
-    file: "index.html", from: '    toast("設定を保存できませんでした");\n    return;', to: '    toast("保存しました ✓");' },
-  { name: "記録削除の失敗を巻き戻さない", guards: "記録削除の巻き戻し",
-    file: "index.html", from: "    state.tx = before;            // 消えたように見えて復活する、を防ぐ", to: "" },
-  { name: "写真一括削除の失敗を巻き戻さない", guards: "写真削除の巻き戻し",
-    file: "index.html", from: "    state.tx = before;            // 写真をすべて元へ戻す", to: "" },
-  { name: "写真0枚でも保存を試みる", guards: "写真0枚なら保存しない",
-    file: "index.html", from: '  if(!n){ toast("消せる写真はありません"); return; }   // 保存処理そのものを行わない',
-    to: '  if(!n){ }' },
-  { name: "バックアップ復元の失敗を巻き戻さない", guards: "復元の巻き戻し",
-    file: "index.html", from: "      state = before;                               // 保存できないなら元のまま", to: "" },
-  { name: "バックアップの確認ダイアログを出さない", guards: "上書き前の確認",
-    file: "index.html", from: "    if(!ok){ clear(); return; }                     // キャンセル：何も変えない", to: "" },
-  { name: "壊れた記録をそのまま取り込む", guards: "記録の正規化",
-    file: "core.js", from: "    if (!validateDateString(tx.date)) return null;            // 日付が不正なら捨てる", to: "" },
-  { name: "巨大な金額を制限しない", guards: "金額の上限",
-    file: "core.js", from: "    if (amount > AMOUNT_MAX) amount = AMOUNT_MAX;             // 巨大値は上限で止める", to: "" },
-  { name: "危険な写真データを通す", guards: "写真は画像のdata URLだけ",
-    file: "core.js", from: 'if (typeof tx.photo === "string" && /^data:image\\/[a-z+.-]+;base64,/i.test(tx.photo)) {',
-    to: 'if (typeof tx.photo === "string") {' },
-  { name: "Tesseractの版を範囲指定に戻す", guards: "完全バージョン固定",
-    file: "index.html", from: 'const TESSERACT_VERSION = "5.1.1";', to: 'const TESSERACT_VERSION = "5";' },
-  { name: "旧固定費キーを支出カテゴリから外す", guards: "旧データの互換",
-    file: "core.js", from: '    { k: "rent",     e: "🏠", n: "住居" },', to: "" },
-  { name: "支出集計から一部カテゴリを除外する", guards: "二重計上・計算漏れなし",
-    file: "core.js", from: "    const spendTotal = sum(expRecs, function (t) { return t.amount; }) + lpSpendSum;",
-    to: "    const spendTotal = sum(expRecs.filter(function(t){return t.cat!=='rent';}), function (t) { return t.amount; }) + lpSpendSum;" },
-  { name: "健康の範囲外を受け入れる", guards: "健康記録の正規化",
-    file: "core.js", from: "      if (v < f.min || v > f.max) return;              // 範囲外は捨てる", to: "" },
-  { name: "健康の未入力を0として記録する", guards: "未入力は記録しない",
-    file: "core.js", from: '      if (raw === "" || raw === null || raw === undefined) return;  // 未入力はその項目を入れない', to: "" },
-  { name: "健康の保存失敗を巻き戻さない", guards: "健康保存の巻き戻し",
-    file: "index.html", from: "    state.health=before;      // 失敗したら完全に戻す", to: "" },
-  { name: "バックアップから健康を外す", guards: "健康もバックアップに含む",
-    file: "core.js", from: "      health: normalizeHealth(st.health),\n", to: "" },
-  { name: "日記の空を残す", guards: "空の日記は残さない",
-    file: "core.js", from: '    if (text.trim() === "" && !photo) return null;', to: "" },
-  { name: "日記の上限を外す", guards: "長すぎる本文を切る",
-    file: "core.js", from: "    text = text.slice(0, DIARY_MAX);", to: "" },
-  { name: "日記の危険な写真を通す", guards: "写真は画像data URLだけ",
-    file: "core.js", from: 'if (typeof raw.photo === "string" && /^data:image\\/[a-z+.-]+;base64,/i.test(raw.photo)) {',
-    to: 'if (typeof raw.photo === "string") {' },
-  { name: "日記の写真を保存前に縮小しない", guards: "容量対策",
-    file: "index.html", from: "  if(photo && diaryPhotoPending) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);", to: "" },
-  { name: "日記の保存失敗を巻き戻さない", guards: "日記保存の巻き戻し",
-    file: "index.html", from: "  state.diary=before;   // それでも駄目なら完全に戻す", to: "" },
-  { name: "バックアップから日記を外す", guards: "日記もバックアップに含む",
-    file: "core.js", from: "      diary: normalizeDiary(st.diary),", to: "" },
-  { name: "その日以外の記録も混ぜる", guards: "カレンダーの日別集約",
-    file: "core.js", from: "    const txs = (Array.isArray(st.tx) ? st.tx : []).filter(function (t) { return t && t.date === date; });",
-    to: "    const txs = (Array.isArray(st.tx) ? st.tx : []);" },
-  { name: "別の月にも印をつける", guards: "月ごとの印つけ",
-    file: "core.js", from: "if (t && typeof t.date === \"string\" && t.date.slice(0, 7) === ym) {",
-    to: "if (t && typeof t.date === \"string\") {" },
-  { name: "のこりのマイナスを0にしない", guards: "使いすぎでものこりは0",
-    file: "core.js", from: "    const remain = Math.max(0, income - spend - setAside);   // のこり（マイナスは0扱い）",
-    to: "    const remain = income - spend - setAside;" },
-  { name: "円グラフの割合を収入基準にしない", guards: "収入を100%とした割合",
-    file: "core.js", from: "    const base = income > 0 ? income : (spend + setAside);   // 収入0なら支出+先取りを基準に",
-    to: "    const base = spend + setAside;" },
-  { name: "内訳を一部カテゴリだけにする", guards: "全カテゴリの内訳",
-    file: "core.js", from: "    expRecs.forEach(function (t) {\n      byCat[t.cat] = (byCat[t.cat] || 0) + num(t.amount);\n    });",
-    to: "    expRecs.filter(function(t){return t.cat!=='rent';}).forEach(function (t) {\n      byCat[t.cat] = (byCat[t.cat] || 0) + num(t.amount);\n    });" },
-  { name: "core.js をキャッシュ優先に戻す", guards: "更新直後に古いcore.jsを出さない",
-    file: "sw.js", from: "  if (isAppCode(url)) {", to: "  if (false) {" },
-  { name: "sw.js をブラウザのキャッシュ任せにする", guards: "sw.js を必ず取り直す",
-    file: "index.html", from: '        updateViaCache: "none"', to: '        updateViaCache: "imports"' },
-  { name: "更新確認をやめる", guards: "登録後の update()",
-    file: "index.html", from: "      await registration.update();", to: "" },
-  { name: "初回登録でも読み直す（余計なリロード）", guards: "初回登録では読み直さない",
-    file: "index.html", from: "        if (!hadController) return;  // ← 初回登録。更新ではないので読み直さない", to: "" },
-  { name: "制御の有無を見ない（常に更新扱い）", guards: "初回登録と更新の区別",
-    file: "index.html", from: "      const hadController = !!navigator.serviceWorker.controller;",
-    to: "      const hadController = true;" },
-  { name: "再読み込みの印を外す（無限ループ）", guards: "無限再読み込みが起きない",
-    file: "index.html", from: "        if (refreshing) return;      // ← 無限に読み直さないための印", to: "" },
-  { name: "切り替わっても読み直さない", guards: "新しい版が画面に反映される",
-    file: "index.html", from: "        window.location.reload();", to: "" },
-  { name: "古いキャッシュを消さない", guards: "古いアプリが残らない",
-    file: "sw.js", from: "keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))",
-    to: "keys.filter((k) => false).map((k) => caches.delete(k))" },
-  { name: "画面をキャッシュ優先に戻す", guards: "画面はネットワーク優先",
-    file: "sw.js", from: "  if (isNavigation(e.request, url)) {", to: "  if (false) {" },
-  { name: "桁欠けに気づかない", guards: "先頭の桁が欠けた読み取りの補正",
-    file: "core.js", from: "    if (/[,.]\\s*$/.test(pre)) return { digits: null, evidence: \"comma\" };",
-    to: "    if (false) return { digits: null, evidence: \"comma\" };" },
-  { name: "桁欠けの減点をやめる", guards: "合計らしい候補を上に",
-    file: "core.js", from: "    if (c.truncated) s -= 40;", to: "    if (c.truncated) s -= 0;" },
-  { name: "推測を自動入力する", guards: "推測は必ず選んでもらう",
-    file: "core.js", from: '    if (ranked[0].source === "reconstructed") return true;',
-    to: "    if (false) return true;" },
-  { name: "推測の信頼度に上限を設けない", guards: "直接読めた候補と区別する",
-    file: "core.js", from: "      confidence: Math.min(RECON_MAX_CONF, Number(o.confidence) || 0),",
-    to: "      confidence: Number(o.confidence) || 0," },
-  { name: "補正の対象を広げすぎる（候補が増えすぎる）", guards: "3桁のときだけ補正する",
-    file: "core.js", from: "    if (d.amount < 100 || d.amount > 999) return null;        // 3桁のときだけ",
-    to: "    if (false) return null;        // 3桁のときだけ" },
-  /* ---- 毎月固定の印・選べるカテゴリ ---- */
-  { name: "📦 を選べるボタンに戻す", guards: "「その他」は1つだけ",
-    file: "core.js", from: "  const EXP_PICK_CATS = EXP_CATS.filter(function (c) { return !c.hidden; });",
-    to: "  const EXP_PICK_CATS = EXP_CATS;" },
-  { name: "📦 のキーごと消す", guards: "過去の記録が消えない",
-    file: "core.js", from: '    { k: "fixother", e: "📦", n: "その他", hidden: true },\n', to: "" },
-  { name: "毎月固定の印を見ない", guards: "固定とそれ以外の切り分け",
-    file: "core.js", from: '    return !!(t && t.type === "expense" && t.recurring === true);', to: "    return false;" },
-  { name: "収入にも固定の印を認める", guards: "印は支出だけ",
-    file: "core.js", from: '    return !!(t && t.type === "expense" && t.recurring === true);',
-    to: "    return !!(t && t.recurring === true);" },
-  { name: "印を文字列でも受け入れる", guards: "印は true のときだけ",
-    file: "core.js", from: '    const recurring = type === "expense" && tx.recurring === true;',
-    to: '    const recurring = type === "expense" && !!tx.recurring;' },
-  { name: "毎月固定も日割りする", guards: "固定は日割りしない",
-    file: "core.js", from: "      ? recurringSoFar + Math.round((spotSoFar / elapsed) * days) : 0;",
-    to: "      ? Math.round((spentSoFar / elapsed) * days) : 0;" },
-  { name: "まだ来ていない日付もペースに混ぜる", guards: "経過日数までで見る",
-    file: "core.js", from: "    const spotSoFar = spentSoFar - recurringSoFar;", to: "    const spotSoFar = c.spotSpend;" },
-  { name: "毎月固定を、印を見ずに0にする", guards: "印のとおりに分かれる",
-    file: "core.js", from: "    const recurringSpend = ", to: "    const recurringSpend = 0 * " },
-  { name: "保存のときに印を落とす", guards: "オンで記録したら残る",
-    file: "index.html", from: "    if(recurring) rec.recurring=true;   // オフのときはキーごと持たない（保存を軽くする）\n", to: "" },
-  { name: "更新のときに印を消さない", guards: "オフに戻したら消える",
-    file: "index.html", from: "           if(recurring) t.recurring=true; else delete t.recurring; }",
-    to: "           if(recurring) t.recurring=true; }" },
-  { name: "収入に切り替えても印を残す", guards: "収入に固定費の印を付けない",
-    file: "index.html", from: '  const recurring = st.type==="expense" && st.recurring===true;',
-    to: "  const recurring = st.recurring===true;" },
-  { name: "スイッチを押しても切り替わらない", guards: "毎月固定の切り替え",
-    file: "index.html", from: "sheetState.recurring=!sheetState.recurring;", to: "sheetState.recurring=sheetState.recurring;" },
-  /* ---- 詳細分析（分析タブ） ---- */
-  { name: "月末の予測を経過日数で割らない", guards: "つかうペースの予測",
-    file: "core.js", from: "      ? recurringSoFar + Math.round((spotSoFar / elapsed) * days) : 0;",
-    to: "      ? spentSoFar : 0;" },
-  { name: "つかってよい額から先取りを引かない", guards: "予算＝収入－先取り",
-    file: "core.js", from: "    const budget = c.incomeTotal - c.setAside;", to: "    const budget = c.incomeTotal;" },
-  { name: "収入が無くても使いすぎと決めつける", guards: "未記録なら判定しない",
-    file: "core.js", from: "      over: c.hasIncome ? forecast - budget : null,", to: "      over: forecast - budget," },
-  { name: "つかわなかった日を数えない", guards: "つかった日／つかわなかった日",
-    file: "core.js", from: "      if (perDayAmount[d] > 0) spendDays += 1; else noSpend += 1;", to: "      spendDays += 1;" },
-  { name: "カテゴリ集計にほかの月を混ぜる", guards: "当月だけを数える",
-    file: "core.js", from: "      if (!t || t.type !== \"expense\" || cycleOf(t.date, startDay) !== ym) return;\n      out[t.cat] = (out[t.cat] || 0) + num(t.amount);",
-    to: "      if (!t || t.type !== \"expense\") return;\n      out[t.cat] = (out[t.cat] || 0) + num(t.amount);" },
-  { name: "曜日の集計にほかの月を混ぜる", guards: "曜日ぐせは当月だけ",
-    file: "core.js", from: "      if (!t || t.type !== \"expense\" || cycleOf(t.date, startDay) !== ym) return;\n      if (!validateDateString(t.date)) return;",
-    to: "      if (!t || t.type !== \"expense\") return;\n      if (!validateDateString(t.date)) return;" },
-  { name: "先月ではなく当月と比べる", guards: "先月との比較",
-    file: "core.js", from: "    const prev = categorySpend(txs, shiftYm(ym, -1), startDay);", to: "    const prev = categorySpend(txs, ym, startDay);" },
-  { name: "平均を記録の無い月でも割る", guards: "平均は記録のあった月だけ",
-    file: "core.js", from: "        avg: activeMonths > 0 ? Math.round(sumPast / activeMonths) : null,",
-    to: "        avg: Math.round(sumPast / past.length)," },
-  { name: "使いすぎの警告を出さない", guards: "予算を超えそうなら知らせる",
-    file: "core.js", from: "      if (pace.over > 0) {", to: "      if (false) {" },
-  { name: "先月の記録が無くても「ふえた」と言う", guards: "はじめての項目は増加にしない",
-    file: "core.js", from: "    if (up && up.diff > 0 && up.prev > 0) {", to: "    if (up && up.diff > 0) {" },
-  { name: "気づきを何件でも出す", guards: "気づきは5件まで",
-    file: "core.js", from: "    return out.slice(0, 5);", to: "    return out;" },
-  { name: "分析タブを開いても今月のまとめを出す", guards: "タブの切り替え",
-    file: "index.html", from: 'sumTab==="analysis" ? renderAnalysis() : renderSummary();', to: "renderSummary();" },
-  /* ---- 先月の🔁をまとめて入れる ---- */
-  { name: "今月にすでにあっても、もう一度入れる", guards: "二重計上を防ぐ",
-    file: "core.js", from: "        already: done[t.cat] === true,", to: "        already: false," },
-  { name: "先月ではなく当月を写す", guards: "写すのは先月の記録",
-    file: "core.js", from: "      return isRecurring(t) && cycleOf(t.date, startDay) === prevYm;",
-    to: "      return isRecurring(t) && cycleOf(t.date, startDay) === ym;" },
-  { name: "印の無い支出まで写す", guards: "🔁が付いたものだけ",
-    file: "core.js", from: "      return isRecurring(t) && cycleOf(t.date, startDay) === prevYm;",
-    to: "      return t.type === \"expense\" && cycleOf(t.date, startDay) === prevYm;" },
-  { name: "無い起点日を月末へ寄せない（2/31）", guards: "月末へ丸める",
-    file: "core.js", from: "    return Math.min(normalizeCycleStart(startDay), daysInMonth(ym));",
-    to: "    return normalizeCycleStart(startDay);" },
-  { name: "区切りからはみ出す日付を作る", guards: "写す日付は区切りの中",
-    file: "core.js", from: "    if (iso > r.to) iso = r.to;", to: "" },
-  { name: "区切りの境目を1日ずらす", guards: "給料日当日はその月から",
-    file: "core.js", from: "    return Number(String(iso).slice(8, 10)) >= cycleStartDay(ym, s) ? ym : shiftYm(ym, -1);",
-    to: "    return Number(String(iso).slice(8, 10)) > cycleStartDay(ym, s) ? ym : shiftYm(ym, -1);" },
-  { name: "集計が区切りを見ずに暦の月で数える", guards: "給料日起点の集計",
-    file: "core.js", from: "    const month = all.filter(function (t) { return cycleOf(t.date, s.cycleStart) === ym; });",
-    to: "    const month = all.filter(function (t) { return monthOf(t.date) === ym; });" },
-  { name: "写した記録に🔁を付けない", guards: "写した先も毎月固定",
-    file: "index.html", from: 'state.tx.push({id:uid(),type:"expense",amount:i.amount,cat:i.cat,date:i.date,memo:i.memo,photo:null,recurring:true});',
-    to: 'state.tx.push({id:uid(),type:"expense",amount:i.amount,cat:i.cat,date:i.date,memo:i.memo,photo:null});' },
-  { name: "確認しないで入れる", guards: "入れる前に確認する",
-    file: "index.html", from: "  if(!ok) return;                                   // キャンセル：何も変えない", to: "" },
-  { name: "まとめて入れる失敗を巻き戻さない", guards: "失敗したら1件も増やさない",
-    file: "index.html", from: "    state.tx = before;            // 途中まで増えた状態を残さない", to: "" },
-  /* ---- 今日やることカード ---- */
-  { name: "やることを何件でも出す", guards: "多くても2件",
-    file: "core.js", from: "    return out.slice(0, TASK_MAX);", to: "    return out;" },
-  { name: "給料日より前でも催促する", guards: "給料日を過ぎてから",
-    file: "core.js", from: "      if (hint !== null && today >= dateInCycle(ym, startDay, hint)) {", to: "      if (true) {" },
-  { name: "はじめての人にも給料を催促する", guards: "履歴が無ければ催促しない",
-    file: "core.js", from: "      if (hint !== null && today >= dateInCycle(ym, startDay, hint)) {",
-    to: "      if (today >= dateInCycle(ym, startDay, hint === null ? 1 : hint)) {" },
-  { name: "1日あいただけで記録を催促する", guards: "とだえ日数のしきい値",
-    file: "core.js", from: "      if (gap >= TASK_QUIET_DAYS) {", to: "      if (gap >= 1) {" },
-  { name: "まだ来ていない記録も数える", guards: "未来の日付は数えない",
-    file: "core.js", from: "      return t && t.type === \"expense\" && validateDateString(t.date) && t.date <= today;",
-    to: "      return t && t.type === \"expense\" && validateDateString(t.date);" },
-  { name: "続けていない人にも日記を催促する", guards: "習慣の人にだけ",
-    file: "core.js", from: "    if (isHabit(st.diary, today) && !(st.diary || {})[today]) {",
-    to: "    if (!(st.diary || {})[today]) {" },
-  { name: "今日つけた分も習慣の数に入れる", guards: "今日を除いて数える",
-    file: "core.js", from: "      if (d >= from && d < today) n += 1;", to: "      if (d >= from && d <= today) n += 1;" },
-  { name: "やることが無くてもカードを出す", guards: "空のカードを出さない",
-    file: "index.html", from: '  if(!tasks.length && !shown.length) return "";', to: "" },
-  { name: "まとめのカードを横1列に戻す", guards: "カードがはみ出さない",
-    file: "index.html", from: "  .sumcards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}",
-    to: "  .sumcards{display:flex;gap:10px}" },
-  { name: "オフライン時の受け皿を外す", guards: "オフラインでも起動する",
-    file: "sw.js", from: "    .catch(() =>\n      caches.match(cacheKey || request).then((hit) => hit || caches.match(request))\n    );",
-    to: "    .catch(() => undefined);" },
-
-  /* --- 予定（スケジュール） --- */
-  { name: "済んだ予定もホームに出す", guards: "済んだらホームから消える",
-    file: "core.js", from: "    return dayPlans(state, today).filter(function (p) { return !p.done; });",
-    to: "    return dayPlans(state, today);" },
-  { name: "時刻なしの予定を先頭に置く", guards: "時刻の早い順・時刻なしは最後",
-    file: "core.js", from: '      const at = a.time || "99:99", bt = b.time || "99:99";',
-    to: '      const at = a.time || "00:00", bt = b.time || "00:00";' },
-  { name: "1日に入れられる予定の上限を外す", guards: "1日の件数に上限がある",
-    file: "core.js", from: "        .slice(0, PLAN_PER_DAY_MAX)", to: "" },
-  { name: "中身が空の予定も残す", guards: "空の予定は残さない",
-    file: "core.js", from: '    if (text.trim() === "") return null;\n    return {\n      id: String(raw.id',
-    to: '    return {\n      id: String(raw.id' },
-  { name: "おかしな時刻をそのまま通す", guards: "時刻は24時間の範囲だけ",
-    file: "core.js", from: '    if (h < 0 || h > 23 || mi < 0 || mi > 59) return "";', to: "" },
-  { name: "保存に失敗しても予定を残す", guards: "保存失敗時の巻き戻し",
-    file: "index.html", from: '  if(!save()){ state.plans=before; toast("予定を保存できませんでした"); render(); return; }',
-    to: "  save();" },
-  { name: "ホームに今日の予定を全部出す", guards: "ホームに出すのは3件まで",
-    file: "index.html", from: "  const shown=plans.slice(0, Core.PLAN_SHOW_MAX);", to: "  const shown=plans;" },
-
-  /* --- 金額の電卓 --- */
-  { name: "わり算を切り捨てにする", guards: "わり算は四捨五入して整数",
-    file: "core.js", from: '    if (op === "/") return b === 0 ? null : Math.round(a / b);',
-    to: '    if (op === "/") return b === 0 ? null : Math.floor(a / b);' },
-  { name: "0で割れてしまう", guards: "0では割らない",
-    file: "core.js", from: '    if (op === "/") return b === 0 ? null : Math.round(a / b);',
-    to: '    if (op === "/") return Math.round(a / b);' },
-  { name: "＝を押さないと計算されない", guards: "待っている計算を済ませて記録する",
-    file: "core.js", from: '    if (c.op && c.acc !== null && c.cur !== "") {\n      const r = calcApply(c.acc, c.op, Number(c.cur));\n      return r === null ? c.acc : r;\n    }',
-    to: "" },
-  { name: "打ち込める桁数の上限を外す", guards: "桁数に上限がある",
-    file: "core.js", from: "      c.cur = next.slice(0, CALC_DIGITS_MAX);", to: "      c.cur = next;" },
-  { name: "＝のあとに打ち足せてしまう", guards: "＝のあとは打ち直しになる",
-    file: "core.js", from: '      if (c.done) { c.acc = null; c.op = ""; c.cur = ""; c.done = false; c.expr = ""; }', to: "" },
-  { name: "式を出さない", guards: "打っている式が見える",
-    file: "core.js", from: '      c.expr = calcFmt(c.acc) + " " + CALC_OP_LABEL[k];', to: '      c.expr = "";' },
-  { name: "記録するとき、待っている計算を捨てる", guards: "＝を押し忘れても計算される",
-    file: "index.html", from: '  if(st.calc && st.calc.op) st.amount=String(Core.calcValue(st.calc));', to: "" },
-  { name: "金額欄にキーボードを出す", guards: "アプリの電卓だけで打つ",
-    file: "index.html", from: 'id="s-amt" readonly inputmode="none"', to: 'id="s-amt" inputmode="numeric"' },
-
-  /* --- ホームの「今月の予定」 --- */
-  { name: "ほかの月の予定まで混ぜる", guards: "今月の予定だけを出す",
-    file: "core.js", from: "      if (!validateDateString(date) || monthOf(date) !== ym) return;\n      const list = dayPlans(st, date);",
-    to: "      const list = dayPlans(st, date);" },
-  { name: "のこり件数を全件にする", guards: "のこり件数の数えかた",
-    file: "core.js", from: "    return { ym: ym, days: days, total: total, done: done, left: total - done };",
-    to: "    return { ym: ym, days: days, total: total, done: done, left: total };" },
-  { name: "ホームの一覧の行数の上限を外す", guards: "多すぎたら打ち切る",
-    file: "index.html", from: "  const shownRows=rows.slice(0, Core.PLAN_HOME_MAX);", to: "  const shownRows=rows;" },
-  { name: "予定が無くても今月の予定カードを出す", guards: "空のカードを出さない",
-    file: "index.html", from: "  if(!m.total) return \"\";", to: "" },
-
-  /* --- 関数電卓 --- */
-  { name: "かけ算より足し算を先に計算する", guards: "計算の順番",
-    file: "core.js", from: '    "*": { prec: 2, right: false },', to: '    "*": { prec: 1, right: false },' },
-  { name: "べき乗を左から計算する", guards: "べき乗は右から",
-    file: "core.js", from: '    "^": { prec: 4, right: true },', to: '    "^": { prec: 4, right: false },' },
-  { name: "符号のマイナスをふつうの引き算にする", guards: "符号のマイナス",
-    file: "core.js", from: "        if (unary) {\n          stack.push({ t: \"unary\", v: tk.v });\n          prev = { t: \"unary\" };\n          continue;\n        }",
-    to: "" },
-  { name: "かっこの数が合わなくても計算する", guards: "かっこが合っているか見る",
-    file: "core.js", from: "        if (!found) return null;", to: "" },
-  { name: "三角関数を、いつも弧度で計算する", guards: "はじめは度で計算する",
-    file: "core.js", from: "    const a = deg ? (x * Math.PI) / 180 : x;", to: "    const a = x;" },
-  { name: "電卓でも0で割れてしまう", guards: "0では割らない",
-    file: "core.js", from: '        else if (tk.v === "/") { if (b === 0) return { divZero: true }; st.push(a / b); }',
-    to: '        else if (tk.v === "/") { st.push(a / b); }' },
-  { name: "答えが数でなくても出してしまう", guards: "計算できないものは出さない",
-    file: "core.js", from: '    if (!Number.isFinite(r.value)) return { ok: false, error: "計算できません" };', to: "" },
-  { name: "小数や0以下でも家計簿にまわす", guards: "1円以上の整数だけ記録にまわす",
-    file: "core.js", from: "    return n > 0 && Math.abs(v - n) < 1e-9 ? n : null;", to: "    return n;" },
-  { name: "履歴を古い順にためる", guards: "新しい計算が上に出る",
-    file: "core.js", from: "      s.history = [{ expr: sciExpr(s), value: r.value }].concat(s.history).slice(0, SCI_HISTORY_MAX);",
-    to: "      s.history = s.history.concat([{ expr: sciExpr(s), value: r.value }]).slice(0, SCI_HISTORY_MAX);" },
-  { name: "式の長さの上限を外す", guards: "式が長くなりすぎない",
-    file: "core.js", from: '    if (s.tokens.length >= SCI_TOKENS_MAX) { s.error = "式が長すぎます"; return s; }', to: "" },
-  { name: "AC で履歴まで消す", guards: "ACでも履歴は残す",
-    file: "core.js", from: "    if (k === \"AC\") { const keep = { ans: s.ans, deg: s.deg, history: s.history }; return Object.assign(newSci(), keep); }",
-    to: "    if (k === \"AC\") return newSci();" },
-
-  /* --- 下のタブを画面の下に固定する --- */
-  { name: "下のタブを半透明のぼかしに戻す", guards: "iOSで途中に取り残されない",
-    file: "index.html", from: "    padding-bottom:env(safe-area-inset-bottom,0px);background:var(--card);",
-    to: "    padding-bottom:env(safe-area-inset-bottom,0px);background:rgba(255,255,255,.94);backdrop-filter:blur(8px);" },
-  { name: "下のタブを独立した層にしない", guards: "iOSで途中に取り残されない",
-    file: "index.html", from: "    transform:translateZ(0);-webkit-backface-visibility:hidden;backface-visibility:hidden;will-change:transform;\n    z-index:100}",
-    to: "    z-index:100}" },
-  { name: "下のタブより記録の画面を手前にする", guards: "タブが隠れない",
-    file: "index.html", from: "    z-index:100}", to: "    z-index:40}" },
-  { name: "画面の高さをアドレスバーに合わせない", guards: "高さの取りかた",
-    file: "index.html", from: "  #app{max-width:520px;margin:0 auto;min-height:100vh;min-height:100dvh;",
-    to: "  #app{max-width:520px;margin:0 auto;min-height:100vh;" },
-  /* ---- 推移グラフの目もり・変化量 ---- */
-  { name: "目もりを切りのよい数に合わせない", guards: "軸の数字が半端にならない",
-    file: "core.js", from: "    const lo = round6(Math.floor(round6(min / step)) * step);",
-    to: "    const lo = min;" },
-  { name: "上の端を値より下にする", guards: "線がはみ出さない",
-    file: "core.js", from: "    const hi = round6(Math.ceil(round6(max / step)) * step);",
-    to: "    const hi = max - step;" },
-  { name: "同じ値ばかりのときに余白を作らない", guards: "0で割らない",
-    file: "core.js", from: "      const pad = Math.max(Math.abs(min) * 0.02, 0.5);", to: "      const pad = 0;" },
-  { name: "日付ラベルの最初と最後を落とす", guards: "最初と最後は必ず出す",
-    file: "core.js", from: "      const v = Math.round((i * (n - 1)) / (m - 1));", to: "      const v = i + 1;" },
-  { name: "変化量の丸めをやめる", guards: "小数の誤差を出さない",
-    file: "core.js", from: "      diff: round6(b.value - a.value),", to: "      diff: b.value - a.value," },
-  /* ---- 確定ボタンの見た目 ---- */
-  { name: "確定ボタンの色を消す", guards: "ボタンだと分かる見た目",
-    file: "index.html", from: "    background:var(--green-d);color:#fff;border-radius:15px;padding:16px 14px;",
-    to: "    border-radius:15px;padding:16px 14px;" },
-  { name: "確定ボタンを小さくする", guards: "指で押しやすい大きさ",
-    file: "index.html", from: "    font-size:16px;font-weight:800;line-height:1.35;text-align:center;",
-    to: "    font-size:12px;font-weight:800;line-height:1.35;text-align:center;" },
-  { name: "電卓の ＝ を他のキーと同じ大きさにする", guards: "＝ がいちばん目立つ",
-    file: "index.html", from: "  .scieq{margin-top:10px;min-height:66px;font-size:30px;letter-spacing:.1em;",
-    to: "  .scieq{margin-top:10px;min-height:52px;font-size:19px;letter-spacing:.1em;" },
-  /* ---- バックアップに予定を含める ---- */
-  { name: "復元で予定を入れ忘れる", guards: "予定も復元される",
-    file: "index.html", from: "    state.plans = restored.plans || {};   // 予定も復元する（入れ忘れると古い予定が残る）",
-    to: "" },
-  /* ---- つかうペースの目もり・凡例 ---- */
-  { name: "ペースの目もりを勝手な式にする", guards: "目もりは core の計算",
-    file: "index.html", from: "  const sc=Core.chartScale([0, last.cum, p.budget>0?p.budget:0, showFore?p.forecast:0], Core.CHART_TICKS);",
-    to: "  const sc={lo:0,hi:Math.max(last.cum,p.budget,p.forecast,1),step:1,ticks:[]};" },
-  { name: "金額を万単位で書かない", guards: "目もりの読みやすさ",
-    file: "index.html", from: '  if(v>=10000){ const m=v/10000; return (Number.isInteger(m)?m:Math.round(m*10)/10)+"万"; }',
-    to: "" },
-  { name: "凡例から予測の線を消す", guards: "どの線か分かる凡例",
-    file: "index.html", from: '    ${showFore?`<span>${sw(col,"3 3")} 月末までの予測</span>`:""}',
-    to: "" },
-  /* ---- 心拍数 ---- */
-  { name: "心拍数の項目を消す", guards: "心拍数を記録できる",
-    file: "core.js", from: '    { k: "pulse",  n: "心拍数", unit: "bpm",  min: 30,  max: 220, decimals: 0 },',
-    to: "" },
-  { name: "心拍数の範囲チェックを緩める", guards: "30〜220bpmだけ受け入れる",
-    file: "core.js", from: '    { k: "pulse",  n: "心拍数", unit: "bpm",  min: 30,  max: 220, decimals: 0 },',
-    to: '    { k: "pulse",  n: "心拍数", unit: "bpm",  min: 0,  max: 999, decimals: 0 },' },
-  { name: "保存で心拍数を読まない", guards: "入力した心拍数が保存される",
-    file: "index.html", from: 'bpLow:g("h-bplow"), pulse:g("h-pulse")', to: 'bpLow:g("h-bplow")' },
-  /* ---- ◯か月の推移（棒グラフ）の目もり ---- */
-  { name: "棒グラフの目もりを勝手な式にする", guards: "目もりは core の計算",
-    file: "index.html", from: "  const sc=Core.chartScale(vals, Core.CHART_TICKS);",
-    to: "  const sc={lo:0,hi:Math.max.apply(null,vals)||1,step:1,ticks:[]};" },
-  { name: "棒を下端から立てない", guards: "棒の高さが金額どおり",
-    file: "index.html", from: '    ? `<rect x="${(cx-bw/2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,(baseY-y(v))).toFixed(1)}" rx="2.5" fill="${color}"></rect>` : "";',
-    to: '    ? `<rect x="${(cx-bw/2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,(baseY-y(v))*0.8).toFixed(1)}" rx="2.5" fill="${color}"></rect>` : "";' },
-  /* ---- カレンダーの日またぎ ---- */
-  { name: "カレンダー描画で日またぎを見ない", guards: "翌日は今月に切り替わる",
-    file: "index.html", from: "function renderCalendar(){\n  calSyncToToday();", to: "function renderCalendar(){" },
-  { name: "日またぎ判定を常に「またいでいない」にする", guards: "翌日は今月に切り替わる",
-    file: "index.html", from: "  if(now===calSeenDay) return false;   // 同じ日のうちは、手で選んだ月をそのまま保つ",
-    to: "  if(true) return false;" },
-  { name: "日またぎで月を今月に戻さない", guards: "翌日は今月に切り替わる",
-    file: "index.html", from: "  calSeenDay=now;\n  calYM=calCurYM();\n  calSelected=null;\n  return true;",
-    to: "  calSeenDay=now;\n  return true;" },
-  /* ---- カレンダーは暦の月（家計の区切りキーではない） ---- */
-  { name: "カレンダーの今月を区切りキーにする", guards: "起点20日でも暦の月を表示",
-    file: "index.html", from: "function calCurYM(){ return ymOf(todayISO()); }",
-    to: "function calCurYM(){ return curYM(); }" },
-];
-
-/* テストを1回走らせる。
-   合否の判定は **終了コード** で行う（0=全部PASS、非0=どれか落ちた）。
-   出力の文字列は Node のバージョンや表示形式（tap / spec）で変わるため、
-   合否の判断には使わない。件数は表示用に、両方の形式から拾えるだけ拾う。 */
-function run() {
-  const r = spawnSync("node", ["--test", "--test-reporter=tap"], {
-    cwd: dir, encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" },
-  });
-  const out = (r.stdout || "") + (r.stderr || "");
-  const num = (label) => {
-    const m = new RegExp("^[#\\u2139]\\s*" + label + "\\s+(\\d+)\\s*$", "m").exec(out);
-    return m ? Number(m[1]) : null;
-  };
-  return {
-    ok: r.status === 0,          // ← これが唯一の合否
-    status: r.status,
-    passed: num("pass"),
-    failedCount: num("fail"),
-    out,
-  };
+/* 変えたファイル。指定が無ければ全部を対象にする（絞れないなら絞らない）。 */
+function changedFiles() {
+  const raw = val("--changed") || process.env.CHANGED_FILES || "";
+  const list = raw.split(/[,\s]+/).map((s) => path.basename(s.trim())).filter(Boolean);
+  return list.length ? list : null;
 }
 
-const base = run();
-if (!base.ok) {
-  console.error("変異させる前からテストが落ちています。先に直してください。");
-  console.error(base.out.split("\n").slice(-40).join("\n"));
-  process.exit(1);
+/* ---------- 対応表（どのテストがその変異を捕まえるか） ---------- */
+function loadMap() {
+  try { return JSON.parse(fs.readFileSync(MAP_FILE, "utf8")); } catch (e) { return {}; }
 }
 
-const results = [];
-for (const m of MUTATIONS) {
-  const file = path.join(dir, m.file);
-  const original = fs.readFileSync(file, "utf8");
-  if (!original.includes(m.from)) {
-    results.push({ ...m, status: "対象なし", failedCount: 0, note: "変異させる箇所が見つかりません（コードが変わった可能性）" });
-    continue;
+/* ---------- 対象の変異を選ぶ ---------- */
+const changed = changedFiles();
+let targets = MUTATIONS;
+let scopeNote = "すべての変異";
+if (FAST && changed) {
+  targets = MUTATIONS.filter((m) => changed.includes(path.basename(m.file)));
+  scopeNote = `変えたファイル（${changed.join(" / ")}）に関わる変異`;
+  /* 変えたのがテストだけ、といった場合は当てはまる変異が無い。
+     そのときは絞らずに全部やる（黙って何も試さないのが一番あぶない）。 */
+  if (!targets.length) {
+    targets = MUTATIONS;
+    scopeNote = "すべての変異（変えたファイルに当てはまる変異が無いため絞らなかった）";
   }
-  fs.writeFileSync(file, original.replace(m.from, m.to));
-  let res;
-  try { res = run(); } finally { fs.writeFileSync(file, original); }
-  /* テストが落ちた（＝終了コードが非0）なら、その壊れ方を検出できたということ */
-  results.push({ ...m, status: res.ok ? "見逃し" : "検出", failedCount: res.failedCount });
+} else if (FAST) {
+  scopeNote = "すべての変異（変えたファイルの指定が無いため絞らなかった）";
 }
 
-const caught = results.filter((r) => r.status === "検出").length;
-const missed = results.filter((r) => r.status === "見逃し");
-const skipped = results.filter((r) => r.status === "対象なし");
+const map = FAST ? loadMap() : {};
 
-const md = [
-  "# mutation test 結果",
-  "",
-  "テストが本当に効いているかを、ソースをわざと壊して確かめた記録です。",
-  "",
-  "> **注記**：これは mutation testing 全体を網羅するものではありません。",
-  "> あらゆる変異を機械的に生成するのではなく、壊れると困る重要なパターンを",
-  "> 手作業で列挙した自作の簡易チェックです。選んだ範囲の外に穴が残る可能性はあります。",
-  "実行方法： `node run-mutations.js`（このファイルが結果を書き出します）",
-  "",
-  `- 実行日時： ${new Date().toISOString()}`,
-  `- 使用した Node： ${process.version}`,
-  `- 変異させる前： ${base.passed === null ? "件数不明（合否は終了コードで判定）" : base.passed + " 件PASS"} ／ 0 件FAIL`,
-  `- 変異の数： ${results.length}`,
-  `- **検出できた： ${caught} 件**`,
-  `- 見逃した： ${missed.length} 件`,
-  `- 対象なし： ${skipped.length} 件`,
-  "",
-  "| # | わざと壊した内容 | 守りたい振る舞い | 対象 | 結果 | 落ちたテスト数 |",
-  "| --- | --- | --- | --- | --- | --- |",
-  ...results.map((r, i) => `| ${i + 1} | ${r.name} | ${r.guards} | \`${r.file}\` | ${r.status === "検出" ? "✅ 検出" : r.status === "見逃し" ? "❌ 見逃し" : "— 対象なし"} | ${r.failedCount === null ? "-" : r.failedCount} |`),
-  "",
-  missed.length
-    ? "## 見逃し（テストの穴）\n\n" + missed.map((r) => `- ${r.name}（${r.guards}）`).join("\n")
-    : "## 見逃しなし\n\nすべての変異を検出できました。",
-  "",
-].join("\n");
+/* ---------- ここから実行 ---------- */
+(async function main() {
+  /* 元のソースが最後まで無傷であることを、後で突き合わせるために控える */
+  const watchFiles = [...new Set(MUTATIONS.map((m) => m.file))];
+  const before = lib.readSources(watchFiles);
 
-fs.writeFileSync(path.join(dir, "MUTATION-REPORT.md"), md);
-console.log(`変異 ${results.length} 件中、検出 ${caught} 件 ／ 見逃し ${missed.length} 件`);
-if (missed.length) { missed.forEach((r) => console.log("  見逃し: " + r.name)); process.exit(1); }
+  /* 変異させる前に、そのままの状態でテストが通ることを確かめる */
+  const baseWs = lib.makeWorkspace();
+  let base;
+  try { base = await lib.runTests(baseWs); } finally { lib.removeWorkspace(baseWs); }
+  if (!base.ok) {
+    console.error("変異させる前からテストが落ちています。先に直してください。");
+    process.exit(1);
+  }
+
+  const started = Date.now();
+  console.log(`${FAST ? "① ふだんの検査（高速）" : "② 完全検査"} を始めます`);
+  console.log(`対象：${scopeNote} ／ ${targets.length} 件 ／ 同時に ${JOBS} 本`);
+
+  const results = await lib.runMutations(targets, {
+    jobs: JOBS,
+    /* 高速版のときだけ、対応表にあるテストファイルへ絞る。
+       対応表に無い変異（新しく足した変異など）は、絞らずに全部で試す。 */
+    testFilesFor: (m) => {
+      if (!FAST) return null;
+      const files = map[m.name];
+      return Array.isArray(files) && files.length ? files : null;
+    },
+    onDone: (r, i, n) => console.log(`[${i + 1}/${n}] ${r.status}: ${r.name}`),
+  });
+  const took = (Date.now() - started) / 1000;
+
+  const caught = results.filter((r) => r.status === "検出");
+  const missed = results.filter((r) => r.status === "見逃し");
+  const skipped = results.filter((r) => r.status === "対象なし");
+
+  /* 対応表を作り直すのは、はっきり指示されたときだけ。
+     ふだんのCIで勝手にファイルが増えると「差分が残っている」検査に引っかかるため。
+       node run-mutations.js --write-map */
+  if (!FAST && has("--write-map")) {
+    const next = {};
+    results.forEach((r) => { if (r.detectedBy && r.detectedBy.length) next[r.name] = r.detectedBy; });
+    fs.writeFileSync(MAP_FILE, JSON.stringify(next, null, 1) + "\n");
+    console.log(`対応表を作り直しました：${MAP_FILE}`);
+  }
+
+  /* ---------- 結果を書き出す ---------- */
+  const md = [
+    "# mutation test 結果",
+    "",
+    "テストが本当に効いているかを、ソースをわざと壊して確かめた記録です。",
+    "壊すのは一時フォルダへ写したものだけで、リポジトリのソースには触れていません。",
+    "",
+    "> **注記**：これは mutation testing 全体を網羅するものではありません。",
+    "> あらゆる変異を機械的に生成するのではなく、壊れると困る重要なパターンを",
+    "> 手作業で列挙した自作の簡易チェックです。選んだ範囲の外に穴が残る可能性はあります。",
+    "",
+    `実行方法： \`node run-mutations.js${FAST ? " --fast" : ""}\``,
+    "",
+    `- 実行日時： ${new Date().toISOString()}`,
+    `- 使用した Node： ${process.version}`,
+    `- 種類： ${FAST ? "① ふだんの検査（高速）" : "② 完全検査"}`,
+    `- 対象： ${scopeNote}`,
+    `- 変異の数： ${results.length}（一覧の総数 ${MUTATIONS.length}）`,
+    `- **検出できた： ${caught.length} 件**`,
+    `- 見逃した： ${missed.length} 件`,
+    `- 対象なし： ${skipped.length} 件`,
+    `- かかった時間： ${took.toFixed(1)} 秒`,
+    "",
+    "| # | わざと壊した内容 | 守りたい振る舞い | 対象 | 結果 | 落ちたテスト数 |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...results.map((r, i) => `| ${i + 1} | ${r.name} | ${r.guards} | \`${r.file}\` | ${
+      r.status === "検出" ? "✅ 検出" : r.status === "見逃し" ? "❌ 見逃し" : "— 対象なし"
+    } | ${r.failedCount === null ? "-" : r.failedCount} |`),
+    "",
+    missed.length
+      ? "## 見逃し（テストの穴）\n\n" + missed.map((r) => `- ${r.name}（${r.guards}）`).join("\n")
+        + (FAST ? "\n\n> 高速検査で見逃しが出たときは、対応表が古い可能性もあります。\n> `node run-mutations.js`（完全検査）で確かめてください。" : "")
+      : "## 見逃しなし\n\nすべての変異を検出できました。",
+    "",
+  ].join("\n");
+  fs.writeFileSync(path.join(dir, "MUTATION-REPORT.md"), md);
+
+  /* 元のソースが1バイトも変わっていないことを、最後に必ず確かめる */
+  if (!lib.sourcesUntouched(before)) {
+    console.error("::error::元のソースが書き換わっています（本来ありえません）");
+    process.exit(1);
+  }
+
+  console.log(`変異 ${results.length} 件中、検出 ${caught.length} 件 ／ 見逃し ${missed.length} 件`
+    + ` ／ ${took.toFixed(1)} 秒`);
+  if (missed.length) {
+    missed.forEach((r) => console.log("  見逃し: " + r.name));
+    process.exit(1);
+  }
+})().catch((e) => {
+  lib.removeAllWorkspaces();
+  console.error(e);
+  process.exit(1);
+});

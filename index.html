@@ -610,7 +610,36 @@ function ymOf(iso){ return iso.slice(0,7); }
 function cycleStart(){ return Core.normalizeCycleStart(state.settings && state.settings.cycleStart); }
 /* 今いる区切りのキー。起点が1日なら、これまでどおり今月の "YYYY-MM"。 */
 function curYM(){ return Core.cycleOf(todayISO(), cycleStart()); }
-function yen(v){ const n=Math.round(Number(v)||0); return "¥"+n.toLocaleString("en-US"); }
+/* ---------- 国・ことば・お金の書き方 ----------
+   決めごと：**保存するデータは国が変わっても同じ形**。
+   カテゴリは内部ID（food / rent …）のまま保存し、
+   「食費 / Groceries」は表示のときだけ切り替える。
+   書き方の表はすべて core.js が持つ（画面には文言表を置かない）。 */
+function curCountry(){ return Core.normalizeCountry(state.settings && state.settings.country); }
+function isEn(){ return Core.countryLang(state.settings)==="en"; }
+function T(key, vars){ return Core.t(key, state.settings, vars); }
+/* 既存の静的テストが index.html の文言を直接見ているものは、
+   日本語をこのファイルに残したまま、英語のときだけ表から引く。
+   こうすると日本版の文言が画面ファイルから消えず、
+   これまでの砦（integrity.test.js）がそのまま効き続ける。 */
+function TJ(key, ja, vars){ return isEn() ? Core.t(key, state.settings, vars) : ja; }
+function catN(type, k){ return Core.catName(type, k, state.settings); }
+/* その場かぎりの文言は、日本語と英語を並べて書く。
+   何度も使い回す文言だけを core.js の UI_TEXT に置く。
+   ここに日本語がそのまま残るので、日本版の表示が変わっていないか目で確かめやすい。 */
+function L(ja, en){ return isEn() ? en : ja; }
+/* 年齢の区間の書き方。JPは「57歳 〜 65歳」、USは「age 57 to 65」。 */
+function curSym(){ return Core.countryRule(curCountry()).symbol; }
+/* 計算のエラー文。core.js が付ける errorKey があれば、その国のことばで出す。 */
+function errText(o){
+  if(!o) return "";
+  if(o.errorKey) return Core.t(o.errorKey, state.settings);
+  return o.error||"";
+}
+function ageRangeLabel(from, to){ return L(`${from}歳 〜 ${to}歳`, `age ${from} to ${to}`); }
+function wd(dow){ return Core.weekdayShort(dow, state.settings); }
+/* 金額。日本のときは今までと1文字も変わらない「¥1,234」。USは「$1,234.56」。 */
+function yen(v){ return Core.formatMoney(v, state.settings); }
 /* 今の区切りが終わるまで、あと何日か */
 function daysLeftInCycle(){
   const r=Core.cycleRange(curYM(), cycleStart());
@@ -623,7 +652,7 @@ function weekRange(){ const d=new Date(); const day=(d.getDay()+6)%7; /*Mon=0*/ 
 function compute(){
   const c = Core.computeMonth(state.settings, state.tx, curYM());
   const {from,to} = weekRange();
-  c.weekSpent = Core.weekSpent(state.tx, from, to);
+  c.weekSpent = Core.weekSpent(state.tx, from, to, state.settings);
   return c;
 }
 
@@ -639,7 +668,24 @@ function navMark(btn, on){
   else if(typeof btn.removeAttribute==="function") btn.removeAttribute("aria-current");
 }
 
+/* 下のタブ・歯車・ページの言語を、いまの国に合わせる。
+   HTMLに書いてある日本語は初期表示用で、ここで必ず上書きされる。 */
+const NAV_ICONS={home:"🏠",summary:"📊",calendar:"📅",diary:"📖",health:"❤️",calc:"🧮",pulse:"💓"};
+function applyLang(){
+  try{
+    document.querySelectorAll("#nav button").forEach(b=>{
+      const k=b.dataset&&b.dataset.nav; if(!k||!NAV_ICONS[k]) return;
+      b.innerHTML=`<span class="ni">${NAV_ICONS[k]}</span>${T("nav."+k)}`;
+    });
+    const gear=$("gearbtn");
+    if(gear&&typeof gear.setAttribute==="function") gear.setAttribute("aria-label", T("nav.settings"));
+    const root=document.documentElement;
+    if(root&&typeof root.setAttribute==="function") root.setAttribute("lang", isEn()?"en":"ja");
+  }catch(e){ /* 最小DOMでも落とさない */ }
+}
+
 function render(){
+  applyLang();
   /* 心拍の画面から離れるときは、必ずカメラとライトを止める */
   if(view!=="pulse" && pRunning) pulseStopAll();
   document.querySelectorAll("#nav button").forEach(b=>navMark(b, b.dataset.nav===view));
@@ -667,19 +713,19 @@ function taskCard(){
   if(!tasks.length && !shown.length) return "";
   const planRows=shown.map((p,i)=>`<button class="todo${i===0?" first":""}" data-act="plan-toggle" data-date="${today}" data-id="${p.id}">
       <span class="ti">☐</span>
-      <span class="tm"><span class="t1">${p.time?`${p.time}　`:""}${escapeHtml(p.text)}</span><span class="t2">今日の予定</span></span>
+      <span class="tm"><span class="t1">${p.time?`${p.time}　`:""}${escapeHtml(p.text)}</span><span class="t2">${T("home.todayPlan")}</span></span>
       <span class="tg">✓</span>
     </button>`).join("");
   const more = plans.length>shown.length
     ? `<button class="todo" data-act="task" data-task="diary"><span class="ti">📝</span>
-        <span class="tm"><span class="t1">ほか ${plans.length-shown.length}件 の予定があります</span></span><span class="tg">›</span></button>`
+        <span class="tm"><span class="t1">${T("home.morePlans",{n:plans.length-shown.length})}</span></span><span class="tg">›</span></button>`
     : "";
   const rows=tasks.map((t,i)=>`<button class="todo${(i===0&&!planRows)?" first":""}" data-act="task" data-task="${t.act}">
       <span class="ti">${t.icon}</span>
       <span class="tm"><span class="t1">${escapeHtml(t.text)}</span>${t.sub?`<span class="t2">${escapeHtml(t.sub)}</span>`:""}</span>
       <span class="tg">›</span>
     </button>`).join("");
-  return `<div class="todos"><div class="hd">今日やること</div>${planRows}${more}${rows}</div>`;
+  return `<div class="todos"><div class="hd">${T("home.todos")}</div>${planRows}${more}${rows}</div>`;
 }
 
 /* やることをタップしたときの行き先。ここでは記録を書き換えない。 */
@@ -721,7 +767,7 @@ function extTarget(){ return isStandalonePWA() ? "_blank" : "_self"; }
 function lifePlanCard(){
   return `<a class="lpcard" href="${LIFEPLAN_URL}" target="${extTarget()}" rel="noopener noreferrer">
     <span class="lpi">📊</span>
-    <span class="lpt"><b>将来のお金を試算する</b><i>資産形成 総合ライフプラン</i></span>
+    <span class="lpt"><b>${T("ext.title")}</b><i>${T("ext.sub")}</i></span>
     <span class="lpar">›</span>
   </a>`;
 }
@@ -729,7 +775,7 @@ function lifePlanCard(){
 /* せっていのいちばん下に置く、アプリ情報（About） */
 function aboutCard(){
   return `<div class="about">
-    <div class="an">家計簿アプリ</div>
+    <div class="an">${L("家計簿アプリ","Household Budget")}</div>
     <div class="av mono">Version ${escapeHtml(Core.APP_VERSION)}</div>
     <hr class="aline">
     <div class="ac mono">© 2026 Kunihiko Hioki<br>Developed by Kunihiko Hioki</div>
@@ -745,7 +791,6 @@ function monthPlanCard(){
   const ym=today.slice(0,7);
   const m=Core.monthPlans(state, ym);
   if(!m.total) return "";
-  const WD=["日","月","火","水","木","金","土"];
   /* いったん1行ずつに開いてから、出す行数をここで1回だけ決める */
   const rows=[];
   for(const d of m.days) for(const p of d.plans) rows.push({date:d.date, plan:p});
@@ -755,8 +800,8 @@ function monthPlanCard(){
     if(r.date!==lastDate){
       lastDate=r.date;
       const [yy,mm,dd]=r.date.split("-").map(Number);
-      const wd=WD[new Date(yy,mm-1,dd).getDay()];
-      html+=`<div class="mpday${r.date===today?" today":""}">${mm}/${dd}（${wd}）${r.date===today?" 今日":""}</div>`;
+      const wdName=wd(new Date(yy,mm-1,dd).getDay());
+      html+=`<div class="mpday${r.date===today?" today":""}">${mm}/${dd}${isEn()?` (${wdName})`:`（${wdName}）`}${r.date===today?T("home.today"):""}</div>`;
     }
     const p=r.plan;
     html+=`<div class="prow${p.done?" done":""}">
@@ -766,77 +811,77 @@ function monthPlanCard(){
     </div>`;
   }
   const rest=rows.length-shownRows.length;
-  return `<div class="stitle">今月の予定（${Number(ym.slice(5,7))}月）</div>
+  return `<div class="stitle">${T("home.monthPlans",{month:Core.monthName(Number(ym.slice(5,7)), state.settings)})}</div>
     <div class="barlist">
-      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">${m.total}件　のこり <b style="color:var(--ink)">${m.left}件</b></div>
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:2px">${T("home.planCount",{total:m.total})} <b style="color:var(--ink)">${T("home.planLeft",{n:m.left})}</b></div>
       ${html}
-      ${rest>0?`<button class="mpmore" data-nav="calendar">ほか ${rest}件 をカレンダーで見る</button>`:""}
+      ${rest>0?`<button class="mpmore" data-nav="calendar">${T("home.planMore",{n:rest})}</button>`:""}
     </div>`;
 }
 
 function renderHome(){
   const c=compute(), s=state.settings;
   const d=new Date();
-  const WD=["日","月","火","水","木","金","土"];
-  const dateBig=`${d.getMonth()+1}月${d.getDate()}日<span class="wd">（${WD[d.getDay()]}）</span>`;
+  const wdName=wd(d.getDay());
+  const dateBig=`${Core.formatDateHeading(todayISO(d), state.settings)}<span class="wd">${isEn()?` (${wdName})`:`（${wdName}）`}</span>`;
   const period=Core.cycleLabel(curYM(), cycleStart());
-  const monthLabel=`今月ののこり ${daysLeftInCycle()}日${period?`　（${period}）`:""}`;
+  const monthLabel=`${T("home.daysLeft",{n:daysLeftInCycle()})}${period?`${isEn()?" · ":"　（"}${period}${isEn()?"":"）"}`:""}`;
 
   let heroN, heroCls="", ok="", note;
   if(c.hasIncome){
     heroN=yen(c.available);
-    note="先取り貯金・NISA積立の予定額を除いています";
-    if(c.available<0){ heroCls="over"; ok=`<span class="ok over">今月は少し使いすぎ。来月そっと調整🍀</span>`; }
-    else if(c.available < c.incomeTotal*0.08){ heroCls="amber"; ok=`<span class="ok warn">のこりわずか。少しペース注意</span>`; }
-    else ok=`<span class="ok good">👍 このペースなら大丈夫</span>`;
+    note=TJ("home.heroNote","先取り貯金・NISA積立の予定額を除いています");
+    if(c.available<0){ heroCls="over"; ok=`<span class="ok over">${T("home.over")}</span>`; }
+    else if(c.available < c.incomeTotal*0.08){ heroCls="amber"; ok=`<span class="ok warn">${T("home.warn")}</span>`; }
+    else ok=`<span class="ok good">${T("home.good")}</span>`;
   } else {
     heroN="—";
-    note="給料を記録すると、ここに出ます";
+    note=T("home.heroEmpty");
   }
   const mini = c.hasIncome ? `<div class="heromini">
-      <span class="m">収入<b>${yen(c.incomeTotal)}</b></span>
-      <span class="m">使った<b>${yen(c.spendTotal)}</b></span>
-      <span class="m">先取り<b>${yen(c.setAside)}</b></span></div>` : "";
+      <span class="m">${T("home.miniIncome")}<b>${yen(c.incomeTotal)}</b></span>
+      <span class="m">${T("home.miniSpent")}<b>${yen(c.spendTotal)}</b></span>
+      <span class="m">${T("home.miniSetAside")}<b>${yen(c.setAside)}</b></span></div>` : "";
 
   // 夢の帯（タップで、それぞれの入力欄へジャンプ）
   const goalTile = c.goalPct!==null
-    ? `<button class="ds goal" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||"目標")}</div><div class="dv mono">あと${100-c.goalPct}%</div><div class="track"><i style="width:${c.goalPct}%"></i></div><div class="tapin">目標記入</div></button>`
-    : `<button class="ds goal" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">目標</div><div class="dv" style="font-size:11px;color:#9aa6a3">未設定</div><div class="tapin">目標記入</div></button>`;
+    ? `<button class="ds goal" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||T("home.goal"))}</div><div class="dv mono">${T("home.goalLeft",{n:100-c.goalPct})}</div><div class="track"><i style="width:${c.goalPct}%"></i></div><div class="tapin">${T("home.goalTap")}</div></button>`
+    : `<button class="ds goal" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">${T("home.goal")}</div><div class="dv" style="font-size:11px;color:#9aa6a3">${T("home.goalUnset")}</div><div class="tapin">${T("home.goalTap")}</div></button>`;
   /* NISAは内訳（年齢の区間と銘柄）が唯一の入力口。設定の古い欄ではなくそこへ飛ばす。 */
-  const nisaTile = `<button class="ds" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">NISA</div><div class="dv mono">${yen(c.nisaPlanned)}/月</div><div class="tapin">固定金額入力</div></button>`;
+  const nisaTile = `<button class="ds" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">${T("lp.nisa")}</div><div class="dv mono">${yen(c.nisaPlanned)}${T("home.perMonth")}</div><div class="tapin">${T("home.tapin")}</div></button>`;
   /* ライフプランへ渡す項目も、ホームからそのまま入れに行けるようにする。
      出す数字は「毎月いくら」。残高を出していたため、毎月の積立額を入れても
      ここが動かず「反映されない」ように見えていた。残高は内訳の画面で見る。 */
   const lpAge = Core.ageFromBirth(state.settings.birth, Core.cycleRange(curYM(), cycleStart()).from);
-  const lpMon = (kind) => yen(Core.lpMonthlyOf(state.settings, kind, lpAge))+"/月";
+  const lpMon = (kind) => yen(Core.lpMonthlyOf(state.settings, kind, lpAge))+T("home.perMonth");
   const lpTile = (kind, icon, label, value) =>
-    `<button class="ds" data-act="lp-open" data-kind="${kind}"><div class="di">${icon}</div><div class="dk">${label}</div><div class="dv mono">${value}</div><div class="tapin">固定金額入力</div></button>`;
+    `<button class="ds" data-act="lp-open" data-kind="${kind}"><div class="di">${icon}</div><div class="dk">${label}</div><div class="dv mono">${value}</div><div class="tapin">${T("home.tapin")}</div></button>`;
   const lpTiles = [
-    lpTile("pension","📜","民間年金", lpMon("pension")),
-    lpTile("insurance","🛟","各種保険", lpMon("insurance")),
-    lpTile("gold","🪙","金（きん）", lpMon("gold")),
-    lpTile("ideco","🏛","iDeCo", lpMon("ideco")),
-    lpTile("loans","💳","借入金", lpMon("loans")),
-    lpTile("banks","🏦","銀行貯金", lpMon("banks")),
+    lpTile("pension","📜",T("lp.pension"), lpMon("pension")),
+    lpTile("insurance","🛟",T("lp.insurance"), lpMon("insurance")),
+    lpTile("gold","🪙",T("lp.gold"), lpMon("gold")),
+    lpTile("ideco","🏛",T("lp.ideco"), lpMon("ideco")),
+    lpTile("loans","💳",T("lp.loans"), lpMon("loans")),
+    lpTile("banks","🏦",T("lp.banks"), lpMon("banks")),
   ].join("");
 
   return `<div class="screen">
     <div class="greet">
-      <div class="g">こんにちは 👋</div>
+      <div class="g">${T("home.greet")}</div>
       <div class="date">${dateBig}</div>
       <div class="d">${monthLabel}</div>
     </div>
     <div class="hero">
-      <div class="l">今月 あと つかえるお金</div>
+      <div class="l">${T("home.heroLabel")}</div>
       <div class="n mono ${heroCls}">${heroN}</div>
       <div class="u">${note}</div>
       ${ok}
       ${mini}
     </div>
     ${taskCard()}
-    <div class="dreamlbl">― あなたの夢の進み ―<i>金額はどれも毎月ぶんです</i></div>
+    <div class="dreamlbl">${T("home.dreamLabel")}<i>${T("home.dreamNote")}</i></div>
     <div class="dreamstrip">${goalTile}${nisaTile}${lpTiles}</div>
-    <button class="recordbtn" data-act="open-record">📸 記録する</button>
+    <button class="recordbtn" data-act="open-record">${T("home.record")}</button>
     ${monthPlanCard()}
     ${lifePlanCard()}
     <div style="height:10px"></div>
@@ -862,33 +907,33 @@ function donutChart(bd){
     <span style="flex:1">${p.name}</span><b class="mono">${p.pct}%</b></div>`).join("");
   return `<div style="display:flex;align-items:center;gap:16px">
     <svg viewBox="0 0 120 120" style="width:120px;height:120px;flex:0 0 auto">${segs}
-      <text x="60" y="56" text-anchor="middle" style="font-size:11px;fill:var(--sub)">収入</text>
+      <text x="60" y="56" text-anchor="middle" style="font-size:11px;fill:var(--sub)">${T("donut.income")}</text>
       <text x="60" y="72" text-anchor="middle" style="font-size:13px;font-weight:800;fill:var(--ink)" class="mono">${yen(bd.income)}</text>
     </svg>
     <div style="flex:1;display:flex;flex-direction:column;gap:6px">${legend}
-      ${bd.over>0?`<div style="font-size:11px;color:#c2694f">⚠️ 収入を ${yen(bd.over)} 超えています</div>`:""}
+      ${bd.over>0?`<div style="font-size:11px;color:#c2694f">${T("donut.over",{amount:yen(bd.over)})}</div>`:""}
     </div>
   </div>`;
 }
 /* 先月の「🔁 毎月固定」を今月へまとめて入れるカード。
    入れるものが無いときは、何も出さない（済んだら消える）。 */
 function carryCard(){
-  const plan=Core.recurringCarryPlan(state.tx, curYM(), cycleStart());
+  const plan=Core.recurringCarryPlan(state.tx, curYM(), cycleStart(), state.settings);
   if(!plan.toAdd.length) return "";
   const names=plan.toAdd.slice(0,4).map(i=>`${i.emoji} ${escapeHtml(i.name)} ${yen(i.amount)}`).join(" ・ ");
-  const more=plan.toAdd.length>4?` ほか${plan.toAdd.length-4}件`:"";
+  const more=plan.toAdd.length>4?` ${T("home.morePlans",{n:plan.toAdd.length-4})}`:"";
   return `<div class="barlist" style="margin-top:10px">
-    <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:4px">🔁 先月の毎月固定が ${plan.toAdd.length}件 あります</div>
-    <div style="font-size:11.5px;color:var(--sub);margin-bottom:10px">${names}${more}　合計 <b class="mono" style="color:var(--ink)">${yen(plan.total)}</b>${plan.skipped>0?`<br>今月すでに入っている ${plan.skipped}件 は、はぶきます`:""}</div>
-    <button class="btn-main" data-act="carry-recurring">今月にまとめて入れる</button>
-    <div style="font-size:10.5px;color:var(--sub);margin-top:6px">金額は先月と同じで入ります。ちがうときは、入れたあとで直してください。</div>
+    <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:4px">${T("sum.carryTitle",{n:plan.toAdd.length})}</div>
+    <div style="font-size:11.5px;color:var(--sub);margin-bottom:10px">${names}${more}${T("sum.carryTotal")}<b class="mono" style="color:var(--ink)">${yen(plan.total)}</b>${plan.skipped>0?`<br>${T("sum.carrySkip",{n:plan.skipped})}`:""}</div>
+    <button class="btn-main" data-act="carry-recurring">${T("sum.carryBtn")}</button>
+    <div style="font-size:10.5px;color:var(--sub);margin-top:6px">${T("sum.carryNote")}</div>
   </div>`;
 }
 
 /* まとめて入れる。1件でも保存に失敗したら、1件も増やさずに戻す。 */
 function carryRecurring(){
-  const plan=Core.recurringCarryPlan(state.tx, curYM(), cycleStart());
-  if(!plan.toAdd.length){ toast("入れるものはありません"); return; }
+  const plan=Core.recurringCarryPlan(state.tx, curYM(), cycleStart(), state.settings);
+  if(!plan.toAdd.length){ toast(L("入れるものはありません","There is nothing to add")); return; }
   const lines=plan.toAdd.map(i=>`${i.emoji} ${i.name} ${yen(i.amount)}`).join("\n");
   const ok=confirm(
     `先月（${plan.from.replace("-","年")}月）の毎月固定を、今月へ入れます。\n\n${lines}\n\n合計 ${yen(plan.total)}\n\n` +
@@ -899,41 +944,45 @@ function carryRecurring(){
   plan.toAdd.forEach(i=>{
     state.tx.push({id:uid(),type:"expense",amount:i.amount,cat:i.cat,date:i.date,memo:i.memo,photo:null,recurring:true});
   });
+  /* 国の印。JPのときはキーごと持たせない（日本の保存データの形を変えないため）。 */
+  if(curCountry()!=="JP"){
+    state.tx.slice(state.tx.length-plan.toAdd.length).forEach(t=>{ t.country=curCountry(); });
+  }
   if(!save()){
     state.tx = before;            // 途中まで増えた状態を残さない
-    toast("入れられませんでした（空き容量をご確認ください）");
+    toast(L("入れられませんでした（空き容量をご確認ください）","Could not add them — please check your free space"));
     return;
   }
-  render(); toast(`${plan.toAdd.length}件を今月に入れました ✓`);
+  render(); toast(L(`${plan.toAdd.length}件を今月に入れました ✓`, `Added ${plan.toAdd.length} to this month ✓`));
 }
 
 /* まとめに出す「毎月ひとりでに出ていくお金」の内わけ。
    ライフプラン欄に入れた毎月の金額は、記録からは入れない決めごとなので、
    記録した固定費とは別に、ここで並べて見せる。 */
 function lpMonthlyCard(c){
-  const line = (name, amount) => `<div class="krow"><span>${escapeHtml(name)}</span><b class="mono">${yen(amount)}</b></div>`;
+  const line = (name, amount, key) => `<div class="krow"><span>${escapeHtml(Core.lpRowName(key, name, state.settings))}</span><b class="mono">${yen(amount)}</b></div>`;
   const setAside = c.lpSetAside || [];
   const spend = c.lpSpend || [];
-  const note = `<div class="calcnote" style="margin:0 0 8px">毎月ひとりでに出ていくお金です。
-      <b>記録からは入れません</b>（二重に引かれてしまうため）。</div>`;
+  const note = `<div class="calcnote" style="margin:0 0 8px">${T("sum.setAsideNote")}
+      <b>${T("sum.notFromRecords")}</b>${T("sum.doubleCount")}</div>`;
   let html = "";
   if(setAside.length || c.nisaPlanned){
-    html += `<div class="stitle">先取り（貯まるお金）</div>
+    html += `<div class="stitle">${T("sum.setAsideTitle")}</div>
       <div class="barlist">${note}
-        ${c.nisaPlanned?line("NISA積立", c.nisaPlanned):""}
-        ${setAside.map(r=>line(r.name, r.amount)).join("")}
+        ${c.nisaPlanned?line("NISA積立", c.nisaPlanned, "nisa"):""}
+        ${setAside.map(r=>line(r.name, r.amount, r.key)).join("")}
         <div class="krow" style="border-top:1px solid var(--line2);margin-top:6px;padding-top:8px">
-          <span><b>合計</b></span><b class="mono">${yen(c.setAside)}</b></div>
+          <span><b>${T("sum.total")}</b></span><b class="mono">${yen(c.setAside)}</b></div>
       </div>`;
   }
   if(spend.length){
-    html += `<div class="stitle">毎月固定（支出）</div>
+    html += `<div class="stitle">${T("sum.fixedTitle")}</div>
       <div class="barlist">
-        <div class="calcnote" style="margin:0 0 8px">出ていって戻らないお金なので、<b>支出</b>として数えています。
-          こちらも<b>記録からは入れません</b>。</div>
-        ${spend.map(r=>line(r.name, r.amount)).join("")}
+        <div class="calcnote" style="margin:0 0 8px">${T("sum.fixedNote")}<b>${T("sum.asSpend")}</b>${T("sum.counted")}
+          ${T("sum.alsoNot")}<b>${T("sum.notFromRecords")}</b>。</div>
+        ${spend.map(r=>line(r.name, r.amount, r.key)).join("")}
         <div class="krow" style="border-top:1px solid var(--line2);margin-top:6px;padding-top:8px">
-          <span><b>合計</b></span><b class="mono">${yen(c.lpSpendSum||0)}</b></div>
+          <span><b>${T("sum.total")}</b></span><b class="mono">${yen(c.lpSpendSum||0)}</b></div>
       </div>`;
   }
   return html;
@@ -944,23 +993,23 @@ function renderSummary(){
   /* ホームと同じ定義。のこり ＝ 収入 － 支出 － 先取り ＝ c.available */
   const net=c.available;
   // 直近の記録（新しい順、日付グループ）
-  const list=[...state.tx].sort((a,b)=> a.date<b.date?1:a.date>b.date?-1: (a.id<b.id?1:-1));
+  const list=[...Core.txsForCountry(state.tx, state.settings)].sort((a,b)=> a.date<b.date?1:a.date>b.date?-1: (a.id<b.id?1:-1));
   let recHtml="";
   if(list.length===0){
-    recHtml=`<div class="empty"><span class="e">🧾</span>まだ記録がありません。<br>ホームの「記録する」から、はじめの一歩を。</div>`;
+    recHtml=`<div class="empty"><span class="e">🧾</span>${T("sum.empty")}</div>`;
   } else {
     const groups={}; list.forEach(t=>{ (groups[t.date]=groups[t.date]||[]).push(t); });
     recHtml = Object.keys(groups).sort().reverse().slice(0,60).map(date=>{
       const items=groups[date];
       const dayTotal=items.filter(t=>t.type==="expense").reduce((a,t)=>a+Number(t.amount),0);
-      const md=date.slice(5).replace("-","/");
-      const rows=items.map(t=>{ const cat=catOf(t.type,t.cat);
+      const md=Core.formatMonthDay(date, state.settings);
+      const rows=items.map(t=>{ const cat=catOf(t.type,t.cat); const cn=catN(t.type,t.cat);
         return `<div class="tx" data-edit="${t.id}"><div class="ic">${t.type==="income"?"💴":cat.e}</div>
-          <div class="mid"><div class="t1">${escapeHtml(t.memo|| (t.type==="income"?cat.n:cat.n))}</div>
-          <div class="t2">${t.type==="income"?"収入・":""}${cat.n}${t.photo?" ・📷":""}${t.recurring?`<span class="tag fx">🔁 毎月固定</span>`:""}</div></div>
+          <div class="mid"><div class="t1">${escapeHtml(t.memo|| cn)}</div>
+          <div class="t2">${t.type==="income"?T("sum.incomeTag"):""}${escapeHtml(cn)}${t.photo?" ・📷":""}${t.recurring?`<span class="tag fx">${T("sum.recurring")}</span>`:""}</div></div>
           <div class="amt ${t.type}">${t.type==="income"?"+":""}${yen(t.amount)}</div></div>`;
       }).join("");
-      return `<div class="daygroup"><div class="dayhd"><span>${md}</span><span>支出 ${yen(dayTotal)}</span></div>
+      return `<div class="daygroup"><div class="dayhd"><span>${md}</span><span>${T("sum.dayTotal",{amount:yen(dayTotal)})}</span></div>
         <div class="txcard">${rows}</div></div>`;
     }).join("");
   }
@@ -972,41 +1021,41 @@ function renderSummary(){
   const PIE={food:"#8fbf7f",eatout:"#d9a54f",daily:"#4fa8d8",rent:"#7f9cc0",power:"#e0c060",gas:"#d98a5f",water:"#5fb0d0",comm:"#9a8fd0",insure:"#78b89a",transit:"#b08fd6",car:"#8a9a70",medical:"#c2694f",clothes:"#c98fb0",social:"#6fa88a",hobby:"#e6b0a6",pet:"#b89a70",pension:"#d0b060",tax:"#a0a0a8",subs:"#8fb0c0",other:"#9fb0ab"};
   const bars = cats.length? cats.map(([k,v])=>{ const cat=catOf("expense",k);
       const pct = Math.round(v/barBase*100);
-      return `<div class="brow"><span class="bt">${cat.e} ${cat.n}</span><span class="track"><span class="fill" style="width:${Math.max(3,Math.min(100,pct))}%;background:${PIE[k]||"#9fb0ab"}"></span></span><span class="bv mono">${yen(v)}<span style="color:var(--sub);font-weight:600;font-size:11px"> ${pct}%</span></span></div>`;
-    }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の支出はまだありません</div>`;
+      return `<div class="brow"><span class="bt">${cat.e} ${escapeHtml(catN("expense",k))}</span><span class="track"><span class="fill" style="width:${Math.max(3,Math.min(100,pct))}%;background:${PIE[k]||"#9fb0ab"}"></span></span><span class="bv mono">${yen(v)}<span style="color:var(--sub);font-weight:600;font-size:11px"> ${pct}%</span></span></div>`;
+    }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">${T("sum.noSpend")}</div>`;
 
   return `<div class="screen">
     ${sumTabs()}
     ${carryCard()}
-    <div class="stitle" style="margin-top:6px">今月のまとめ（${Number(curYM().slice(5,7))}月${Core.cycleLabel(curYM(), cycleStart())?`・${Core.cycleLabel(curYM(), cycleStart())}`:""}）</div>
+    <div class="stitle" style="margin-top:6px">${T("sum.title",{month:Core.monthName(Number(curYM().slice(5,7)), state.settings)+(Core.cycleLabel(curYM(), cycleStart())?(isEn()?" · ":"・")+Core.cycleLabel(curYM(), cycleStart()):"")})}</div>
     <div class="sumcards">
-      <div class="sc"><div class="l">収入</div><div class="v inc mono">${yen(c.incomeTotal)}</div></div>
-      <div class="sc"><div class="l">支出</div><div class="v exp mono">${yen(c.spendTotal)}</div></div>
-      <div class="sc"><div class="l">先取り（予定）</div><div class="v mono">${yen(c.setAside)}</div></div>
-      <div class="sc"><div class="l">のこり</div><div class="v net mono">${net>=0?"+":""}${yen(net)}</div></div>
+      <div class="sc"><div class="l">${T("sum.income")}</div><div class="v inc mono">${yen(c.incomeTotal)}</div></div>
+      <div class="sc"><div class="l">${T("sum.spend")}</div><div class="v exp mono">${yen(c.spendTotal)}</div></div>
+      <div class="sc"><div class="l">${T("sum.setAside")}</div><div class="v mono">${yen(c.setAside)}</div></div>
+      <div class="sc"><div class="l">${T("sum.left")}</div><div class="v net mono">${net>=0?"+":""}${yen(net)}</div></div>
     </div>
-    <div class="calcnote">収入 ${yen(c.incomeTotal)} － 支出 ${yen(c.spendTotal)} － 先取り ${yen(c.setAside)} ＝ <b>${yen(net)}</b><br>
-      この「のこり」は、ホームの「今月あと つかえるお金」と同じ金額です。</div>
+    <div class="calcnote">${T("sum.formula",{income:yen(c.incomeTotal),spend:yen(c.spendTotal),setAside:yen(c.setAside)})}<b>${yen(net)}</b><br>
+      ${T("sum.sameAsHome")}</div>
     <div class="barlist">
-      <div style="font-size:11.5px;color:var(--sub);margin-bottom:8px">収入の使いみち（支出・先取り・のこり）</div>
+      <div style="font-size:11.5px;color:var(--sub);margin-bottom:8px">${T("sum.donutLabel")}</div>
       ${donutChart(Core.budgetBreakdown(c))}
     </div>
     ${lpMonthlyCard(c)}
     <div class="barlist">
       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:4px">
-        <span>収入の内わけ</span><span></span></div>
-      <div class="krow"><span>通常収入（記録した給与）${c.incomeRegularRecorded?"":`<span class="tag pl">未記録</span>`}</span><b class="mono">${yen(c.incomeRegular)}</b></div>
-      <div class="krow"><span>臨時収入</span><b class="mono">${yen(c.incomeExtra)}</b></div>
+        <span>${T("sum.incomeBreak")}</span><span></span></div>
+      <div class="krow"><span>${T("sum.incomeRegular")}${c.incomeRegularRecorded?"":`<span class="tag pl">${T("sum.notRecorded")}</span>`}</span><b class="mono">${yen(c.incomeRegular)}</b></div>
+      <div class="krow"><span>${T("sum.incomeExtra")}</span><b class="mono">${yen(c.incomeExtra)}</b></div>
     </div>
     <div class="barlist">
       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-bottom:6px">
-        <span>支出の内わけ（今月）${c.incomeTotal>0?"　棒は収入に対する割合":""}</span>
+        <span>${T("sum.spendBreak")}${c.incomeTotal>0?T("sum.barNote"):""}</span>
         <span class="mono" style="font-weight:800;color:var(--ink)">${yen(c.spendTotal)}</span></div>
-      ${c.recurringSpend>0?`<div class="krow"><span>🔁 毎月固定</span><b class="mono">${yen(c.recurringSpend)}</b></div>
-      <div class="krow" style="border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:4px"><span>それ以外</span><b class="mono">${yen(c.spotSpend)}</b></div>`:""}
+      ${c.recurringSpend>0?`<div class="krow"><span>${T("sum.recurring")}</span><b class="mono">${yen(c.recurringSpend)}</b></div>
+      <div class="krow" style="border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:4px"><span>${T("sum.spot")}</span><b class="mono">${yen(c.spotSpend)}</b></div>`:""}
       ${bars}
     </div>
-    <div class="stitle">記録（タップで編集）</div>
+    <div class="stitle">${TJ("sum.records","記録（タップで編集）")}</div>
     ${recHtml}
   </div>`;
 }
@@ -1021,18 +1070,23 @@ function renderSummary(){
    ========================================================================= */
 function sumTabs(){
   const b=(k,label)=>`<button data-act="sum-tab" data-tab="${k}" class="rgbtn${sumTab===k?" on":""}">${label}</button>`;
-  return `<div class="seg">${b("month","今月")}${b("analysis","📈 分析")}</div>`;
+  return `<div class="seg">${b("month",T("sum.tabMonth"))}${b("analysis",T("sum.tabAnalysis"))}</div>`;
 }
 
 /* 使うペース：つかった累計の線と、予算のペース（点線）を重ねる。
    縦＝金額の目もり（万単位）／横＝日にち。目もりの決め方は core.js（chartScale）が正。 */
 function yenTick(v){
   if(v===0) return "0";
+  /* 英語圏は「万」を使わないので、1000区切りの k で出す */
+  if(isEn()){
+    if(v>=1000){ const k=v/1000; return (Number.isInteger(k)?k:Math.round(k*10)/10)+"k"; }
+    return v.toLocaleString("en-US");
+  }
   if(v>=10000){ const m=v/10000; return (Number.isInteger(m)?m:Math.round(m*10)/10)+"万"; }
   return v.toLocaleString("ja-JP");
 }
 function paceChart(p){
-  if(!p.daily.length || p.spendTotal<=0) return `<div class="muted" style="text-align:center;padding:14px;font-size:12.5px">まだ支出の記録がありません</div>`;
+  if(!p.daily.length || p.spendTotal<=0) return `<div class="muted" style="text-align:center;padding:14px;font-size:12.5px">${T("an.noRecords")}</div>`;
   const last=p.daily[p.daily.length-1];
   const showFore=(p.isCurrent&&p.elapsed<p.days);
   const sc=Core.chartScale([0, last.cum, p.budget>0?p.budget:0, showFore?p.forecast:0], Core.CHART_TICKS);
@@ -1056,7 +1110,7 @@ function paceChart(p){
     const day=i+1, xx=x(day).toFixed(1);
     const anchor=i===0?"start":(i===p.days-1?"end":"middle");
     return `<line x1="${xx}" x2="${xx}" y1="${padT}" y2="${padT+plotH}" stroke="#eef2f0" stroke-width="1"></line>`
-         + `<text x="${xx}" y="${H-8}" text-anchor="${anchor}" font-size="9.5" fill="#647476">${day}日</text>`;
+         + `<text x="${xx}" y="${H-8}" text-anchor="${anchor}" font-size="9.5" fill="#647476">${isEn()?day:day+"日"}</text>`;
   }).join("");
 
   const pts=p.daily.map(d=>`${x(d.day).toFixed(1)},${y(d.cum).toFixed(1)}`).join(" ");
@@ -1068,9 +1122,9 @@ function paceChart(p){
   /* 凡例。線の色と種類をそのまま見せて、どれが何の線か迷わないように */
   const sw=(stroke,dash)=>`<svg width="20" height="8" viewBox="0 0 20 8" style="vertical-align:middle"><line x1="1" y1="4" x2="19" y2="4" stroke="${stroke}" stroke-width="2"${dash?` stroke-dasharray="${dash}"`:""}></line></svg>`;
   const legend=`<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;font-size:10.5px;color:var(--sub);margin-top:4px">
-    <span>${sw(col)} つかった累計</span>
-    ${p.budget>0?`<span>${sw("#9fb0ab","4 4")} 予算のペース</span>`:""}
-    ${showFore?`<span>${sw(col,"3 3")} 月末までの予測</span>`:""}
+    <span>${sw(col)} ${T("an.spentLine")}</span>
+    ${p.budget>0?`<span>${sw("#9fb0ab","4 4")} ${T("an.budgetLine")}</span>`:""}
+    ${showFore?`<span>${sw(col,"3 3")} ${T("an.forecastLine")}</span>`:""}
   </div>`;
 
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img">
@@ -1122,14 +1176,14 @@ function trendChart(trend){
     ${cols}
   </svg>
   <div style="display:flex;gap:12px;justify-content:center;font-size:10.5px;color:var(--sub);margin-top:4px">
-    <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#6f9c78"></span> 収入</span>
-    <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#c2694f"></span> 支出</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#6f9c78"></span> ${T("sum.income")}</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#c2694f"></span> ${T("sum.spend")}</span>
   </div>`;
 }
 
 const CAT_COLOR={food:"#8fbf7f",eatout:"#d9a54f",daily:"#4fa8d8",rent:"#7f9cc0",power:"#e0c060",gas:"#d98a5f",water:"#5fb0d0",comm:"#9a8fd0",insure:"#78b89a",transit:"#b08fd6",car:"#8a9a70",medical:"#c2694f",clothes:"#c98fb0",social:"#6fa88a",hobby:"#e6b0a6",pet:"#b89a70",pension:"#d0b060",tax:"#a0a0a8",subs:"#8fb0c0",other:"#9fb0ab"};
 function diffTag(diff, hadPrev){
-  if(!hadPrev) return `<span class="dif eq">はじめて</span>`;
+  if(!hadPrev) return `<span class="dif eq">${T("an.first")}</span>`;
   if(diff>0) return `<span class="dif up">+${yen(diff)}</span>`;
   if(diff<0) return `<span class="dif dn">−${yen(-diff)}</span>`;
   return `<span class="dif eq">±0</span>`;
@@ -1139,68 +1193,69 @@ function renderAnalysis(){
   const a=Core.analyzeMonth(state.settings, state.tx, curYM(), {today:todayISO()});
   const p=a.pace;
   const mon=Number(curYM().slice(5,7));
+  const monName=Core.monthName(mon, state.settings);
 
   const insHtml = a.insights.length
     ? a.insights.map((s,i)=>{ const icon=s.level==="warn"?"⚠️":s.level==="good"?"🌱":"💡";
         return `<div class="ins ${s.level}${i===0?" first":""}"><span class="ii">${icon}</span><span>${escapeHtml(s.text)}</span></div>`;
       }).join("")
-    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">記録がたまると、ここに気づきが出ます</div>`;
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">${T("an.empty")}</div>`;
 
   const catRows = a.cats.filter(c=>c.now>0).slice(0,8);
   const catMax = catRows.length ? catRows[0].now : 1;
   const catHtml = catRows.length ? catRows.map(c=>{
       const w=Math.max(3,Math.round(c.now/catMax*100));
-      const avgTxt = c.avg!==null && c.avg>0 ? ` ・ ${Core.COMPARE_MONTHS}か月平均 ${yen(c.avg)}` : "";
+      const avgTxt = c.avg!==null && c.avg>0 ? T("an.avg",{n:Core.COMPARE_MONTHS,amount:yen(c.avg)}) : "";
       return `<div class="crow">
         <div class="chd"><span class="cn">${c.emoji} ${escapeHtml(c.name)}</span>
           <span class="cv mono">${yen(c.now)}${diffTag(c.diff, c.prev>0)}</span></div>
         <span class="track"><span class="fill" style="width:${w}%;background:${CAT_COLOR[c.key]||"#9fb0ab"}"></span></span>
-        <div class="csub">支出の ${c.share}% ・ 先月 ${yen(c.prev)}${avgTxt}</div>
+        <div class="csub">${T("an.share",{share:c.share,prev:yen(c.prev)})}${avgTxt}</div>
       </div>`;
     }).join("")
-    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">今月の支出はまだありません</div>`;
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:6px">${T("sum.noSpend")}</div>`;
 
   const wkMax=Math.max(1,...a.week.map(w=>w.amount));
-  const wkHtml=a.week.map(w=>`<div class="brow"><span class="bt">${w.name}曜</span>
+  const wkHtml=a.week.map(w=>`<div class="brow"><span class="bt">${Core.weekdayLabel(w.dow, state.settings)}</span>
       <span class="track"><span class="fill" style="width:${w.amount>0?Math.max(3,Math.round(w.amount/wkMax*100)):0}%;background:#8fb0c0"></span></span>
       <span class="bv mono">${w.amount>0?yen(w.amount):"—"}</span></div>`).join("");
 
   const forecastCard = p.hasIncome
-    ? `<div class="sc"><div class="l">月末の予測</div><div class="v mono ${p.over>0?"exp":"net"}">${yen(p.forecast)}</div></div>`
-    : `<div class="sc"><div class="l">月末の予測</div><div class="v mono">${yen(p.forecast)}</div></div>`;
+    ? `<div class="sc"><div class="l">${T("an.forecast")}</div><div class="v mono ${p.over>0?"exp":"net"}">${yen(p.forecast)}</div></div>`
+    : `<div class="sc"><div class="l">${T("an.forecast")}</div><div class="v mono">${yen(p.forecast)}</div></div>`;
 
   return `<div class="screen">
     ${sumTabs()}
-    <div class="stitle" style="margin-top:6px">${mon}月の分析（${p.elapsed}日目 / ${p.days}日）</div>
-    ${p.periodLabel?`<div class="calcnote" style="margin:-4px 0 10px">この「${mon}月」は ${p.periodLabel} の分です</div>`:""}
+    <div class="stitle" style="margin-top:6px">${T("an.title",{month:monName,elapsed:p.elapsed,days:p.days})}</div>
+    ${p.periodLabel?`<div class="calcnote" style="margin:-4px 0 10px">${T("an.periodNote",{month:monName,period:p.periodLabel})}</div>`:""}
     <div class="barlist" style="margin-top:0">${insHtml}</div>
 
-    <div class="stitle">つかうペース</div>
+    <div class="stitle">${T("an.pace")}</div>
     <div class="sumcards three">
-      <div class="sc"><div class="l">これまで</div><div class="v exp mono">${yen(p.spendTotal)}</div></div>
-      <div class="sc"><div class="l">1日あたり</div><div class="v mono">${yen(p.perDay)}</div></div>
+      <div class="sc"><div class="l">${T("an.soFar")}</div><div class="v exp mono">${yen(p.spendTotal)}</div></div>
+      <div class="sc"><div class="l">${T("an.perDay")}</div><div class="v mono">${yen(p.perDay)}</div></div>
       ${forecastCard}
     </div>
     <div class="barlist">
       ${paceChart(p)}
       <div class="calcnote" style="margin:10px 0 0">${p.hasIncome
-        ? `つかってよい額 ${yen(p.budget)}（収入 ${yen(a.month.incomeTotal)} － 先取り ${yen(a.month.setAside)}）。1日あたり ${yen(p.budgetPerDay)} のペースです。`
-        : `給料を記録すると、予算のペース（点線）が出ます。`}<br>
-        記録があった日 ${p.spendDays}日 ／ つかわなかった日 ${p.noSpendDays}日${p.recurringSoFar>0
-          ? `<br>🔁 毎月固定の ${yen(p.recurringSoFar)} は、日割りせずそのまま数えています。`
+        ? T("an.budgetNote",{budget:yen(p.budget),income:yen(a.month.incomeTotal),setAside:yen(a.month.setAside),perDay:yen(p.budgetPerDay)})
+        : T("an.noIncome")}<br>
+        ${T("an.days",{spend:p.spendDays,none:p.noSpendDays})}${p.recurringSoFar>0
+          ? `<br>${T("an.recurringNote",{amount:yen(p.recurringSoFar)})}`
           : ``}</div>
     </div>
 
-    <div class="stitle">${a.trend.length}か月の推移</div>
+    <div class="stitle">${T("an.trend",{n:a.trend.length})}</div>
     <div class="barlist" style="margin-top:0">
       ${trendChart(a.trend)}
-      <div class="calcnote" style="margin:10px 0 0">先取り（予定額）は今の設定の金額なので、過去の月には当てはめていません。ここは収入と支出だけを並べています。</div>
+      <div class="calcnote" style="margin:10px 0 0">${T("an.trendNote")}</div>
     </div>
 
-    <div class="stitle">先月とくらべる</div>
+    <div class="stitle">${T("an.compare")}</div>
     <div class="barlist" style="margin-top:0">${catHtml}</div>
 
-    <div class="stitle">曜日のくせ</div>
+    <div class="stitle">${T("an.weekday")}</div>
     <div class="barlist" style="margin-top:0">${wkHtml}</div>
     <div style="height:6px"></div>
   </div>`;
@@ -1241,7 +1296,7 @@ function renderCalendar(){
   const cells=[];
   for(let i=0;i<startDow;i++) cells.push("");
   for(let d=1;d<=days;d++) cells.push(d);
-  const dow=["日","月","火","水","木","金","土"];
+  const dow=[0,1,2,3,4,5,6].map(i=>wd(i));
   const head=dow.map((w,i)=>`<div class="cal-dow" style="color:${i===0?'#c2694f':i===6?'#4f8ac2':'var(--sub)'}">${w}</div>`).join("");
   const body=cells.map(d=>{
     if(d==="") return `<div class="cal-cell empty"></div>`;
@@ -1260,12 +1315,12 @@ function renderCalendar(){
   let detail="";
   if(calSelected){
     const dd=Core.dayDetail(state, calSelected);
-    const md=calSelected.slice(5).replace("-","/");
+    const md=Core.formatMonthDay(calSelected, state.settings);
     const rows=[];
     dd.income.forEach(t=>{ const c=catOf("income",t.cat);
-      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||c.n)}</span><b class="mono inc">+${yen(t.amount)}</b></div>`); });
+      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||catN("income",t.cat))}</span><b class="mono inc">+${yen(t.amount)}</b></div>`); });
     dd.expense.forEach(t=>{ const c=catOf("expense",t.cat);
-      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||c.n)}</span><b class="mono">${yen(t.amount)}</b></div>`); });
+      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||catN("expense",t.cat))}</span><b class="mono">${yen(t.amount)}</b></div>`); });
     dd.plans.forEach(p=>{
       rows.push(`<div class="krow" data-act="cal-edit-plan" data-date="${calSelected}" style="cursor:pointer"><span>📝 ${p.time?`<b class="mono">${p.time}</b> `:""}${escapeHtml(p.text)}${p.done?"（済）":""}</span></div>`); });
     if(dd.diary) rows.push(`<div class="krow" data-act="cal-edit-diary" data-date="${calSelected}" style="cursor:pointer;align-items:flex-start"><span>📖 ${escapeHtml((dd.diary.text||"（写真のみ）").slice(0,40))}</span>${dd.diary.photo?'<span>🖼</span>':''}</div>`);
@@ -1273,22 +1328,22 @@ function renderCalendar(){
       if(h.weight!=null) parts.push(`体重 ${h.weight}kg`);
       if(h.bpHigh!=null||h.bpLow!=null) parts.push(`血圧 ${h.bpHigh||"-"}/${h.bpLow||"-"}`);
       rows.push(`<div class="krow" data-act="cal-edit-health" data-date="${calSelected}" style="cursor:pointer"><span>❤️ ${parts.join("・")}</span></div>`); }
-    detail=`<div class="stitle">${md} の記録</div><div class="barlist">
-      ${rows.length?rows.join(""):`<div class="muted" style="text-align:center;padding:10px;font-size:12.5px">この日の記録はありません</div>`}
+    detail=`<div class="stitle">${T("cal.dayTitle",{date:md})}</div><div class="barlist">
+      ${rows.length?rows.join(""):`<div class="muted" style="text-align:center;padding:10px;font-size:12.5px">${T("cal.dayEmpty")}</div>`}
       <div style="height:1px;background:var(--line2);margin:8px 0 4px"></div>
-      <div class="krow" style="font-weight:800"><span>収入 ${yen(dd.incomeTotal)} ／ 支出 ${yen(dd.expenseTotal)}</span><b></b></div>
+      <div class="krow" style="font-weight:800"><span>${T("cal.income")} ${yen(dd.incomeTotal)}${isEn()?" · ":" ／ "}${T("cal.expense")} ${yen(dd.expenseTotal)}</span><b></b></div>
     </div>
-    <button class="btn-main" data-act="cal-edit-plan" data-date="${calSelected}" style="margin-top:10px">📝 この日の予定を書く</button>`;
+    <button class="btn-main" data-act="cal-edit-plan" data-date="${calSelected}" style="margin-top:10px">${T("cal.writePlan")}</button>`;
   }
   return `<div class="screen">
     <div class="cal-head">
       <button class="cal-nav" data-act="cal-prev">‹</button>
-      <div class="cal-title">${y}年 ${m}月</div>
+      <div class="cal-title">${Core.formatYearMonth(calYM, state.settings)}</div>
       <button class="cal-nav" data-act="cal-next">›</button>
     </div>
     <div class="cal-grid cal-dowrow">${head}</div>
     <div class="cal-grid">${body}</div>
-    <div class="cal-legend"><span><span class="cd" style="background:#c2694f"></span>支出</span><span><span class="cd" style="background:#6f9c78"></span>収入</span><span><span class="cd" style="background:#d0a050"></span>日記</span><span><span class="cd" style="background:#4f8ac2"></span>健康</span><span><span class="cd" style="background:#8a76c4"></span>予定</span></div>
+    <div class="cal-legend"><span><span class="cd" style="background:#c2694f"></span>${T("cal.expense")}</span><span><span class="cd" style="background:#6f9c78"></span>${T("cal.income")}</span><span><span class="cd" style="background:#d0a050"></span>${T("cal.diary")}</span><span><span class="cd" style="background:#4f8ac2"></span>${T("cal.health")}</span><span><span class="cd" style="background:#8a76c4"></span>${T("cal.plan")}</span></div>
     ${detail}
   </div>`;
 }
@@ -1302,25 +1357,25 @@ function planSection(date){
   const md=date.slice(5).replace("-","/");
   const rows = list.length ? list.map(p=>`
     <div class="prow${p.done?" done":""}">
-      <button class="pchk" data-act="plan-toggle" data-date="${date}" data-id="${p.id}" aria-label="済みにする">${p.done?"☑":"☐"}</button>
+      <button class="pchk" data-act="plan-toggle" data-date="${date}" data-id="${p.id}" aria-label="${L("済みにする","Mark as done")}">${p.done?"☑":"☐"}</button>
       <span class="ptime mono">${p.time||"—"}</span>
       <span class="ptext">${escapeHtml(p.text)}</span>
-      <button class="pdel" data-act="plan-del" data-date="${date}" data-id="${p.id}" aria-label="消す">✕</button>
+      <button class="pdel" data-act="plan-del" data-date="${date}" data-id="${p.id}" aria-label="${L("消す","Delete")}">✕</button>
     </div>`).join("")
-    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">この日の予定はありません</div>`;
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">${L("この日の予定はありません","Nothing scheduled for this day")}</div>`;
   const full = list.length >= Core.PLAN_PER_DAY_MAX;
-  return `<div class="stitle" style="margin-top:6px">予定（${md}）</div>
+  return `<div class="stitle" style="margin-top:6px">${L(`予定（${md}）`, `Schedule — ${md}`)}</div>
     <div class="barlist">
       ${rows}
       <div style="height:1px;background:var(--line2);margin:10px 0 8px"></div>
       ${full
-        ? `<div class="muted" style="font-size:12px;text-align:center">1日に入れられる予定は ${Core.PLAN_PER_DAY_MAX}件までです</div>`
+        ? `<div class="muted" style="font-size:12px;text-align:center">${L(`1日に入れられる予定は ${Core.PLAN_PER_DAY_MAX}件までです`, `You can add up to ${Core.PLAN_PER_DAY_MAX} items a day`)}</div>`
         : `<div class="prowadd">
              <input type="time" id="p-time" class="mono" value="">
-             <input id="p-text" maxlength="${Core.PLAN_TEXT_MAX}" placeholder="予定を書く（例：病院）">
+             <input id="p-text" maxlength="${Core.PLAN_TEXT_MAX}" placeholder="${L("予定を書く（例：病院）","What's planned — e.g. doctor")}">
            </div>
-           <button class="btn-main" data-act="plan-add" data-date="${date}" style="margin-top:8px">＋ 予定を入れる</button>
-           <div style="font-size:10.5px;color:var(--sub);margin-top:6px">時刻は空のままでも入れられます。予定はお金の計算には入りません。</div>`}
+           <button class="btn-main" data-act="plan-add" data-date="${date}" style="margin-top:8px">${L("＋ 予定を入れる","＋ Add to the schedule")}</button>
+           <div style="font-size:10.5px;color:var(--sub);margin-top:6px">${L("時刻は空のままでも入れられます。予定はお金の計算には入りません。","The time can be left blank. Schedule items are never part of the money calculations.")}</div>`}
     </div>`;
 }
 
@@ -1336,47 +1391,47 @@ function renderDiary(){
     const thumb=d.photo?`<img src="${d.photo}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex:0 0 auto">`:"";
     return `<div class="krow diary-row" data-act="edit-diary" data-date="${d.date}" style="cursor:pointer;align-items:flex-start;gap:8px">
       <span style="min-width:40px;color:var(--sub);font-weight:700">${md}</span>
-      <span style="flex:1;white-space:pre-wrap;line-height:1.5">${preview||(d.photo?"（写真のみ）":"")}</span>${thumb}</div>`;
-  }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">まだ日記がありません</div>`;
+      <span style="flex:1;white-space:pre-wrap;line-height:1.5">${preview||(d.photo?L("（写真のみ）","Photo only"):"")}</span>${thumb}</div>`;
+  }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">${L("まだ日記がありません","No diary entries yet")}</div>`;
   const photoBlock = curPhoto
-    ? `<div style="margin-top:8px"><img src="${curPhoto}" style="width:100%;border-radius:10px;display:block"><button class="btn-quiet" data-act="rm-diary-photo" style="margin-top:6px">🗑 写真を外す</button></div>`
+    ? `<div style="margin-top:8px"><img src="${curPhoto}" style="width:100%;border-radius:10px;display:block"><button class="btn-quiet" data-act="rm-diary-photo" style="margin-top:6px">${L("🗑 写真を外す","🗑 Remove the photo")}</button></div>`
     : `<button class="photobtn" data-act="add-diary-photo">
         <span class="pi">📷</span>
-        <span>写真を追加<small>撮影・ライブラリから選べます</small></span>
+        <span>${L("写真を追加","Add a photo")}<small>${L("撮影・ライブラリから選べます","Take one or pick from your library")}</small></span>
       </button>`;
   return `<div class="screen">
     ${planSection(editing)}
-    <div class="stitle">日記（${editing.slice(5).replace("-","/")}）</div>
+    <div class="stitle">${L(`日記（${editing.slice(5).replace("-","/")}）`, `Diary — ${editing.slice(5).replace("-","/")}`)}</div>
     <div class="dpick">
-      <label for="d-date">日付</label>
+      <label for="d-date">${T("rec.date")}</label>
       <input type="date" id="d-date" value="${editing}">
-      ${editing!==todayISO()?`<button class="today" data-act="new-diary">今日</button>`:""}
+      ${editing!==todayISO()?`<button class="today" data-act="new-diary">${L("今日","Today")}</button>`:""}
     </div>
-    <div class="calcnote" style="margin:0 0 10px">1日1件です。上の日付を変えると、その日の日記を書けます。</div>
+    <div class="calcnote" style="margin:0 0 10px">${L("1日1件です。上の日付を変えると、その日の日記を書けます。","One entry a day. Change the date above to write for another day.")}</div>
     <div class="barlist">
-      <div class="field"><label>本文</label>
-        <textarea id="d-text" rows="6" maxlength="${Core.DIARY_MAX}" placeholder="今日のできごと・気づいたこと" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit;padding:10px;border:1px solid var(--line2);border-radius:10px">${escapeHtml(curText)}</textarea>
+      <div class="field"><label>${L("本文","Entry")}</label>
+        <textarea id="d-text" rows="6" maxlength="${Core.DIARY_MAX}" placeholder="${L("今日のできごと・気づいたこと","What happened today, what you noticed")}" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit;padding:10px;border:1px solid var(--line2);border-radius:10px">${escapeHtml(curText)}</textarea>
       </div>
       ${photoBlock}
       <div style="display:flex;gap:10px">
-        <button class="btn-main" data-act="save-diary" style="flex:1">📖 保存する</button>
-        ${diaryEditDate?`<button class="btn-quiet" data-act="new-diary" style="flex:0 0 auto">今日に戻る</button>`:""}
+        <button class="btn-main" data-act="save-diary" style="flex:1">${L("📖 保存する","📖 Save")}</button>
+        ${diaryEditDate?`<button class="btn-quiet" data-act="new-diary" style="flex:0 0 auto">${L("今日に戻る","Back to today")}</button>`:""}
       </div>
     </div>
-    <div class="stitle">これまでの日記</div>
+    <div class="stitle">${L("これまでの日記","Past entries")}</div>
     <div class="barlist">${listHtml}</div>
   </div>`;
 }
 /* 日記の日付えらび。
    書きかけの本文は保存されないので、変わっていれば必ず確かめてから移る。 */
 function pickDiaryDate(value){
-  if(!Core.validateDateString(value)){ toast("日付を選んでください"); return; }
+  if(!Core.validateDateString(value)){ toast(L("日付を選んでください","Please choose a date")); return; }
   const cur = diaryEditDate || todayISO();
   if(value === cur) return;
   const el = $("d-text");
   const stored = (state.diary[cur] || {}).text || "";
   const dirty = (el && el.value !== stored) || diaryPhotoPending !== undefined;
-  if(dirty && typeof confirm==="function" && !confirm("書きかけの内容は保存されません。日付を変えますか？")){
+  if(dirty && typeof confirm==="function" && !confirm(L("書きかけの内容は保存されません。日付を変えますか？","What you've written won't be saved. Change the date anyway?"))){
     const dp = $("d-date"); if(dp) dp.value = cur;    // 選び直しを取り消す
     return;
   }
@@ -1407,18 +1462,18 @@ async function saveDiary(){
   state.diary=build(true);
   if(save()){
     diaryEditDate=null; diaryPhotoPending=undefined;
-    render(); toast((text.trim()===""&&!photo)?"日記を消しました":"日記を保存しました ✓");
+    render(); toast((text.trim()===""&&!photo)?L("日記を消しました","Diary entry deleted"):L("日記を保存しました ✓","Diary saved ✓"));
     return;
   }
   /* 容量オーバー：写真を落として本文だけで再挑戦 */
   state.diary=build(false);
   if(photo && save()){
     diaryEditDate=null; diaryPhotoPending=undefined;
-    render(); toast("日記を保存しました（写真は容量オーバーで保存できません）");
+    render(); toast(L("日記を保存しました（写真は容量オーバーで保存できません）","Diary saved — the photo did not fit in storage"));
     return;
   }
   state.diary=before;   // それでも駄目なら完全に戻す
-  toast("日記を保存できませんでした");
+  toast(L("日記を保存できませんでした","Could not save the diary"));
 }
 
 /* ---------- 健康ページ ---------- */
@@ -1443,7 +1498,7 @@ function chartValue(v){ return String(Math.round(v*100)/100); }
 /* 折れ線グラフを SVG で描く（外部ライブラリなし）
    縦＝切りのよい目もり／横＝日付／下に「最初→最新と変化量」を出す。 */
 function lineChart(series, color, unit){
-  if(!series.length) return `<div class="muted" style="text-align:center;padding:14px;font-size:12.5px">この期間の記録はまだありません</div>`;
+  if(!series.length) return `<div class="muted" style="text-align:center;padding:14px;font-size:12.5px">${L("この期間の記録はまだありません","No records for this period yet")}</div>`;
   const sc = Core.chartScale(series.map(p=>p.value), Core.CHART_TICKS);
   const W=320, H=158, padL=38, padR=10, padT=12, padB=26;
   const plotW=W-padL-padR, plotH=H-padT-padB;
@@ -1483,7 +1538,7 @@ function lineChart(series, color, unit){
          <span>${mdLabel(ch.toDate)} <b class="mono">${chartValue(ch.last)}${unit}</b></span>
          ${badge}
        </div>`
-    : `<div class="chgrow"><span>${mdLabel(ch.toDate)} <b class="mono">${chartValue(ch.last)}${unit}</b></span><span>（記録が2件になると変化量が出ます）</span></div>`;
+    : `<div class="chgrow"><span>${mdLabel(ch.toDate)} <b class="mono">${chartValue(ch.last)}${unit}</b></span><span>${L("（記録が2件になると変化量が出ます）","The change appears once there are two entries")}</span></div>`;
 
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img">
     ${grid}${xaxis}
@@ -1506,37 +1561,38 @@ function renderHealth(){
   const rbtn=(k,label)=>`<button data-act="health-range" data-range="${k}" class="rgbtn${healthRange===k?" on":""}">${label}</button>`;
   return `<div class="screen">
     ${pulseCard()}
-    <div class="stitle" style="margin-top:6px">健康記録（${new Date().getMonth()+1}/${new Date().getDate()}）</div>
-    <div class="calcnote" style="margin:0 0 10px">1日1件です。同じ日にもう一度記録すると上書きされます。</div>
+    <div class="stitle" style="margin-top:6px">${L(`健康記録（${new Date().getMonth()+1}/${new Date().getDate()}）`,
+      `Health — ${new Date().getMonth()+1}/${new Date().getDate()}`)}</div>
+    <div class="calcnote" style="margin:0 0 10px">${L("1日1件です。同じ日にもう一度記録すると上書きされます。","One entry a day. Recording again on the same day replaces it.")}</div>
     <div class="barlist">
-      <div class="field"><label>体重（kg）</label><input id="h-weight" inputmode="decimal" value="${rec.weight!=null?rec.weight:""}" placeholder="例 62.5"></div>
+      <div class="field"><label>${L("体重（kg）","Weight in kg")}</label><input id="h-weight" inputmode="decimal" value="${rec.weight!=null?rec.weight:""}" placeholder="${L("例 62.5","e.g. 62.5")}"></div>
       <div style="display:flex;gap:10px">
-        <div class="field" style="flex:1"><label>血圧 上（mmHg）</label><input id="h-bphigh" inputmode="numeric" value="${rec.bpHigh!=null?rec.bpHigh:""}" placeholder="例 120"></div>
-        <div class="field" style="flex:1"><label>血圧 下（mmHg）</label><input id="h-bplow" inputmode="numeric" value="${rec.bpLow!=null?rec.bpLow:""}" placeholder="例 78"></div>
+        <div class="field" style="flex:1"><label>${L("血圧 上（mmHg）","Blood pressure, upper")}</label><input id="h-bphigh" inputmode="numeric" value="${rec.bpHigh!=null?rec.bpHigh:""}" placeholder="${L("例 120","e.g. 120")}"></div>
+        <div class="field" style="flex:1"><label>${L("血圧 下（mmHg）","Blood pressure, lower")}</label><input id="h-bplow" inputmode="numeric" value="${rec.bpLow!=null?rec.bpLow:""}" placeholder="${L("例 78","e.g. 78")}"></div>
       </div>
-      <div class="field"><label>心拍数（bpm）</label><input id="h-pulse" inputmode="numeric" value="${rec.pulse!=null?rec.pulse:""}" placeholder="例 65"></div>
-      <button class="btn-main" data-act="save-health" style="margin-top:6px">❤️ この内容で記録する</button>
+      <div class="field"><label>${L("心拍数（bpm）","Heart rate in bpm")}</label><input id="h-pulse" inputmode="numeric" value="${rec.pulse!=null?rec.pulse:""}" placeholder="${L("例 65","e.g. 65")}"></div>
+      <button class="btn-main" data-act="save-health" style="margin-top:6px">${L("❤️ この内容で記録する","❤️ Save this entry")}</button>
     </div>
-    <div class="rangebar" style="display:flex;gap:6px;margin:14px 0 6px">${rbtn("day","日")}${rbtn("week","週")}${rbtn("month","月")}</div>
+    <div class="rangebar" style="display:flex;gap:6px;margin:14px 0 6px">${rbtn("day",L("日","Day"))}${rbtn("week",L("週","Week"))}${rbtn("month",L("月","Month"))}</div>
     <div class="barlist">
-      <div class="chtitle">体重の推移（kg）</div>
+      <div class="chtitle">${L("体重の推移（kg）","Weight over time, kg")}</div>
       ${lineChart(wS,"#6f9c78","kg")}
     </div>
     <div class="barlist">
-      <div class="chtitle">血圧 上（最高・mmHg）</div>
+      <div class="chtitle">${L("血圧 上（最高・mmHg）","Blood pressure — upper, mmHg")}</div>
       ${lineChart(hiS,"#c2694f","")}
       <div style="height:14px"></div>
-      <div class="chtitle">血圧 下（最低・mmHg）</div>
+      <div class="chtitle">${L("血圧 下（最低・mmHg）","Blood pressure — lower, mmHg")}</div>
       ${lineChart(loS,"#4f8ac2","")}
     </div>
     <div class="barlist">
-      <div class="chtitle">心拍数の推移（手入力・bpm）</div>
+      <div class="chtitle">${L("心拍数の推移（手入力・bpm）","Heart rate over time — entered by hand, bpm")}</div>
       ${lineChart(pS,"#e2739a","bpm")}
     </div>
     <div class="barlist">
-      <div class="chtitle">心拍数の推移（カメラ測定・bpm）<span class="betatag">β版</span></div>
+      <div class="chtitle">${L("心拍数の推移（カメラ測定・bpm）","Heart rate over time — camera, bpm")}<span class="betatag">${L("β版","beta")}</span></div>
       ${lineChart(ppS,"#c2557a","bpm")}
-      <div class="pnote">1日に何度か測ったときは、その日の平均を1つの点にしています。</div>
+      <div class="pnote">${L("1日に何度か測ったときは、その日の平均を1つの点にしています。","If you measure several times in a day, the day's average is shown as one point.")}</div>
     </div>
   </div>`;
 }
@@ -1551,27 +1607,27 @@ function pulseCard(){
          <div class="pt">${escapeHtml(pulseWhen(latest))}</div>
          <div class="pq">${pulseQualityText(latest.stars)}</div>
        </div>`
-    : `<div class="pempty">まだ測定がありません。<br>カメラとライトに指を当てて60秒で測れます。</div>`;
+    : `<div class="pempty">${L("まだ測定がありません。<br>カメラとライトに指を当てて60秒で測れます。","No measurements yet.<br>Cover the camera and light with a fingertip for 60 seconds.")}</div>`;
   return `<div class="barlist" style="margin-top:0">
-    <div class="chtitle">心拍数（カメラ測定）<span class="betatag">β版</span></div>
+    <div class="chtitle">${L("心拍数（カメラ測定）","Heart rate — camera")}<span class="betatag">${L("β版","beta")}</span></div>
     ${body}
-    <button class="btn-main" style="margin-top:10px" data-act="pulse-go">📷 測定を始める</button>
-    <div class="pnote">${escapeHtml(PULSE_DISCLAIMER)}</div>
+    <button class="btn-main" style="margin-top:10px" data-act="pulse-go">${L("📷 測定を始める","📷 Start measuring")}</button>
+    <div class="pnote">${escapeHtml(pulseDisclaimer())}</div>
   </div>`;
 }
 function saveHealth(){
   const g=id=>{ const el=$(id); return el?el.value:""; };
   const entry=Core.normalizeHealthEntry({ weight:g("h-weight"), bpHigh:g("h-bphigh"), bpLow:g("h-bplow"), pulse:g("h-pulse") });
-  if(!entry){ toast("数値を入れてね（体重・血圧・心拍数）"); return; }
+  if(!entry){ toast(L("数値を入れてね（体重・血圧・心拍数）","Enter a number — weight, blood pressure or heart rate")); return; }
   const before=JSON.parse(JSON.stringify(state.health));
   const today=todayISO();
   state.health=Object.assign({}, state.health); state.health[today]=entry;  // 同じ日は上書き
   if(!save()){
     state.health=before;      // 失敗したら完全に戻す
-    toast("記録を保存できませんでした");
+    toast(L("記録を保存できませんでした","Could not save the entry"));
     return;
   }
-  render(); toast("記録しました ✓");
+  render(); toast(L("記録しました ✓","Saved ✓"));
 }
 
 /* 起点日の選択肢。1日は「これまでどおり」と分かるように書く。 */
@@ -1579,7 +1635,7 @@ function cycleOptions(cur){
   const now=Core.normalizeCycleStart(cur);
   let out="";
   for(let d=Core.CYCLE_START_MIN; d<=Core.CYCLE_START_MAX; d++){
-    const label = d===1 ? "1日（暦の月・これまでどおり）" : `${d}日`;
+    const label = d===1 ? T("set.cycleFirst") : T("set.cycleDay",{d:d});
     out += `<option value="${d}"${d===now?" selected":""}>${label}</option>`;
   }
   return out;
@@ -1587,11 +1643,11 @@ function cycleOptions(cur){
 /* いま選んでいる区切りが、実際に何日から何日までになるかを見せる */
 function cycleHelp(cur){
   const d=Core.normalizeCycleStart(cur);
-  if(d===1) return "1日から月末までを1か月として数えます";
+  if(d===1) return T("set.cycleHelp1");
   const r=Core.cycleRange(curYM(), d);
-  const jp=iso=>`${Number(iso.slice(5,7))}月${Number(iso.slice(8,10))}日`;
-  const tail = d>28 ? "　※その日が無い月は、月末に合わせます" : "";
-  return `いまの区切りは ${jp(r.from)}〜${jp(r.to)}${tail}`;
+  const jp=iso=>Core.formatDateHeading(iso, state.settings);
+  const tail = d>28 ? T("set.cycleTail") : "";
+  return T("set.cycleHelpN",{from:jp(r.from),to:jp(r.to)})+tail;
 }
 
 /* ---------- 関数電卓 ---------- */
@@ -1612,14 +1668,14 @@ function renderSci(){
         <span class="se mono">${escapeHtml(h.expr)}</span>
         <span class="sv mono">${escapeHtml(Core.sciFormat(h.value))}</span>
       </button>`).join("")
-    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:12px">まだ計算していません</div>`;
+    : `<div class="muted" style="font-size:12.5px;text-align:center;padding:12px">${L("まだ計算していません","Nothing calculated yet")}</div>`;
 
   return `<div class="screen">
     <div class="scidisp">
       <button class="sciunit" data-act="sci" data-key="deg">${s.deg?"Deg":"Rad"}</button>
       <div class="sciexpr mono">${escapeHtml(Core.sciExpr(s))||"&nbsp;"}</div>
       <div class="scians mono">${s.result!==null?escapeHtml(Core.sciFormat(s.result)):"&nbsp;"}</div>
-      <div class="scierr">${escapeHtml(s.error||"")}</div>
+      <div class="scierr">${escapeHtml(errText(s))}</div>
     </div>
 
     <div class="scifn">
@@ -1637,13 +1693,13 @@ function renderSci(){
     <button class="btn-main scieq" data-act="sci" data-key="=">＝</button>
 
     ${amount!==null
-      ? `<button class="btn-main sciuse" data-act="sci-record">${yen(amount)} を家計簿に記録する</button>`
-      : `<div class="calcnote" style="text-align:center;margin-top:10px">＝ を押すと、この答えを家計簿に記録できます（1円以上の整数のとき）</div>`}
+      ? `<button class="btn-main sciuse" data-act="sci-record">${L(`${yen(amount)} を家計簿に記録する`, `Record ${yen(amount)} in the budget`)}</button>`
+      : `<div class="calcnote" style="text-align:center;margin-top:10px">${L("＝ を押すと、この答えを家計簿に記録できます（1円以上の整数のとき）","Press = and you can record the answer in the budget — whole amounts of 1 or more")}</div>`}
 
-    <div class="stitle" style="margin-top:18px">計算の履歴</div>
+    <div class="stitle" style="margin-top:18px">${L("計算の履歴","Calculation history")}</div>
     <div class="barlist">
       ${hist}
-      ${s.history.length?`<button class="mpmore" data-act="sci-clear">履歴を消す</button>`:""}
+      ${s.history.length?`<button class="mpmore" data-act="sci-clear">${L("履歴を消す","Clear history")}</button>`:""}
     </div>
     <div style="height:8px"></div>
   </div>`;
@@ -1654,64 +1710,65 @@ function ageLabel(birth){
   const a = Core.ageFromBirth(birth, todayISO());
   if(a===null) return "";
   const y = Math.floor(a), m = Math.floor((a-y)*12);
-  return m>0 ? `${y}歳${m}ヶ月` : `${y}歳`;
+  return L(m>0 ? `${y}歳${m}ヶ月` : `${y}歳`, m>0 ? `${y}y ${m}m` : `${y} years old`);
 }
 
 function renderSettings(){
   const s=state.settings;
   const u=Core.storageUsage(state);
   const mb=b=>{ const m=b/1024/1024; return m>=0.1 ? m.toFixed(1)+"MB" : Math.max(1,Math.round(b/1024))+"KB"; };
+  const countryOpts = Core.SUPPORTED_COUNTRIES.map(k=>
+    `<option value="${k}"${Core.normalizeCountry(s.country)===k?" selected":""}>${T("set.country"+k)}</option>`).join("");
   return `<div class="screen">
-    <div class="stitle" style="margin-top:6px">生年月日</div>
+    <div class="stitle" style="margin-top:6px">${T("set.country")}</div>
+    <div class="field"><label>${T("set.countryLabel")}</label>
+      <select id="f-country">${countryOpts}</select>
+      <div class="fhelp">${T("set.countryHelp")}<br>${T("set.countryMix")}</div></div>
+
+    <div class="stitle" style="margin-top:6px">${T("set.birth")}</div>
     <div class="calcnote" style="margin:0 0 10px">
-      <b>なぜ必要か。</b>NISA積立の年齢区間を正しく計算するために使用します。
-      ライフプラン連携時には、生年月日の食い違い確認にも使用します。
-      ライフプラン側の生年月日を自動で変更することはありません。
+      ${T("set.birthWhy")}
     </div>
-    <div class="field"><label>生年月日</label>
+    <div class="field"><label>${T("set.birth")}</label>
       <input id="f-birth" type="date" value="${escapeAttr(s.birth||"")}">
       <div class="fhelp">${s.birth
-        ? `いまは ${escapeHtml(ageLabel(s.birth))} です`
-        : "入れなくても家計簿は使えます。入れると、NISA積立をスケジュールから自動で計算します"}</div></div>
+        ? T("set.birthNow",{age:escapeHtml(ageLabel(s.birth))})
+        : T("set.birthHelp")}</div></div>
 
-    <div class="stitle">月の区切り</div>
+    <div class="stitle">${T("set.cycle")}</div>
     <div class="calcnote" style="margin:0 0 10px">
-      給料日から次の給料日までを「1か月」として数えられます。<br>
-      たとえば <b>20日</b> にすると、7月20日〜8月19日 が「7月分」になります。<br>
-      1日のままなら、これまでどおり<b>1日〜月末</b>です。
+      ${T("set.cycleWhy")}
     </div>
-    <div class="field"><label>1か月の始まりの日</label>
+    <div class="field"><label>${T("set.cycleLabel")}</label>
       <select id="f-cycle">${cycleOptions(s.cycleStart)}</select>
       <div class="fhelp">${cycleHelp(s.cycleStart)}</div></div>
 
-    <div class="stitle">夢・目標</div>
-    <div class="field"><label>目標の名前</label>
-      <input id="f-gname" value="${escapeAttr(s.goalName||"")}" placeholder="例：旅行 / 車 / 緊急資金"></div>
+    <div class="stitle">${T("set.goal")}</div>
+    <div class="field"><label>${T("set.goalName")}</label>
+      <input id="f-gname" value="${escapeAttr(s.goalName||"")}" placeholder="${escapeAttr(T("set.goalNamePh"))}"></div>
     <div class="row2">
-      <div class="field"><label>目標金額</label><div class="row"><span class="yen">¥</span>
+      <div class="field"><label>${T("set.goalTarget")}</label><div class="row"><span class="yen">${Core.countryRule(s.country).symbol}</span>
         <input class="mono" id="f-gtarget" inputmode="numeric" value="${s.goalTarget||""}" placeholder="0"></div></div>
-      <div class="field"><label>いま貯まってる額</label><div class="row"><span class="yen">¥</span>
+      <div class="field"><label>${T("set.goalCurrent")}</label><div class="row"><span class="yen">${Core.countryRule(s.country).symbol}</span>
         <input class="mono" id="f-gcur" inputmode="numeric" value="${s.goalCurrent||""}" placeholder="0"></div></div>
     </div>
 
-    <div class="stitle">データ</div>
+    <div class="stitle">${T("set.data")}</div>
     <div class="calcnote" style="margin:0 0 10px">
-      使用中のデータ：<b>${mb(u.total)}</b>（うち写真 ${mb(u.photos)}／${u.photoCount}枚）<br>
-      この端末に保存できるのは<b>およそ5MB</b>までです。${u.nearLimit?"<b style=\"color:var(--terra)\">空きが少なくなっています。</b>":""}
+      ${T("set.usage",{total:mb(u.total),photos:mb(u.photos),count:u.photoCount})}${u.nearLimit?`<b style="color:var(--terra)">${T("set.nearLimit")}</b>`:""}
     </div>
     ${lpSummaryHtml()}
-    <button class="btn-quiet" data-act="export-backup">📥 バックアップを書き出す（JSON）</button>
-    <button class="btn-quiet" data-act="import-backup">📤 バックアップを読み込む（JSON）</button>
-    <button class="btn-quiet" data-act="purge-photos">🗑 写真をすべて消す（記録は残ります）</button>
-    <button class="btn-quiet danger" data-act="reset-all">⚠️ すべて初期設定に戻す</button>
-    <div class="fhelp" style="margin:-4px 0 4px">設定・記録・日記・健康・予定など、この端末のデータをすべて消して、
-      最初の状態に戻します。<b>元に戻せません。</b>先にバックアップを書き出してください。</div>
+    <button class="btn-quiet" data-act="export-backup">${T("set.exportBk")}</button>
+    <button class="btn-quiet" data-act="import-backup">${T("set.importBk")}</button>
+    <button class="btn-quiet" data-act="purge-photos">${T("set.purge")}</button>
+    <button class="btn-quiet danger" data-act="reset-all">${T("set.reset")}</button>
+    <div class="fhelp" style="margin:-4px 0 4px">${T("set.resetHelp")}</div>
 
     <div class="savebar">
-      <button class="btn-primary" data-act="save-settings">保存する</button>
+      <button class="btn-primary" data-act="save-settings">${T("set.save")}</button>
     </div>
     <div style="height:12px"></div>
-    <div class="fhelp" style="text-align:center;padding:0 10px 8px">データはこの端末の中だけに保存されます（外部に送信しません）。</div>
+    <div class="fhelp" style="text-align:center;padding:0 10px 8px">${T("set.localOnly")}</div>
     ${aboutCard()}
     <div style="height:8px"></div>
   </div>`;
@@ -1748,20 +1805,21 @@ function renderSheet(){
   const calc=st.calc;
   const cats = st.type==="income" ? INC_CATS : EXP_PICK_CATS;
   if(st.cat && !cats.find(c=>c.k===st.cat)) st.cat = cats[0].k;
-  const btn=c=>`<button class="catbtn ${st.cat===c.k?"on":""}" data-cat="${c.k}"><span class="ce">${c.e}</span>${c.n}</button>`;
+  /* ボタンに持たせるのは内部ID（data-cat）だけ。見えている文字だけが国で変わる。 */
+  const btn=c=>`<button class="catbtn ${st.cat===c.k?"on":""}" data-cat="${c.k}"><span class="ce">${c.e}</span>${escapeHtml(catN(st.type,c.k))}</button>`;
   const catHtml = st.type==="income"
     ? INC_CATS.map(btn).join("")
-    : `<div class="catlbl">支出のカテゴリ</div>${EXP_PICK_CATS.map(btn).join("")}`;
+    : `<div class="catlbl">${T("rec.catExpense")}</div>${EXP_PICK_CATS.map(btn).join("")}`;
   const catNote = st.type==="income"
     ? (st.cat==="salary"
-        ? `<div class="ocrnote">給料の入力口はここだけです。今月の通常収入になります。</div>`
-        : `<div class="ocrnote">臨時の収入として、今月の収入に上のせされます。</div>`)
+        ? `<div class="ocrnote">${TJ("rec.salaryNote","給料の入力口はここだけです。今月の通常収入になります。")}</div>`
+        : `<div class="ocrnote">${T("rec.extraNote")}</div>`)
     : `<div class="ocrnote">&nbsp;</div>`;
   const choicesHtml = (st.ocrChoices&&st.ocrChoices.length)
     ? `<div class="choices">
-         <div class="cl">タップして金額を入れます（記録はまだされません）</div>
+         <div class="cl">${TJ("rec.choices","タップして金額を入れます（記録はまだされません）")}</div>
          ${st.ocrChoices.map(a=>`<button class="choice mono" data-pick="${a}">${yen(a)}</button>`).join("")}
-         <button class="choice manual" data-act="manual-amount">✍️ 手入力する</button>
+         <button class="choice manual" data-act="manual-amount">${T("rec.manual")}</button>
        </div>`
     : "";
   const photoHtml = st.photo
@@ -1769,44 +1827,44 @@ function renderSheet(){
          <img id="cropimg" src="${st.photo}" alt="レシート">
          <div class="cropbox" id="cropbox"><span class="h tl"></span><span class="h br"></span></div>
        </div>
-       <div class="shothint">白い枠を動かして、<b>合計の金額だけ</b>を囲んでください。<br>枠の中しか読み取らないので、他の金額と混ざりません。<br>
-         <span style="color:#a7b2af">初回の読み取りにはインターネット接続が必要です</span></div>
-       <button class="photobtn main big" data-act="read-crop">🔍 この枠の金額を読み取る</button>
-       <button class="photobtn" data-act="shot-total">📸 撮り直す</button>
+       <div class="shothint">${T("rec.cropHint")}
+         <span style="color:#a7b2af">${T("rec.online")}</span></div>
+       <button class="photobtn main big" data-act="read-crop">${T("rec.readCrop")}</button>
+       <button class="photobtn" data-act="shot-total">${T("rec.reshoot")}</button>
        <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
        ${choicesHtml}`
-    : `<button class="photobtn main" data-act="shot-total">📸 レシートを撮る
-         <span class="sm">合計の行にアップで寄せて撮ってください</span></button>
+    : `<button class="photobtn main" data-act="shot-total">${T("rec.shoot")}
+         <span class="sm">${T("rec.shootSub")}</span></button>
        <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
        ${choicesHtml}`;
   $("sheet").innerHTML=`<div class="grip"></div>
-    <div class="sheethd"><h3>${st.mode==="edit"?"記録をなおす":"記録する"}</h3>
-      <button class="close" data-act="close-sheet" aria-label="閉じる">✕</button></div>
+    <div class="sheethd"><h3>${st.mode==="edit"?T("rec.titleEdit"):T("rec.title")}</h3>
+      <button class="close" data-act="close-sheet" aria-label="${isEn()?"Close":"閉じる"}">✕</button></div>
     <div class="typetog">
-      <button class="${st.type==="expense"?"on exp":""}" data-type="expense">支出</button>
-      <button class="${st.type==="income"?"on inc":""}" data-type="income">収入</button>
+      <button class="${st.type==="expense"?"on exp":""}" data-type="expense">${T("rec.expense")}</button>
+      <button class="${st.type==="income"?"on inc":""}" data-type="income">${T("rec.income")}</button>
     </div>
     ${st.type==="expense"?photoHtml:""}
-    <div class="amtbox"><div class="lab">金額</div>
+    <div class="amtbox"><div class="lab">${T("rec.amount")}</div>
       <div class="calcexpr mono" id="s-expr">${escapeHtml(calc.expr||"")}</div>
       <input class="amtinput mono" id="s-amt" readonly inputmode="none" placeholder="0" value="${escapeAttr(Core.calcDisplay(calc))}">
-      <div class="calcerr">${escapeHtml(calc.error||"")}</div>
+      <div class="calcerr">${escapeHtml(errText(calc))}</div>
       ${calcPad(calc)}
       ${st.type==="expense" ? `<button class="fixtog${st.recurring?" on":""}" data-act="toggle-recurring">
-          <span class="sw"><i></i></span>🔁 毎月固定 ${st.recurring?"オン":"オフ"}</button>
+          <span class="sw"><i></i></span>${T("rec.recurring")}${st.recurring?T("rec.recurringOn"):T("rec.recurringOff")}</button>
         <div class="fixhint">${st.recurring
-          ? "家賃・光熱費のような、毎月かかるお金として数えます"
-          : "家賃・光熱費など、毎月かかるものはオンにしてください"}</div>` : ""}
+          ? T("rec.recurHintOn")
+          : T("rec.recurHintOff")}</div>` : ""}
     </div>
     <div class="catgrid">${catHtml}</div>
     ${catNote}
     <div class="row2">
-      <div class="field"><label>日付</label><input type="date" id="s-date" value="${st.date}"></div>
-      <div class="field"><label>メモ（任意）</label><input id="s-memo" maxlength="${Core.MEMO_MAX}" value="${escapeAttr(st.memo)}" placeholder="お店・内容"></div>
+      <div class="field"><label>${T("rec.date")}</label><input type="date" id="s-date" value="${st.date}"></div>
+      <div class="field"><label>${T("rec.memo")}</label><input id="s-memo" maxlength="${Core.MEMO_MAX}" value="${escapeAttr(st.memo)}" placeholder="${escapeAttr(T("rec.memoPh"))}"></div>
     </div>
-    ${st.mode==="edit"?`<button class="delbtn" data-act="del-tx">この記録を削除</button>`:""}
+    ${st.mode==="edit"?`<button class="delbtn" data-act="del-tx">${T("rec.delete")}</button>`:""}
     <div class="sheetsave">
-      <button class="btn-primary" data-act="save-tx">${st.mode==="edit"?"更新する":"✓ この内容で記録する"}</button>
+      <button class="btn-primary" data-act="save-tx">${st.mode==="edit"?T("rec.update"):T("rec.save")}</button>
     </div>`;
   if(st.photo) initCrop();
 }
@@ -1819,7 +1877,11 @@ function showSheet(on){ $("scrim").classList.toggle("show",on); $("sheet").class
   if(!on){ releaseOcrImage(sheetState); sheetState=null; clearPending(); } }
 
 /* いま何が起きているかを必ず画面に出す（黙って失敗しない） */
+/* 読み取りの決まり文句。ここは呼び出し側の書き方を変えずに入れ替える
+   （どの段階を表示しているかを、テストがソースの形で見張っているため）。 */
+const STATUS_EN = { "画像を調整しています…": "Adjusting the image…" };
 function setStatus(msg){
+  if(isEn() && STATUS_EN[msg]) msg = STATUS_EN[msg];
   if(sheetState){ sheetState.ocrNote=msg; const n=$("ocrnote"); if(n){ n.textContent=msg; return; } }
   toast(msg);
 }
@@ -1854,16 +1916,16 @@ function onPhotoPicked(file){
   const reader=new FileReader();
   ensureSheetForPhoto();
   const kb=Math.round((file.size||0)/1024);
-  setStatus(`写真を受け取りました（${kb}KB / ${file.type||"形式不明"}）。準備中…`);
-  reader.onerror=()=>{ setStatus("写真を読み込めませんでした。もう一度おねがいします"); };
+  setStatus(L(`写真を受け取りました（${kb}KB / ${file.type||"形式不明"}）。準備中…`, `Photo received — ${kb}KB, ${file.type||"unknown type"}. Getting it ready…`));
+  reader.onerror=()=>{ setStatus(L("写真を読み込めませんでした。もう一度おねがいします","Could not read that photo. Please try again")); };
   reader.onload=async()=>{
     try{
-      setStatus("写真を準備中…");
+      setStatus(L("写真を準備中…","Getting the photo ready…"));
       /* 表示・保存用は縮小版。読み取り用は高解像度版を別に持つ（保存しない）。 */
       const shrunk=await resizeDataUrl(reader.result, Core.PHOTO_VIEW_MAX, 0.85);
       const hires =await resizeDataUrl(reader.result, Core.PHOTO_OCR_MAX, 0.95);
       ensureSheetForPhoto();
-      if(!shrunk || shrunk.length<100){ setStatus("この形式の写真は表示できませんでした。もう一度撮ってください"); return; }
+      if(!shrunk || shrunk.length<100){ setStatus(L("この形式の写真は表示できませんでした。もう一度撮ってください","That photo format can't be shown. Please take it again")); return; }
       releaseOcrImage(sheetState);        // 前の写真の高解像度版を先に手放す
       sheetState.photo=shrunk;
       sheetState.photoHi=hires||shrunk;   // メモリ内だけ。localStorageには入れない
@@ -1873,7 +1935,7 @@ function onPhotoPicked(file){
       clearPending();
       renderSheet(); showSheet(true);
       loadTesseract().catch(()=>{});   // 枠を合わせている間に先読み
-    }catch(e){ setStatus("写真を扱えませんでした。金額は手で入れられます"); }
+    }catch(e){ setStatus(L("写真を扱えませんでした。金額は手で入れられます","Could not handle that photo. You can type the amount yourself")); }
   };
   reader.readAsDataURL(file);
 }
@@ -1923,7 +1985,7 @@ async function readCrop(){
     const candidates=[];
     let runs=0;
     for(let i=0;i<Core.OCR_PLAN.length;i++){
-      setStatus(i===0 ? "金額を確認しています…" : "もう少し詳しく確認しています…");
+      setStatus(i===0 ? L("金額を確認しています…","Checking the amount…") : L("もう少し詳しく確認しています…","Taking a closer look…"));
       const jobs=[];
       for(const step of Core.OCR_PLAN[i]){
         jobs.push({ img: await imageFor(step.crop, step.image), psm: step.psm });
@@ -1939,7 +2001,7 @@ async function readCrop(){
     const plan = Core.reconstructionPlan(details, crop);
     const already4 = candidates.some(c=>Number(c.amount)>=1000);
     if(plan && !already4){
-      setStatus("先頭の桁を読み直しています…");
+      setStatus(L("先頭の桁を読み直しています…","Re-reading the first digit…"));
       const base = candidates.filter(c=>c.amount===plan.base);
       const agree = base.length || 1;
       const conf  = base.reduce((a,c)=>Math.max(a,Number(c.confidence)||0),0);
@@ -1958,22 +2020,22 @@ async function readCrop(){
     const ranked = Core.rankCandidates(candidates);
     if(!ranked.length){
       st.ocrChoices=null;
-      setStatus("枠の中に数字が見つかりませんでした。枠を合計に合わせ直すか、金額を入れてね");
+      setStatus(L("枠の中に数字が見つかりませんでした。枠を合計に合わせ直すか、金額を入れてね","No digits found inside the box. Move the box onto the total, or type the amount"));
       renderSheet(); return;
     }
     if(Core.needsConfirmation(ranked)){
       st.ocrChoices = ranked.slice(0, Core.MAX_CHOICES).map(r=>r.amount);
-      setStatus("どれが合計か選んでください");
+      setStatus(L("どれが合計か選んでください","Choose which one is the total"));
       renderSheet(); return;
     }
     st.ocrChoices=null;
     st.amount=String(ranked[0].amount);
-    setStatus(`金額を「${yen(ranked[0].amount)}」と読みました。ちがう時は直してね`);
+    setStatus(L(`金額を「${yen(ranked[0].amount)}」と読みました。ちがう時は直してね`, `Read the amount as ${yen(ranked[0].amount)}. Change it if that's wrong`));
     renderSheet();
   }catch(e){
     const why=(e&&e.message)?e.message:String(e||"原因不明");
     st.ocrChoices=null;
-    setStatus(`読み取れませんでした：${why}。金額は手で入れられます`);
+    setStatus(L(`読み取れませんでした：${why}。金額は手で入れられます`, `Could not read it: ${why}. You can type the amount yourself`));
     renderSheet();
   }finally{
     /* 高解像度画像はここでは解放しない。
@@ -2081,8 +2143,8 @@ async function ocrCandidates(jobs, opts){
       logger: m=>{
         if(m && m.status && typeof m.progress==="number"){
           const pct=Math.round(m.progress*100);
-          if(m.status.indexOf("load")>=0||m.status.indexOf("initial")>=0) setStatus(`読み取りの準備中… ${pct}%（初回だけ少し時間がかかります）`);
-          else if(m.status.indexOf("recogniz")>=0) setStatus(`読み取り中… ${pct}%`);
+          if(m.status.indexOf("load")>=0||m.status.indexOf("initial")>=0) setStatus(L(`読み取りの準備中… ${pct}%（初回だけ少し時間がかかります）`, `Getting the reader ready… ${pct}% — the first time takes a little longer`));
+          else if(m.status.indexOf("recogniz")>=0) setStatus(L(`読み取り中… ${pct}%`, `Reading… ${pct}%`));
         }
       }
     }));
@@ -2161,7 +2223,7 @@ async function saveTx(){
   /* ＝ を押さずに「記録する」を押しても、待っている計算を済ませてから記録する */
   if(st.calc && st.calc.op) st.amount=String(Core.calcValue(st.calc));
   const amount=parseInt(String(st.amount).replace(/[^\d]/g,""),10);
-  if(!amount||amount<=0){ toast("金額を入れてね"); const ai=$("s-amt"); if(ai) ai.focus(); return; }
+  if(!amount||amount<=0){ toast(L("金額を入れてね","Please enter an amount")); const ai=$("s-amt"); if(ai) ai.focus(); return; }
 
   /* 保存用に写真を小さくする（そのままだと保存領域を超えて何も残らない）。
      読み取り用の高解像度画像は、保存が成功してから手放す。
@@ -2181,12 +2243,13 @@ async function saveTx(){
   } else {
     const rec={id:uid(),type:st.type,amount,cat:st.cat,date:st.date,memo:st.memo,photo:photo};
     if(recurring) rec.recurring=true;   // オフのときはキーごと持たない（保存を軽くする）
+    if(curCountry()!=="JP") rec.country=curCountry();   // JPは印を持たない
     state.tx.push(rec);
   }
 
   if(save()){
     releaseOcrImage(st);            // 記録が確定した。高解像度はここで手放す
-    showSheet(false); render(); toast(st.mode==="edit"?"更新しました":"記録できました ✓");
+    showSheet(false); render(); toast(st.mode==="edit"?L("更新しました","Updated"):L("記録できました ✓","Recorded ✓"));
     return;
   }
 
@@ -2197,7 +2260,7 @@ async function saveTx(){
     if(save()){
       releaseOcrImage(st);          // 写真は諦めたが記録は確定した
       showSheet(false); render();
-      toast("記録しました（写真は容量オーバーで保存できません）");
+      toast(L("記録しました（写真は容量オーバーで保存できません）","Recorded — the photo did not fit in storage"));
       return;
     }
   }
@@ -2206,8 +2269,10 @@ async function saveTx(){
      シートは開いたままなので、photoHi は解放しない（枠を直して読み直せるように）。 */
   state.tx = JSON.parse(before);
   const msg = isQuotaError(lastSaveError)
-    ? "保存できません。せっていの「写真をすべて消す」で空きを作ってください"
-    : "この端末では保存が使えません（プライベートブラウズ等）";
+    ? L("保存できません。せっていの「写真をすべて消す」で空きを作ってください",
+        "Storage is full. Use \"Delete all photos\" in Settings to make room")
+    : L("この端末では保存が使えません（プライベートブラウズ等）",
+        "Saving isn't available on this device — private browsing, perhaps");
   toast(msg);
 }
 
@@ -2217,25 +2282,25 @@ function delTx(){
   state.tx = state.tx.filter(t=>t.id!==sheetState.id);
   if(!save()){
     state.tx = before;            // 消えたように見えて復活する、を防ぐ
-    toast("削除できませんでした");
+    toast(L("削除できませんでした","Could not delete it"));
     return;                       // 編集シートは閉じない
   }
-  showSheet(false); render(); toast("削除しました");
+  showSheet(false); render(); toast(L("削除しました","Deleted"));
 }
 
 /* 予定を1件足す。保存に失敗したら、足す前に完全に戻す。 */
 function addPlan(date){
   if(!date) return;
   const text=($("p-text")?$("p-text").value:"").trim();
-  if(!text){ toast("予定を書いてください"); focusField("p-text"); return; }
+  if(!text){ toast(L("予定を書いてください","Please write what's planned")); focusField("p-text"); return; }
   const before=JSON.parse(JSON.stringify(state.plans||{}));
   const list=(state.plans[date]||[]).slice();
-  if(list.length>=Core.PLAN_PER_DAY_MAX){ toast(`1日に入れられるのは ${Core.PLAN_PER_DAY_MAX}件までです`); return; }
+  if(list.length>=Core.PLAN_PER_DAY_MAX){ toast(L(`1日に入れられるのは ${Core.PLAN_PER_DAY_MAX}件までです`, `You can add up to ${Core.PLAN_PER_DAY_MAX} a day`)); return; }
   list.push({ id:uid(), time:Core.normalizeTimeString($("p-time")?$("p-time").value:""),
               text:text.slice(0,Core.PLAN_TEXT_MAX), done:false });
   state.plans[date]=Core.sortPlans(list);
-  if(!save()){ state.plans=before; toast("予定を保存できませんでした"); render(); return; }
-  toast("予定を入れました ✓"); render();
+  if(!save()){ state.plans=before; toast(L("予定を保存できませんでした","Could not save the schedule")); render(); return; }
+  toast(L("予定を入れました ✓","Added to the schedule ✓")); render();
 }
 
 /* 予定を1件消す */
@@ -2244,7 +2309,7 @@ function delPlan(date, id){
   const before=JSON.parse(JSON.stringify(state.plans));
   state.plans[date]=state.plans[date].filter(p=>p.id!==id);
   if(!state.plans[date].length) delete state.plans[date];
-  if(!save()){ state.plans=before; toast("消せませんでした"); }
+  if(!save()){ state.plans=before; toast(L("消せませんでした","Could not delete it")); }
   render();
 }
 
@@ -2253,7 +2318,7 @@ function togglePlan(date, id){
   if(!date||!id||!state.plans[date]) return;
   const before=JSON.parse(JSON.stringify(state.plans));
   state.plans[date]=state.plans[date].map(p=> p.id===id ? Object.assign({}, p, {done:!p.done}) : p);
-  if(!save()){ state.plans=before; toast("保存できませんでした"); }
+  if(!save()){ state.plans=before; toast(L("保存できませんでした","Could not save")); }
   render();
 }
 
@@ -2265,6 +2330,7 @@ function saveSettingsQuiet(){
   const num=v=>{ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; };
   const before = JSON.parse(JSON.stringify(state.settings));
   const s=Object.assign({}, state.settings);
+  const c0=g("f-country"); if(c0) s.country=Core.pickCountry(c0);
   /* NISAの月額は内訳から自動計算。読み取り専用の表示なので書き戻さない */
   s.birth=Core.normalizeBirth(g("f-birth"));
   s.goalName=(g("f-gname")||"").slice(0,24);
@@ -2282,6 +2348,7 @@ function saveSettings(){
   const before = JSON.parse(JSON.stringify(state.settings));
 
   const s=Object.assign({}, state.settings);
+  const c0=g("f-country"); if(c0) s.country=Core.pickCountry(c0);
   /* NISAの月額は内訳から自動計算。読み取り専用の表示なので書き戻さない */
   s.birth=Core.normalizeBirth(g("f-birth"));
   s.goalName=(g("f-gname")||"").slice(0,24);
@@ -2292,28 +2359,28 @@ function saveSettings(){
 
   if(!save()){
     state.settings = before;      // 画面と保存データが食い違わないよう完全に戻す
-    toast("設定を保存できませんでした");
+    toast(T("set.saveFailed"));
     return;                       // 設定画面は閉じない
   }
-  toast("保存しました ✓"); view="home"; render();
+  toast(T("set.saved")); view="home"; render();
 }
 
 /* ---------- 連携：ライフプラン形式の月次スナップショット ---------- */
 function purgePhotos(){
   const n=state.tx.filter(t=>t.photo).length;
-  if(!n){ toast("消せる写真はありません"); return; }   // 保存処理そのものを行わない
+  if(!n){ toast(L("消せる写真はありません","There are no photos to delete")); return; }   // 保存処理そのものを行わない
   const before = JSON.parse(JSON.stringify(state.tx)); // 失敗したら戻せるように退避
   state.tx.forEach(t=>{ t.photo=null; });
   if(!save()){
     state.tx = before;            // 写真をすべて元へ戻す
-    toast("写真を消せませんでした");
+    toast(L("写真を消せませんでした","Could not delete the photos"));
     return;                       // 再描画しない
   }
-  render(); toast(`写真${n}枚を消しました（記録は残っています）`);
+  render(); toast(L(`写真${n}枚を消しました（記録は残っています）`, `Deleted ${n} photos — the records are still there`));
 }
 function exportBackup(){
   saveFile(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(Core.buildBackup(state), null, 2),
-    "application/json", "バックアップを書き出しました");
+    "application/json", L("バックアップを書き出しました","Backup exported"));
 }
 
 /* --- バックアップの読み込み（復元） --- */
@@ -2324,14 +2391,14 @@ function onBackupPicked(file){
   const clear=()=>{ if(el) el.value=""; };   // 同じファイルをもう一度選べるようにする
   if(!file){ clear(); return; }
   const reader=new FileReader();
-  reader.onerror=()=>{ toast("ファイルを読み込めませんでした"); clear(); };
+  reader.onerror=()=>{ toast(L("ファイルを読み込めませんでした","Could not read that file")); clear(); };
   reader.onload=()=>{
     let restored;
     try{
       const raw = Core.parseBackupJson(reader.result);
       restored = Core.normalizeBackup(raw);         // ここで壊れた値を安全な形に整える
     }catch(e){
-      toast(`読み込めません：${(e&&e.message)||"形式が違います"}`);
+      toast(L(`読み込めません：${(e&&e.message)||"形式が違います"}`, `Could not load it: ${(e&&e.message)||"the format is wrong"}`));
       clear(); return;                              // 現在のデータは一切変更しない
     }
 
@@ -2352,11 +2419,11 @@ function onBackupPicked(file){
     state.pulse = restored.pulse || [];   // 心拍数の履歴も復元する
     if(!save()){
       state = before;                               // 保存できないなら元のまま
-      toast("バックアップを復元できませんでした");
+      toast(L("バックアップを復元できませんでした","Could not restore the backup"));
       clear(); return;
     }
     view="home"; render();
-    toast(`バックアップを復元しました（${restored.tx.length}件）`);
+    toast(L(`バックアップを復元しました（${restored.tx.length}件）`, `Backup restored — ${restored.tx.length} records`));
     clear();
   };
   reader.readAsText(file);
@@ -2429,7 +2496,9 @@ function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
    ・測定終了・中止・画面移動のいずれでも、カメラとライトを必ず止める。
    ・医療機器ではない。健康管理の参考値。
    ========================================================================= */
-const PULSE_DISCLAIMER = "この測定値は健康管理の参考値です。診断・治療目的では使用できません。";
+const PULSE_DISCLAIMER_JA = "この測定値は健康管理の参考値です。診断・治療目的では使用できません。";
+const PULSE_DISCLAIMER_EN = "This reading is a rough guide for your own tracking. It must not be used to diagnose or treat anything.";
+function pulseDisclaimer(){ return L(PULSE_DISCLAIMER_JA, PULSE_DISCLAIMER_EN); }
 
 let pulseStage = "home";   // "home"（結果・履歴）／"measure"（測定中）
 let pulseCond  = "rest";   // 測定状態（安静時／運動後／その他）
@@ -2466,7 +2535,7 @@ function pulseWhen(rec){
 }
 /* ★★★☆☆ と言葉。呼び名は core.js に合わせて「測定品質」で統一する。 */
 function pulseQualityText(stars){
-  return `${Core.pulseStarText(stars)} <span>${escapeHtml(Core.pulseQualityLabel(stars))}</span>`;
+  return `${Core.pulseStarText(stars)} <span>${escapeHtml(Core.pulseQualityLabel(stars, state.settings))}</span>`;
 }
 
 /* ---------- 画面 ---------- */
@@ -2492,9 +2561,9 @@ function renderPulse(){
         <div class="pv mono">${pulseResult.bpm}<small>bpm</small></div>
         <div class="pq">${pulseQualityText(pulseResult.stars)}</div>
       </div>
-      <div class="presok">記録しました ✓</div>
-      <button class="btn-main" style="margin-top:10px" data-act="pulse-to-health" data-bpm="${pulseResult.bpm}">❤️ ${pulseResult.bpm}bpm を健康記録に入れる</button>
-      <div class="pnote">健康記録は1日1件です。すでに今日の心拍数が入っていれば上書きされます。<br>${escapeHtml(PULSE_DISCLAIMER)}</div>
+      <div class="presok">${L("記録しました ✓","Saved ✓")}</div>
+      <button class="btn-main" style="margin-top:10px" data-act="pulse-to-health" data-bpm="${pulseResult.bpm}">${L(`❤️ ${pulseResult.bpm}bpm を健康記録に入れる`, `❤️ Add ${pulseResult.bpm} bpm to your health record`)}</button>
+      <div class="pnote">${L("健康記録は1日1件です。すでに今日の心拍数が入っていれば上書きされます。","The health record holds one entry a day. Today's heart rate is replaced if one is already there.")}<br>${escapeHtml(pulseDisclaimer())}</div>
     </div>`;
   }
 
@@ -2513,49 +2582,52 @@ function renderPulse(){
   }).join("");
 
   return `<div class="screen">
-    <div class="stitle" style="margin-top:6px">心拍数<span class="betatag">β版</span></div>
+    <div class="stitle" style="margin-top:6px">${L("心拍数","Heart rate")}<span class="betatag">${L("β版","beta")}</span></div>
     <div class="calcnote" style="margin:0 0 10px">
-      背面カメラのレンズとライトを、指の腹でそっとふさいで60秒。
-      指の中の血の色の変化から脈を数えます。<br>
-      強く押しつけると血が止まって波が出ません。<b>軽く当てて動かさない</b>のがコツです。
+      ${L("背面カメラのレンズとライトを、指の腹でそっとふさいで60秒。","Cover the rear camera lens and its light with the pad of a finger for 60 seconds.")}
+      ${L("指の中の血の色の変化から脈を数えます。","Your pulse is counted from the colour change of the blood in your finger.")}<br>
+      ${L("強く押しつけると血が止まって波が出ません。","Pressing hard stops the blood flow and no waveform appears.")}<b>${L("軽く当てて動かさない","Rest it lightly and keep still")}</b>${L("のがコツです。"," — that is the trick.")}
     </div>
 
     ${resHtml}
 
     <div class="barlist">
-      <div class="chtitle">測定状態</div>
+      <div class="chtitle">${L("測定状態","Condition")}</div>
       <div class="rangebar" style="display:flex;gap:6px;margin:6px 0 12px">
-        ${cbtn("rest","安静時")}${cbtn("post","運動後")}${cbtn("other","その他")}
+        ${cbtn("rest",L("安静時","At rest"))}${cbtn("post",L("運動後","After exercise"))}${cbtn("other",L("その他","Other"))}
       </div>
-      <button class="btn-main" data-act="pulse-start">📷 測定を始める（60秒）</button>
-      <div class="pnote">${escapeHtml(PULSE_DISCLAIMER)}</div>
+      <button class="btn-main" data-act="pulse-start">${L("📷 測定を始める（60秒）","📷 Start measuring — 60 seconds")}</button>
+      <div class="pnote">${escapeHtml(pulseDisclaimer())}</div>
     </div>
 
-    <div class="stitle">これまでの測定（${list.length}件）</div>
+    <div class="stitle">${L(`これまでの測定（${list.length}件）`, `Past measurements — ${list.length}`)}</div>
     ${list.length
       ? `<div class="plist">${rows}</div>
-         <button class="btn-quiet" data-act="pulse-csv">📄 CSVで書き出す</button>`
-      : `<div class="empty"><span class="e">💓</span>まだ測定がありません。<br>上のボタンから測ってみてください。</div>`}
+         <button class="btn-quiet" data-act="pulse-csv">${L("📄 CSVで書き出す","📄 Export as CSV")}</button>`
+      : `<div class="empty"><span class="e">💓</span>${L("まだ測定がありません。<br>上のボタンから測ってみてください。","No measurements yet.<br>Use the button above to take one.")}</div>`}
     <div style="height:8px"></div>
   </div>`;
 }
 
 /* 詳細（通常は出さない項目） */
+/* 測定状態の呼び名。保存されるのは rest / post / other という内部IDのまま。 */
+function pulseCondLabel(cond){ return Core.pulseCondLabel(cond, state.settings); }
+
 function pulseDetailHtml(r){
   const row=(k,v)=>`<div class="pdrow"><span class="k">${k}</span><span class="v mono">${escapeHtml(String(v))}</span></div>`;
   return `<div class="pdetail">
-    ${row("採用窓", `${r.kept==null?"—":r.kept} / ${r.wins==null?"—":r.wins}`)}
-    ${row("ばらつき", `${r.spread==null?"—":r.spread} bpm`)}
+    ${row(L("採用窓","Windows used"), `${r.kept==null?"—":r.kept} / ${r.wins==null?"—":r.wins}`)}
+    ${row(L("ばらつき","Spread"), `${r.spread==null?"—":r.spread} bpm`)}
     ${row("fps", r.fps==null?"—":r.fps)}
-    ${row("カメラ解像度", r.cam||"—")}
-    ${row("ライト", r.torch?"ON":"OFF")}
-    ${row("測定状態", Core.PULSE_CONDS[r.cond]||r.cond)}
-    ${row("使用端末", r.device||"—")}
-    ${row("測定日時", r.ts||`${r.date} ${r.time}`)}
-    <button class="btn-main" style="margin-top:10px" data-act="pulse-to-health" data-bpm="${r.bpm}">❤️ ${r.bpm}bpm を健康記録に入れる</button>
+    ${row(L("カメラ解像度","Camera resolution"), r.cam||"—")}
+    ${row(L("ライト","Light"), r.torch?"ON":"OFF")}
+    ${row(L("測定状態","Condition"), pulseCondLabel(r.cond))}
+    ${row(L("使用端末","Device"), r.device||"—")}
+    ${row(L("測定日時","Measured at"), r.ts||`${r.date} ${r.time}`)}
+    <button class="btn-main" style="margin-top:10px" data-act="pulse-to-health" data-bpm="${r.bpm}">${L(`❤️ ${r.bpm}bpm を健康記録に入れる`, `❤️ Add ${r.bpm} bpm to your health record`)}</button>
     <div class="pdbtns">
-      <button class="ed" data-act="pulse-edit" data-id="${escapeAttr(r.id)}">✏️ 編集</button>
-      <button class="de" data-act="pulse-del" data-id="${escapeAttr(r.id)}">🗑 削除</button>
+      <button class="ed" data-act="pulse-edit" data-id="${escapeAttr(r.id)}">${L("✏️ 編集","✏️ Edit")}</button>
+      <button class="de" data-act="pulse-del" data-id="${escapeAttr(r.id)}">${L("🗑 削除","🗑 Delete")}</button>
     </div>
   </div>`;
 }
@@ -2564,13 +2636,13 @@ function pulseDetailHtml(r){
 function pulseEditHtml(r){
   const opt=(k,label)=>`<option value="${k}"${r.cond===k?" selected":""}>${label}</option>`;
   return `<div class="pedit">
-    <div class="field"><label>心拍数（bpm）</label>
+    <div class="field"><label>${L("心拍数（bpm）","Heart rate in bpm")}</label>
       <input id="pe-bpm" inputmode="numeric" value="${r.bpm}"></div>
-    <div class="field"><label>測定状態</label>
-      <select id="pe-cond">${opt("rest","安静時")}${opt("post","運動後")}${opt("other","その他")}</select></div>
-    <div class="fhelp">測定品質・採用窓・fps などは測ったときの記録なので直せません。</div>
-    <button class="btn-main" style="margin-top:8px" data-act="pulse-edit-save" data-id="${escapeAttr(r.id)}">この内容で直す</button>
-    <button class="btn-quiet" data-act="pulse-edit-cancel">やめる</button>
+    <div class="field"><label>${L("測定状態","Condition")}</label>
+      <select id="pe-cond">${opt("rest",pulseCondLabel("rest"))}${opt("post",pulseCondLabel("post"))}${opt("other",pulseCondLabel("other"))}</select></div>
+    <div class="fhelp">${L("測定品質・採用窓・fps などは測ったときの記録なので直せません。","Quality, windows used and fps are recorded at the time of measuring and cannot be changed.")}</div>
+    <button class="btn-main" style="margin-top:8px" data-act="pulse-edit-save" data-id="${escapeAttr(r.id)}">${L("この内容で直す","Save these changes")}</button>
+    <button class="btn-quiet" data-act="pulse-edit-cancel">${L("やめる","Cancel")}</button>
   </div>`;
 }
 
@@ -2578,27 +2650,27 @@ function pulseEditHtml(r){
    数字の更新は getElementById で中身だけ書き換える。 */
 function renderPulseMeasure(){
   return `<div class="screen">
-    <div class="stitle" style="margin-top:6px">測定中<span class="betatag">β版</span></div>
+    <div class="stitle" style="margin-top:6px">${L("測定中","Measuring")}<span class="betatag">${L("β版","beta")}</span></div>
     <div class="barlist">
-      <div class="pprev" id="pulse-preview">カメラを準備中…</div>
-      <div class="phold" id="pulse-hold">指をカメラとライトに当ててください</div>
-      <div class="pcount mono"><span id="pulse-cnt">${Core.PULSE_CFG.TOTAL_SEC}</span><small>秒</small></div>
+      <div class="pprev" id="pulse-preview">${L("カメラを準備中…","Getting the camera ready…")}</div>
+      <div class="phold" id="pulse-hold">${L("指をカメラとライトに当ててください","Rest a finger on the camera and its light")}</div>
+      <div class="pcount mono"><span id="pulse-cnt">${Core.PULSE_CFG.TOTAL_SEC}</span><small>${L("秒","s")}</small></div>
       <div class="ptrack"><i id="pulse-bar" class="prep"></i></div>
-      <div class="pphase" id="pulse-phase">カメラを準備中</div>
+      <div class="pphase" id="pulse-phase">${L("カメラを準備中","Getting the camera ready")}</div>
       <canvas id="pulse-wave" width="640" height="150"></canvas>
       <div class="plive">
-        <span>いまの心拍数 <b id="pulse-bpm">--</b> bpm</span>
+        <span>${L("いまの心拍数","Heart rate now")} <b id="pulse-bpm">--</b> bpm</span>
         <span id="pulse-fps">--fps</span>
       </div>
       <div class="pguide" id="pulse-guide">
-        <span class="gi" id="pulse-gi">🔎</span><span class="gt" id="pulse-gt">信号を確認しています</span>
+        <span class="gi" id="pulse-gi">🔎</span><span class="gt" id="pulse-gt">${L("信号を確認しています","Checking the signal")}</span>
       </div>
       <div class="qbar">
-        <div class="ql"><span>測定品質</span><span id="pulse-qv">—</span></div>
+        <div class="ql"><span>${L("測定品質","Quality")}</span><span id="pulse-qv">—</span></div>
         <div class="qt"><i id="pulse-qf"></i></div>
       </div>
-      <button class="btn-ghost" style="margin-top:14px" data-act="pulse-stop">測定をやめる</button>
-      <div class="pnote">${escapeHtml(PULSE_DISCLAIMER)}</div>
+      <button class="btn-ghost" style="margin-top:14px" data-act="pulse-stop">${L("測定をやめる","Stop measuring")}</button>
+      <div class="pnote">${escapeHtml(pulseDisclaimer())}</div>
     </div>
   </div>`;
 }
@@ -2830,13 +2902,13 @@ function pulseGuide(recent, bright, okRate, prep){
   pulseSetText("pulse-qv", recent.length<10 ? "—" : q.toFixed(0)+"%");
 
   let key,icon,text,cls;
-  if(recent.length<8)                    { key="wait";  icon="🔎"; text="信号を確認しています"; cls=""; }
-  else if(bright<20)                     { key="dark";  icon="💡"; text="暗すぎます。ライトが指で隠れているか確かめてください"; cls="bad"; }
-  else if(red<C.minRedRatio||bright>235) { key="off";   icon="👆"; text="レンズを完全に覆ってください"; cls="bad"; }
-  else if(sd>30)                         { key="move";  icon="✋"; text="指が動いています。そのまま止めてください"; cls="warn"; }
-  else if(acdc<0.0008)                   { key="tight"; icon="🤏"; text="指の力を少し緩めてください"; cls="warn"; }
-  else if(okRate<0.8||acdc<C.minAcDc)    { key="weak";  icon="〰️"; text="信号が弱めです。指の位置を少しずらしてください"; cls="warn"; }
-  else                                   { key="good";  icon="✅"; text=prep?"良好です。このまま保ってください":"測定良好"; cls=""; }
+  if(recent.length<8)                    { key="wait";  icon="🔎"; text=L("信号を確認しています","Checking the signal"); cls=""; }
+  else if(bright<20)                     { key="dark";  icon="💡"; text=L("暗すぎます。ライトが指で隠れているか確かめてください","Too dark — check that your finger is covering the light"); cls="bad"; }
+  else if(red<C.minRedRatio||bright>235) { key="off";   icon="👆"; text=L("レンズを完全に覆ってください","Cover the lens completely"); cls="bad"; }
+  else if(sd>30)                         { key="move";  icon="✋"; text=L("指が動いています。そのまま止めてください","Your finger is moving — hold it still"); cls="warn"; }
+  else if(acdc<0.0008)                   { key="tight"; icon="🤏"; text=L("指の力を少し緩めてください","Press a little more gently"); cls="warn"; }
+  else if(okRate<0.8||acdc<C.minAcDc)    { key="weak";  icon="〰️"; text=L("信号が弱めです。指の位置を少しずらしてください","The signal is weak — shift your finger slightly"); cls="warn"; }
+  else                                   { key="good";  icon="✅"; text=prep?L("良好です。このまま保ってください","Looking good — hold it there"):L("測定良好","Reading well"); cls=""; }
 
   const now=(typeof performance!=="undefined"&&performance.now)?performance.now():Date.now();
   if(key!==pGuideKey && now-pGuideAt>=1500){
@@ -2907,10 +2979,10 @@ function pulseFinish(){
   pulseStage="home";
   if(chk.ok){
     if(pulseSaveRecord(r)) pulseSaved=true;
-    else pulseCheck={ ok:false, msg:"記録を保存できませんでした（端末の空き容量をご確認ください）", detail:"" };
+    else pulseCheck={ ok:false, msg:L("記録を保存できませんでした（端末の空き容量をご確認ください）","Could not save the measurement — please check your free space"), detail:"" };
   }
   render();
-  if(pulseSaved) toast(`心拍数 ${r.bpm}bpm を記録しました ✓`);
+  if(pulseSaved) toast(L(`心拍数 ${r.bpm}bpm を記録しました ✓`, `Heart rate ${r.bpm} bpm saved ✓`));
 }
 
 /* 保存に失敗したら、記録する前の状態へ完全に戻す。 */
@@ -2940,12 +3012,12 @@ function pulseDelete(id){
   const list=state.pulse||[];
   const r=list.find(x=>x.id===id);
   if(!r) return;
-  if(typeof confirm==="function" && !confirm(`この測定を削除しますか？\n${pulseWhen(r)}　${r.bpm}bpm`)) return;
+  if(typeof confirm==="function" && !confirm(L(`この測定を削除しますか？\n${pulseWhen(r)}　${r.bpm}bpm`, `Delete this measurement?\n${pulseWhen(r)} · ${r.bpm} bpm`))) return;
   const before=list;
   state.pulse=list.filter(x=>x.id!==id);
-  if(!save()){ state.pulse=before; toast("削除できませんでした"); return; }
+  if(!save()){ state.pulse=before; toast(L("削除できませんでした","Could not delete it")); return; }
   pulseOpenId=null; pulseEditId=null;
-  render(); toast("削除しました ✓");
+  render(); toast(L("削除しました ✓","Deleted ✓"));
 }
 
 function pulseEditSave(id){
@@ -2958,14 +3030,14 @@ function pulseEditSave(id){
     cond:cEl?cEl.value:list[idx].cond,
   });
   const rec=Core.normalizePulseEntry(merged);
-  if(!rec){ toast(`心拍数は ${Core.PULSE_SAVE.bpmMin}〜${Core.PULSE_SAVE.bpmMax}bpm で入れてください`); return; }
+  if(!rec){ toast(L(`心拍数は ${Core.PULSE_SAVE.bpmMin}〜${Core.PULSE_SAVE.bpmMax}bpm で入れてください`, `Heart rate must be between ${Core.PULSE_SAVE.bpmMin} and ${Core.PULSE_SAVE.bpmMax} bpm`)); return; }
   rec.id=id;
   const before=list;
   const next=list.slice(); next[idx]=rec;
   state.pulse=Core.normalizePulseList(next);
-  if(!save()){ state.pulse=before; toast("直せませんでした"); return; }
+  if(!save()){ state.pulse=before; toast(L("直せませんでした","Could not save the change")); return; }
   pulseEditId=null;
-  render(); toast("直しました ✓");
+  render(); toast(L("直しました ✓","Updated ✓"));
 }
 
 /* 測った心拍数を、健康記録（体重・血圧と同じ入れ物）へ入れる。
@@ -2974,26 +3046,26 @@ function pulseEditSave(id){
    保存に失敗したら、入れる前の状態へ完全に戻す。 */
 function pulseToHealth(bpm){
   const b=Math.round(Number(bpm));
-  if(!Number.isFinite(b)){ toast("心拍数を読み取れませんでした"); return; }
+  if(!Number.isFinite(b)){ toast(L("心拍数を読み取れませんでした","Could not read the heart rate")); return; }
   const today=todayISO();
   const cur=state.health[today]||{};
   const entry=Core.normalizeHealthEntry(Object.assign({}, cur, {pulse:b}));
-  if(!entry){ toast("健康記録に入れられませんでした"); return; }
+  if(!entry){ toast(L("健康記録に入れられませんでした","Could not add it to the health record")); return; }
   const before=JSON.parse(JSON.stringify(state.health));
   state.health=Object.assign({}, state.health); state.health[today]=entry;
   if(!save()){
     state.health=before;     // 入れる前へ完全に戻す
-    toast("記録を保存できませんでした");
+    toast(L("記録を保存できませんでした","Could not save the entry"));
     return;
   }
-  render(); toast(`心拍数 ${b}bpm を健康記録に入れました ✓`);
+  render(); toast(L(`心拍数 ${b}bpm を健康記録に入れました ✓`, `Heart rate ${b} bpm added to your health record ✓`));
 }
 
 function pulseExportCsv(){
   const list=state.pulse||[];
-  if(!list.length){ toast("書き出す測定がありません"); return; }
+  if(!list.length){ toast(L("書き出す測定がありません","There are no measurements to export")); return; }
   saveFile(`kakeibo-pulse-${todayISO()}.csv`, "\ufeff"+Core.pulseCsv(list), "text/csv",
-    "CSVを書き出しました");
+    L("CSVを書き出しました","CSV exported"));
 }
 
 /* =========================================================================
@@ -3077,7 +3149,7 @@ function lpSave(next){
   state.settings = Core.normalizeSettings(Object.assign({}, state.settings, { lp: Core.lpEnsureIds(next) }));
   if(!save()){
     state.settings = before;
-    toast("保存できませんでした");
+    toast(L("保存できませんでした","Could not save"));
     return false;
   }
   return true;
@@ -3088,12 +3160,16 @@ function lpSave(next){
    廃止した先取りの欄に出していた案内。内訳が唯一の入力口になったので、
    この一覧の行へ移した。 */
 function nisaNote(s, on){
-  if(!Core.nisaAuto(s)) return "生年月日と区間を入れると自動計算";
+  if(!Core.nisaAuto(s)) return L("生年月日と区間を入れると自動計算",
+    "Enter your date of birth and the age ranges to calculate this automatically");
   const now = Core.nisaPlannedOn(s, on);
-  if(now > 0) return `いまは ${ageLabel(s.birth)}。区間から自動で計算しています`;
+  if(now > 0) return L(`いまは ${ageLabel(s.birth)}。区間から自動で計算しています`,
+    `You are ${ageLabel(s.birth)} — calculated automatically from the age ranges`);
   const next = Core.nisaUpcoming(s, on);
-  if(next) return `まだ積立の期間に入っていません。${next.fromAge}歳から 月${yen(next.monthly)}`;
-  return `いまは ${ageLabel(s.birth)}。積立の期間はすべて終わっています`;
+  if(next) return L(`まだ積立の期間に入っていません。${next.fromAge}歳から 月${yen(next.monthly)}`,
+    `Contributions have not started yet — ${yen(next.monthly)} a month from age ${next.fromAge}`);
+  return L(`いまは ${ageLabel(s.birth)}。積立の期間はすべて終わっています`,
+    `You are ${ageLabel(s.birth)} — every contribution period has ended`);
 }
 
 /* ---------- 設定に出す一覧（合計と内訳ボタンだけ） ---------- */
@@ -3103,7 +3179,7 @@ function lpSummaryHtml(){
     <span class="lpi">${icon}</span>
     <span class="lpmid"><b>${label}</b><i>${escapeHtml(sub)}</i></span>
     <span class="lpv mono">${value}</span>
-    <button class="lpbtn" data-act="lp-open" data-kind="${kind}">内訳</button>
+    <button class="lpbtn" data-act="lp-open" data-kind="${kind}">${L("内訳","Details")}</button>
   </div>`;
   /* 出す数字は、どの項目も「毎月いくら」でそろえる。
      残高（評価額・預金残高・借入の元金）は右の数字ではなく、名前の下の小さい字に出す。
@@ -3111,26 +3187,29 @@ function lpSummaryHtml(){
      「保存できていない」ように見えていた。 */
   const on = Core.cycleRange(curYM(), state.settings.cycleStart).from;
   const age = Core.ageFromBirth(state.settings.birth, on);
-  const mon = (kind) => yen(Core.lpMonthlyOf(state.settings, kind, age))+"/月";
-  return `<div class="stitle">ライフプランへ渡すデータ</div>
+  const mon = (kind) => yen(Core.lpMonthlyOf(state.settings, kind, age))+T("home.perMonth");
+  const cnt = (n) => L(`${n}件`, `${n} ${n===1?"item":"items"}`);
+  return `<div class="stitle">${L("ライフプランへ渡すデータ","Data sent to the life plan")}</div>
   <div class="barlist">
-    ${row("nisa","📈","NISA積立", yen(Core.nisaPlannedOn(state.settings, on))+"/月", nisaNote(state.settings, on))}
-    ${row("gold","🪙","金（きん）", mon("gold"), `いま ${a.gold.currentGrams||0}g・評価 ${yen(Core.lpGoldValue(a.gold))}`)}
-    ${row("banks","🏦","銀行貯金", mon("banks"), `${a.banks.length}件・残高 ${yen(Core.lpBanksTotal(a.banks))}`)}
-    ${row("loans","💳","借入金", mon("loans"), `${a.loans.length}件・残り ${yen(Core.lpLoansTotal(a.loans))}`)}
-    ${row("ideco","🏛","iDeCo", mon("ideco"), a.ideco.productName||"毎月の掛金は先取り")}
-    ${row("insurance","🛟","各種保険", mon("insurance"), `${a.insurancePolicies.length}件`)}
-    ${row("pension","📜","民間年金", mon("pension"), `${a.privatePensionPlans.length}件`)}
-    <button class="btn-ghost" data-act="lp-export" style="margin-top:10px">📤 ライフプランへ渡す</button>
+    ${row("nisa","📈",T("lp.nisa"), yen(Core.nisaPlannedOn(state.settings, on))+T("home.perMonth"), nisaNote(state.settings, on))}
+    ${row("gold","🪙",T("lp.gold"), mon("gold"), L(`いま ${a.gold.currentGrams||0}g・評価 ${yen(Core.lpGoldValue(a.gold))}`, `${a.gold.currentGrams||0}g held · worth ${yen(Core.lpGoldValue(a.gold))}`))}
+    ${row("banks","🏦",T("lp.banks"), mon("banks"), L(`${a.banks.length}件・残高 ${yen(Core.lpBanksTotal(a.banks))}`, `${cnt(a.banks.length)} · balance ${yen(Core.lpBanksTotal(a.banks))}`))}
+    ${row("loans","💳",T("lp.loans"), mon("loans"), L(`${a.loans.length}件・残り ${yen(Core.lpLoansTotal(a.loans))}`, `${cnt(a.loans.length)} · ${yen(Core.lpLoansTotal(a.loans))} remaining`))}
+    ${row("ideco","🏛",T("lp.ideco"), mon("ideco"), a.ideco.productName||L("毎月の掛金は先取り","Monthly contribution is set aside"))}
+    ${row("insurance","🛟",T("lp.insurance"), mon("insurance"), cnt(a.insurancePolicies.length))}
+    ${row("pension","📜",T("lp.pension"), mon("pension"), cnt(a.privatePensionPlans.length))}
+    <button class="btn-ghost" data-act="lp-export" style="margin-top:10px">${L("📤 ライフプランへ渡す","📤 Send to the life plan")}</button>
   </div>`;
 }
 
 /* ---------- 内訳の画面 ---------- */
-const LP_TITLES = { nisa:"📈 NISA積立", ideco:"🏛 iDeCo", gold:"🪙 金（きん）", banks:"🏦 銀行貯金", loans:"💳 借入金", insurance:"🛟 各種保険", pension:"📜 民間年金" };
+const LP_ICONS = { nisa:"📈", ideco:"🏛", gold:"🪙", banks:"🏦", loans:"💳", insurance:"🛟", pension:"📜" };
+/* 見出しは「絵文字＋その国のことば」。名前そのものは core.js の表から取る。 */
+function lpTitle(kind){ return LP_ICONS[kind] + " " + T("lp."+kind); }
 
 function renderLp(){
   const a = lpAssets();
-  const tabs = LP_KINDS.map(k=>`<button data-act="lp-tab" data-kind="${k}" class="rgbtn${lpKind===k?" on":""}">${LP_TITLES[k].slice(2)}</button>`).join("");
+  const tabs = LP_KINDS.map(k=>`<button data-act="lp-tab" data-kind="${k}" class="rgbtn${lpKind===k?" on":""}">${T("lp."+k)}</button>`).join("");
   const body = lpKind==="nisa" ? lpNisaHtml(a)
     : lpKind==="ideco" ? lpIdecoHtml(a.ideco)
     : lpKind==="insurance" ? lpInsuranceHtml(a.insurancePolicies)
@@ -3139,10 +3218,10 @@ function renderLp(){
     : lpKind==="loans" ? lpLoansHtml(a.loans)
     : lpPensionHtml(a.privatePensionPlans);
   return `<div class="screen">
-    <div class="stitle" style="margin-top:6px">${LP_TITLES[lpKind]}</div>
+    <div class="stitle" style="margin-top:6px">${lpTitle(lpKind)}</div>
     <div class="rangebar" style="display:flex;gap:6px;margin:0 0 12px">${tabs}</div>
     ${body}
-    <button class="btn-quiet" data-act="lp-back" style="margin-top:14px">← せっていへ戻る</button>
+    <button class="btn-quiet" data-act="lp-back" style="margin-top:14px">${L("← せっていへ戻る","← Back to settings")}</button>
   </div>`;
 }
 
@@ -3155,33 +3234,33 @@ function lpNisaHtml(a){
   const seg = (key, id, rows) => rows.map((r,i)=>{
     const sum = (r.funds||[]).reduce((t,f)=>t+(f.amount||0),0);
     const funds = (r.funds||[]).map((f,n)=>`<div class="lpgrid" style="margin-bottom:6px">
-        <label>銘柄名<input id="${id}-fn-${i}-${n}" value="${escapeAttr(f.name)}" placeholder="全世界株式"></label>
-        <label>毎月の金額（円）<div style="display:flex;gap:6px">
+        <label>${L("銘柄名","Fund name")}<input id="${id}-fn-${i}-${n}" value="${escapeAttr(f.name)}" placeholder="${L("全世界株式","Global equity index")}"></label>
+        <label>${L("毎月の金額（円）","Monthly amount")}<div style="display:flex;gap:6px">
           <input class="mono" id="${id}-fa-${i}-${n}" inputmode="numeric" value="${f.amount||""}" placeholder="0">
           <button class="lpdel" data-act="lp-del-fund" data-key="${key}" data-i="${i}" data-n="${n}">🗑</button></div></label>
       </div>`).join("");
     return `<div class="lpseg">
-      <div class="lpseg-h"><b data-liveage="${key}-${i}">${r.fromAge||0}歳 〜 ${r.toAge||0}歳</b>
-        <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="${key}">🗑 区間ごと</button></div>
+      <div class="lpseg-h"><b data-liveage="${key}-${i}">${ageRangeLabel(r.fromAge||0, r.toAge||0)}</b>
+        <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="${key}">${L("🗑 区間ごと","🗑 Whole range")}</button></div>
       <div class="lpgrid">
-        <label>開始年齢<input class="mono" id="${id}-from-${i}" inputmode="decimal" value="${r.fromAge||""}" placeholder="57.75"></label>
-        <label>終了年齢<input class="mono" id="${id}-to-${i}" inputmode="decimal" value="${r.toAge||""}" placeholder="65"></label>
+        <label>${L("開始年齢","Start age")}<input class="mono" id="${id}-from-${i}" inputmode="decimal" value="${r.fromAge||""}" placeholder="57.75"></label>
+        <label>${L("終了年齢","End age")}<input class="mono" id="${id}-to-${i}" inputmode="decimal" value="${r.toAge||""}" placeholder="65"></label>
       </div>
-      <div class="lptotal" style="margin:8px 0 4px">この区間の月額 <b class="mono" data-live="${key}-${i}">${yen(sum)}</b></div>
-      ${funds || `<div class="fhelp" style="margin-bottom:6px">銘柄を足すと、その合計が月額になります</div>`}
-      <button class="btn-quiet" data-act="lp-add-fund" data-key="${key}" data-i="${i}">＋ 銘柄を足す</button>
+      <div class="lptotal" style="margin:8px 0 4px">${L("この区間の月額","Monthly total for this range")} <b class="mono" data-live="${key}-${i}">${yen(sum)}</b></div>
+      ${funds || `<div class="fhelp" style="margin-bottom:6px">${L("銘柄を足すと、その合計が月額になります","Add funds and their total becomes the monthly amount")}</div>`}
+      <button class="btn-quiet" data-act="lp-add-fund" data-key="${key}" data-i="${i}">${L("＋ 銘柄を足す","＋ Add a fund")}</button>
     </div>`;
   }).join("");
 
   const box = (title, key, id, rows) => `<div class="stitle" style="margin-top:4px">${title}</div>
     <div class="barlist">
-      ${seg(key,id,rows) || `<div class="empty"><span class="e">📈</span>まだ入っていません</div>`}
-      <button class="btn-quiet" data-act="lp-add" data-key="${key}">＋ 区間を足す</button>
+      ${seg(key,id,rows) || `<div class="empty"><span class="e">📈</span>${L("まだ入っていません","Nothing here yet")}</div>`}
+      <button class="btn-quiet" data-act="lp-add" data-key="${key}">${L("＋ 区間を足す","＋ Add an age range")}</button>
     </div>`;
 
   const lumps = a.lumpSums.map((l,i)=>`<div class="lpgrid" style="margin-bottom:8px">
-      <label>何歳のとき<input class="mono" id="lp-lm-age-${i}" inputmode="decimal" value="${l.age||""}" placeholder="59"></label>
-      <label>金額（円）<div style="display:flex;gap:6px">
+      <label>${L("何歳のとき","At what age")}<input class="mono" id="lp-lm-age-${i}" inputmode="decimal" value="${l.age||""}" placeholder="59"></label>
+      <label>${L("金額（円）","Amount")}<div style="display:flex;gap:6px">
         <input class="mono" id="lp-lm-amt-${i}" inputmode="numeric" value="${l.amount||""}" placeholder="0">
         <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="lumpSums">🗑</button></div></label>
     </div>`).join("");
@@ -3190,137 +3269,139 @@ function lpNisaHtml(a){
   const now = Core.nisaPlannedOn(s, from);
   const next = Core.nisaUpcoming(s, from);
   const head = !s.birth
-    ? `<div class="calcnote" style="margin:0 0 10px">せっていで<b>生年月日</b>を入れると、いまの年齢からこの月額を自動で計算します。</div>`
+    ? `<div class="calcnote" style="margin:0 0 10px">${L("せってい","Settings")}${L("で<b>生年月日</b>を入れると、いまの年齢からこの月額を自動で計算します。","：enter your <b>date of birth</b> and this monthly amount is worked out from your current age.")}</div>`
     : `<div class="calcnote" style="margin:0 0 10px">
-        いま <b>${escapeHtml(ageLabel(s.birth))}</b>。今月の先取りは <b>${yen(now)}</b> です。
-        ${next?`<br>${escapeHtml(mdLabel(next.startDate))}（${next.fromAge}歳）から 月${yen(next.monthly)} になります。`:""}
+        ${L(`いま <b>${escapeHtml(ageLabel(s.birth))}</b>。今月の先取りは <b>${yen(now)}</b> です。`,
+             `You are <b>${escapeHtml(ageLabel(s.birth))}</b>. This month you set aside <b>${yen(now)}</b>.`)}
+        ${next?L(`<br>${escapeHtml(mdLabel(next.startDate))}（${next.fromAge}歳）から 月${yen(next.monthly)} になります。`,
+                  `<br>From ${escapeHtml(mdLabel(next.startDate))}, age ${next.fromAge}, it becomes ${yen(next.monthly)} a month.`):""}
       </div>`;
 
   return `${head}
-    ${box("つみたて投資枠（積立）","tsumitateSchedule","lp-ts",a.tsumitateSchedule)}
-    ${box("成長投資枠（積立）","growthSchedule","lp-gs",a.growthSchedule)}
-    <div class="stitle" style="margin-top:4px">一括投資（ライフプランへ渡すだけ）</div>
+    ${box(L("つみたて投資枠（積立）","Regular contributions"),"tsumitateSchedule","lp-ts",a.tsumitateSchedule)}
+    ${box(L("成長投資枠（積立）","Growth allowance contributions"),"growthSchedule","lp-gs",a.growthSchedule)}
+    <div class="stitle" style="margin-top:4px">${L("一括投資（ライフプランへ渡すだけ）","Lump-sum investing — sent to the life plan only")}</div>
     <div class="barlist">
-      <div class="fhelp" style="margin-bottom:8px">まとまったお金なので、<b>かけいぼの毎月の計算には入りません</b>。ライフプランへ渡すためだけの欄です。</div>
-      ${lumps || `<div class="empty"><span class="e">💵</span>まだ入っていません</div>`}
-      <button class="btn-quiet" data-act="lp-add" data-key="lumpSums">＋ 一括投資を足す</button>
+      <div class="fhelp" style="margin-bottom:8px">${L("まとまったお金なので、<b>かけいぼの毎月の計算には入りません</b>。ライフプランへ渡すためだけの欄です。","This is a one-off amount, so it is <b>never part of the monthly budget</b>. It is only passed on to the life plan.")}</div>
+      ${lumps || `<div class="empty"><span class="e">💵</span>${L("まだ入っていません","Nothing here yet")}</div>`}
+      <button class="btn-quiet" data-act="lp-add" data-key="lumpSums">${L("＋ 一括投資を足す","＋ Add a lump sum")}</button>
     </div>
-    <button class="btn-main" data-act="lp-save-nisa" style="margin-top:4px">この内容で保存する</button>`;
+    <button class="btn-main" data-act="lp-save-nisa" style="margin-top:4px">${L("この内容で保存する","Save these details")}</button>`;
 }
 
 /* iDeCo。受給年齢まで引き出せないお金なので、かけいぼの毎月の計算には入れない。 */
 function lpIdecoHtml(d){
   const f=(id,label,val,ph,mode)=>`<label>${label}<input class="mono" id="${id}" inputmode="${mode||"numeric"}" value="${val||""}" placeholder="${ph}"></label>`;
   return `<div class="barlist">
-    <div class="fhelp" style="margin-bottom:8px">毎月の掛金は、金や民間年金と同じ<b>先取り</b>として引きます。
-      こちらに入れた分は、<b>記録から入れないでください</b>（二重になります）。<br>
-      給与から天引きされていて、記録する給与が天引き後の手取りなら、掛金は0のままにしてください。<br>
-      評価額や受取年齢は、ライフプランへ渡すためだけの欄です。</div>
+    <div class="fhelp" style="margin-bottom:8px">${L("毎月の掛金は、金や民間年金と同じ<b>先取り</b>として引きます。","The monthly contribution is treated as money <b>set aside</b>, like gold or a private pension.")}
+      ${L("こちらに入れた分は、<b>記録から入れないでください</b>（二重になります）。","Do <b>not</b> also enter it as a record — it would be counted twice.")}<br>
+      ${L("給与から天引きされていて、記録する給与が天引き後の手取りなら、掛金は0のままにしてください。","If it is deducted from your pay and the pay you record is already net of it, leave the contribution at 0.")}<br>
+      ${L("評価額や受取年齢は、ライフプランへ渡すためだけの欄です。","The balance and payout ages are only passed on to the life plan.")}</div>
     <div class="lpgrid">
-      <label>運用商品名<input id="lp-id-name" value="${escapeAttr(d.productName)}" placeholder="全世界株式"></label>
-      ${f("lp-id-monthly","毎月の掛金（円）",d.monthlyContribution,"0")}
-      ${f("lp-id-value","いまの評価額（円）",d.currentValue,"0")}
-      ${f("lp-id-principal","これまでの掛金合計（円）",d.principalTotal,"0")}
-      ${f("lp-id-start","掛金 開始年齢",d.startAge,"50","decimal")}
-      ${f("lp-id-end","掛金 終了年齢（その誕生日まで）",d.endAge,"65","decimal")}
-      ${f("lp-id-pstart","受取 開始年齢",d.payoutStartAge,"65","decimal")}
-      ${f("lp-id-pyears","受取 年数",d.payoutYears,"20","decimal")}
+      <label>${L("運用商品名","Fund name")}<input id="lp-id-name" value="${escapeAttr(d.productName)}" placeholder="${L("全世界株式","Global equity index")}"></label>
+      ${f("lp-id-monthly",L("毎月の掛金（円）","Monthly contribution"),d.monthlyContribution,"0")}
+      ${f("lp-id-value",L("いまの評価額（円）","Current balance"),d.currentValue,"0")}
+      ${f("lp-id-principal",L("これまでの掛金合計（円）","Total contributed so far"),d.principalTotal,"0")}
+      ${f("lp-id-start",L("掛金 開始年齢","Contributions start at age"),d.startAge,"50","decimal")}
+      ${f("lp-id-end",L("掛金 終了年齢（その誕生日まで）","Contributions end at age — up to that birthday"),d.endAge,"65","decimal")}
+      ${f("lp-id-pstart",L("受取 開始年齢","Payouts start at age"),d.payoutStartAge,"65","decimal")}
+      ${f("lp-id-pyears",L("受取 年数","Payout years"),d.payoutYears,"20","decimal")}
     </div>
-    <button class="btn-main" style="margin-top:10px" data-act="lp-save-ideco">この内容で保存する</button>
+    <button class="btn-main" style="margin-top:10px" data-act="lp-save-ideco">${L("この内容で保存する","Save these details")}</button>
   </div>`;
 }
 
 /* 各種保険。保険料は出ていくお金なので、毎月固定の支出として数える。 */
 function lpInsuranceHtml(list){
   const rows = list.map((p,i)=>`<div class="lpseg">
-    <div class="lpseg-h"><b>${escapeHtml(p.name)||"（名前なし）"}</b>
+    <div class="lpseg-h"><b>${escapeHtml(p.name)||L("（名前なし）","Unnamed")}</b>
       <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="insurancePolicies">🗑</button></div>
     <div class="lpgrid">
-      <label>保険の名前<input id="lp-in-name-${i}" value="${escapeAttr(p.name)}" placeholder="○○生命"></label>
-      <label>毎月の保険料（円）<input class="mono" id="lp-in-prem-${i}" inputmode="numeric" value="${p.monthlyPremium||""}" placeholder="0"></label>
-      <label>払い始め年齢<input class="mono" id="lp-in-from-${i}" inputmode="decimal" value="${p.premiumFromAge||""}" placeholder="46"></label>
-      <label>払い終わり年齢（その誕生日まで）<input class="mono" id="lp-in-to-${i}" inputmode="decimal" value="${p.premiumToAge||""}" placeholder="65"></label>
-      <label style="grid-column:1/-1">保障が続く年齢<input class="mono" id="lp-in-cov-${i}" inputmode="decimal" value="${p.coverageUntilAge||""}" placeholder="82"></label>
+      <label>${L("保険の名前","Policy name")}<input id="lp-in-name-${i}" value="${escapeAttr(p.name)}" placeholder="${L("○○生命","Life insurance")}"></label>
+      <label>${L("毎月の保険料（円）","Monthly premium")}<input class="mono" id="lp-in-prem-${i}" inputmode="numeric" value="${p.monthlyPremium||""}" placeholder="0"></label>
+      <label>${L("払い始め年齢","Premiums start at age")}<input class="mono" id="lp-in-from-${i}" inputmode="decimal" value="${p.premiumFromAge||""}" placeholder="46"></label>
+      <label>${L("払い終わり年齢（その誕生日まで）","Premiums end at age — up to that birthday")}<input class="mono" id="lp-in-to-${i}" inputmode="decimal" value="${p.premiumToAge||""}" placeholder="65"></label>
+      <label style="grid-column:1/-1">${L("保障が続く年齢","Cover lasts until age")}<input class="mono" id="lp-in-cov-${i}" inputmode="decimal" value="${p.coverageUntilAge||""}" placeholder="82"></label>
     </div></div>`).join("");
   return `<div class="barlist">
-    <div class="fhelp" style="margin-bottom:8px">保険料は<b>毎月固定の支出</b>として数えます。
-      こちらに入れた分は、<b>記録から入れないでください</b>（二重になります）。</div>
-    ${rows || `<div class="empty"><span class="e">🛟</span>まだ入っていません</div>`}
-    <div class="lptotal">毎月の保険料 合計 <b class="mono" data-live="sum-insurance">${yen(list.reduce((t,p)=>t+p.monthlyPremium,0))}</b></div>
-    <button class="btn-main" data-act="lp-save-insurance">この内容で保存する</button>
-    <button class="btn-quiet" data-act="lp-add" data-key="insurancePolicies">＋ 保険を足す</button>
+    <div class="fhelp" style="margin-bottom:8px">${L("保険料は<b>毎月固定の支出</b>として数えます。","Premiums are counted as <b>recurring spending</b>.")}
+      ${L("こちらに入れた分は、<b>記録から入れないでください</b>（二重になります）。","Do <b>not</b> also enter them as records — they would be counted twice.")}</div>
+    ${rows || `<div class="empty"><span class="e">🛟</span>${L("まだ入っていません","Nothing here yet")}</div>`}
+    <div class="lptotal">${L("毎月の保険料 合計","Total monthly premiums")} <b class="mono" data-live="sum-insurance">${yen(list.reduce((t,p)=>t+p.monthlyPremium,0))}</b></div>
+    <button class="btn-main" data-act="lp-save-insurance">${L("この内容で保存する","Save these details")}</button>
+    <button class="btn-quiet" data-act="lp-add" data-key="insurancePolicies">${L("＋ 保険を足す","＋ Add a policy")}</button>
   </div>`;
 }
 
 function lpGoldHtml(g){
   return `<div class="barlist">
-    <div class="field"><label>いま持っている量</label><div class="row">
+    <div class="field"><label>${L("いま持っている量","Amount you hold")}</label><div class="row">
       <input class="mono" id="lp-g-grams" inputmode="decimal" value="${g.currentGrams||""}" placeholder="0"><span class="yen">g</span></div></div>
-    <div class="field"><label>1グラムの値段</label><div class="row"><span class="yen">¥</span>
+    <div class="field"><label>${L("1グラムの値段","Price per gram")}</label><div class="row"><span class="yen">${curSym()}</span>
       <input class="mono" id="lp-g-price" inputmode="numeric" value="${g.pricePerGram||""}" placeholder="0"></div></div>
-    <div class="field"><label>毎月の積立額</label><div class="row"><span class="yen">¥</span>
+    <div class="field"><label>${L("毎月の積立額","Monthly amount you buy")}</label><div class="row"><span class="yen">${curSym()}</span>
       <input class="mono" id="lp-g-monthly" inputmode="numeric" value="${g.monthlyYen||""}" placeholder="0"></div>
-      <div class="fhelp">これから毎月いくら買う予定か。実際に買ったお金は「記録」から入れてください</div></div>
-    <div class="lptotal">いまの評価額 <b class="mono" data-live="sum-gold">${yen(Core.lpGoldValue(g))}</b></div>
-    <button class="btn-main" data-act="lp-save-gold">この内容で保存する</button>
+      <div class="fhelp">${L("これから毎月いくら買う予定か。実際に買ったお金は「記録」から入れてください","How much you plan to buy each month. What you actually spend goes in as a record.")}</div></div>
+    <div class="lptotal">${L("いまの評価額","Current value")} <b class="mono" data-live="sum-gold">${yen(Core.lpGoldValue(g))}</b></div>
+    <button class="btn-main" data-act="lp-save-gold">${L("この内容で保存する","Save these details")}</button>
   </div>`;
 }
 
 function lpBanksHtml(list){
   const rows = list.map((b,i)=>`<div class="lpseg">
-    <div class="lpseg-h"><b>${escapeHtml(b.name)||"（名前なし）"}</b>
+    <div class="lpseg-h"><b>${escapeHtml(b.name)||L("（名前なし）","Unnamed")}</b>
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
-      <label>銀行名<input id="lp-b-name-${i}" value="${escapeAttr(b.name)}" placeholder="○○銀行"></label>
-      <label>残高（円）<input class="mono" id="lp-b-bal-${i}" inputmode="numeric" value="${b.balance||""}" placeholder="0"></label>
-      <label>毎月の入金（円）<input class="mono" id="lp-b-mon-${i}" inputmode="numeric" value="${b.monthlyDeposit||""}" placeholder="0"></label>
-      <label>年利（％）<input class="mono" id="lp-b-int-${i}" inputmode="decimal" value="${b.interestPct||""}" placeholder="0"></label>
+      <label>${L("銀行名","Bank name")}<input id="lp-b-name-${i}" value="${escapeAttr(b.name)}" placeholder="${L("○○銀行","Your bank")}"></label>
+      <label>${L("残高（円）","Balance")}<input class="mono" id="lp-b-bal-${i}" inputmode="numeric" value="${b.balance||""}" placeholder="0"></label>
+      <label>${L("毎月の入金（円）","Monthly deposit")}<input class="mono" id="lp-b-mon-${i}" inputmode="numeric" value="${b.monthlyDeposit||""}" placeholder="0"></label>
+      <label>${L("年利（％）","Annual rate %")}<input class="mono" id="lp-b-int-${i}" inputmode="decimal" value="${b.interestPct||""}" placeholder="0"></label>
     </div></div>`).join("");
   return `<div class="barlist">
-    ${rows || `<div class="empty"><span class="e">🏦</span>まだ入っていません</div>`}
-    <div class="lptotal">合計 <b class="mono" data-live="sum-banks">${yen(Core.lpBanksTotal(list))}</b></div>
-    <button class="btn-main" data-act="lp-save-banks">この内容で保存する</button>
-    <button class="btn-quiet" data-act="lp-add">＋ 銀行を足す</button>
+    ${rows || `<div class="empty"><span class="e">🏦</span>${L("まだ入っていません","Nothing here yet")}</div>`}
+    <div class="lptotal">${T("sum.total")} <b class="mono" data-live="sum-banks">${yen(Core.lpBanksTotal(list))}</b></div>
+    <button class="btn-main" data-act="lp-save-banks">${L("この内容で保存する","Save these details")}</button>
+    <button class="btn-quiet" data-act="lp-add">${L("＋ 銀行を足す","＋ Add a bank")}</button>
   </div>`;
 }
 
 function lpLoansHtml(list){
   const rows = list.map((l,i)=>`<div class="lpseg">
-    <div class="lpseg-h"><b>${escapeHtml(l.name)||"（名前なし）"}</b>
+    <div class="lpseg-h"><b>${escapeHtml(l.name)||L("（名前なし）","Unnamed")}</b>
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
-      <label>借入の名前<input id="lp-l-name-${i}" value="${escapeAttr(l.name)}" placeholder="車のローン"></label>
-      <label>残っている元金（円）<input class="mono" id="lp-l-pri-${i}" inputmode="numeric" value="${l.principal||""}" placeholder="0"></label>
-      <label>年利（％）<input class="mono" id="lp-l-rate-${i}" inputmode="decimal" value="${l.annualRatePct||""}" placeholder="0"></label>
-      <label>毎月の返済（円）<input class="mono" id="lp-l-pay-${i}" inputmode="numeric" value="${l.monthlyPayment||""}" placeholder="0"></label>
+      <label>${L("借入の名前","Loan name")}<input id="lp-l-name-${i}" value="${escapeAttr(l.name)}" placeholder="${L("車のローン","Car loan")}"></label>
+      <label>${L("残っている元金（円）","Principal remaining")}<input class="mono" id="lp-l-pri-${i}" inputmode="numeric" value="${l.principal||""}" placeholder="0"></label>
+      <label>${L("年利（％）","Annual rate %")}<input class="mono" id="lp-l-rate-${i}" inputmode="decimal" value="${l.annualRatePct||""}" placeholder="0"></label>
+      <label>${L("毎月の返済（円）","Monthly repayment")}<input class="mono" id="lp-l-pay-${i}" inputmode="numeric" value="${l.monthlyPayment||""}" placeholder="0"></label>
     </div></div>`).join("");
   return `<div class="barlist">
-    ${rows || `<div class="empty"><span class="e">💳</span>まだ入っていません</div>`}
-    <div class="lptotal">残り合計 <b class="mono" data-live="sum-loans">${yen(Core.lpLoansTotal(list))}</b></div>
-    <div class="fhelp" style="margin:2px 0 8px">毎月の返済は、実際に払った月に「記録」からも入れてください。ここの金額は将来の見通し用で、今月の家計には足しません。</div>
-    <button class="btn-main" data-act="lp-save-loans">この内容で保存する</button>
-    <button class="btn-quiet" data-act="lp-add">＋ 借入を足す</button>
+    ${rows || `<div class="empty"><span class="e">💳</span>${L("まだ入っていません","Nothing here yet")}</div>`}
+    <div class="lptotal">${L("残り合計","Total remaining")} <b class="mono" data-live="sum-loans">${yen(Core.lpLoansTotal(list))}</b></div>
+    <div class="fhelp" style="margin:2px 0 8px">${L("毎月の返済は、実際に払った月に「記録」からも入れてください。ここの金額は将来の見通し用で、今月の家計には足しません。","Enter each repayment as a record in the month you actually pay it. The amount here is only for the long-term outlook and is not added to this month's budget.")}</div>
+    <button class="btn-main" data-act="lp-save-loans">${L("この内容で保存する","Save these details")}</button>
+    <button class="btn-quiet" data-act="lp-add">${L("＋ 借入を足す","＋ Add a loan")}</button>
   </div>`;
 }
 
 function lpPensionHtml(list){
   const rows = list.map((p,i)=>`<div class="lpseg">
-    <div class="lpseg-h"><b>${escapeHtml(p.name)||"（名前なし）"}</b>
+    <div class="lpseg-h"><b>${escapeHtml(p.name)||L("（名前なし）","Unnamed")}</b>
       <button class="lpdel" data-act="lp-del" data-i="${i}">🗑</button></div>
     <div class="lpgrid">
-      <label>年金の名前<input id="lp-p-name-${i}" value="${escapeAttr(p.name)}" placeholder="○○年金共済"></label>
-      <label>毎月の掛金（円）<input class="mono" id="lp-p-mon-${i}" inputmode="numeric" value="${p.monthlyContribution||""}" placeholder="0"></label>
-      <label>掛ける 開始年齢<input class="mono" id="lp-p-cf-${i}" inputmode="decimal" value="${p.contribFromAge||""}" placeholder="35"></label>
-      <label>掛ける 終了年齢（その誕生日まで）<input class="mono" id="lp-p-ct-${i}" inputmode="decimal" value="${p.contribToAge||""}" placeholder="60"></label>
-      <label>もらう 開始年齢<input class="mono" id="lp-p-pf-${i}" inputmode="decimal" value="${p.payoutFromAge||""}" placeholder="60"></label>
-      <label>もらう 終了年齢（その誕生日まで）<input class="mono" id="lp-p-pt-${i}" inputmode="decimal" value="${p.payoutToAge||""}" placeholder="70"></label>
-      <label>毎月もらう額（円）<input class="mono" id="lp-p-pay-${i}" inputmode="numeric" value="${p.monthlyPayout||""}" placeholder="0"></label>
+      <label>${L("年金の名前","Plan name")}<input id="lp-p-name-${i}" value="${escapeAttr(p.name)}" placeholder="${L("○○年金共済","Annuity plan")}"></label>
+      <label>${L("毎月の掛金（円）","Monthly contribution")}<input class="mono" id="lp-p-mon-${i}" inputmode="numeric" value="${p.monthlyContribution||""}" placeholder="0"></label>
+      <label>${L("掛ける 開始年齢","Contributions start at age")}<input class="mono" id="lp-p-cf-${i}" inputmode="decimal" value="${p.contribFromAge||""}" placeholder="35"></label>
+      <label>${L("掛ける 終了年齢（その誕生日まで）","Contributions end at age — up to that birthday")}<input class="mono" id="lp-p-ct-${i}" inputmode="decimal" value="${p.contribToAge||""}" placeholder="60"></label>
+      <label>${L("もらう 開始年齢","Payouts start at age")}<input class="mono" id="lp-p-pf-${i}" inputmode="decimal" value="${p.payoutFromAge||""}" placeholder="60"></label>
+      <label>${L("もらう 終了年齢（その誕生日まで）","Payouts end at age — up to that birthday")}<input class="mono" id="lp-p-pt-${i}" inputmode="decimal" value="${p.payoutToAge||""}" placeholder="70"></label>
+      <label>${L("毎月もらう額（円）","Monthly payout")}<input class="mono" id="lp-p-pay-${i}" inputmode="numeric" value="${p.monthlyPayout||""}" placeholder="0"></label>
     </div></div>`).join("");
   return `<div class="barlist">
-    ${rows || `<div class="empty"><span class="e">📜</span>まだ入っていません</div>`}
-    <div class="lptotal">毎月の掛金 合計 <b class="mono" data-live="sum-pension">${yen(Core.lpPensionMonthly(list))}</b></div>
-    <button class="btn-main" data-act="lp-save-pension">この内容で保存する</button>
-    <button class="btn-quiet" data-act="lp-add">＋ 年金を足す</button>
+    ${rows || `<div class="empty"><span class="e">📜</span>${L("まだ入っていません","Nothing here yet")}</div>`}
+    <div class="lptotal">${L("毎月の掛金 合計","Total monthly contributions")} <b class="mono" data-live="sum-pension">${yen(Core.lpPensionMonthly(list))}</b></div>
+    <button class="btn-main" data-act="lp-save-pension">${L("この内容で保存する","Save these details")}</button>
+    <button class="btn-quiet" data-act="lp-add">${L("＋ 年金を足す","＋ Add a plan")}</button>
   </div>`;
 }
 
@@ -3332,14 +3413,14 @@ function lpReadGold(){
   a.gold = { currentGrams: lpVal("lp-g-grams"), pricePerGram: lpVal("lp-g-price"), monthlyYen: lpVal("lp-g-monthly") };
   return a;
 }
-function lpSaveGold(){ if(lpSaveTidy(lpReadGold())){ render(); toast("保存しました ✓"); } }
+function lpSaveGold(){ if(lpSaveTidy(lpReadGold())){ render(); toast(T("set.saved")); } }
 function lpSaveBanks(){
   const a = lpAssets();
   a.banks = a.banks.map((b,i)=>({
     name: lpVal(`lp-b-name-${i}`), balance: lpVal(`lp-b-bal-${i}`),
     monthlyDeposit: lpVal(`lp-b-mon-${i}`), interestPct: lpVal(`lp-b-int-${i}`), id: b.id,
   }));
-  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(a)){ render(); toast(T("set.saved")); }
 }
 function lpSaveLoans(){
   const a = lpAssets();
@@ -3347,7 +3428,7 @@ function lpSaveLoans(){
     name: lpVal(`lp-l-name-${i}`), principal: lpVal(`lp-l-pri-${i}`),
     annualRatePct: lpVal(`lp-l-rate-${i}`), monthlyPayment: lpVal(`lp-l-pay-${i}`), id: l.id,
   }));
-  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(a)){ render(); toast(T("set.saved")); }
 }
 function lpSavePension(){
   const a = lpAssets();
@@ -3357,7 +3438,7 @@ function lpSavePension(){
     payoutFromAge: lpVal(`lp-p-pf-${i}`), payoutToAge: lpVal(`lp-p-pt-${i}`),
     monthlyPayout: lpVal(`lp-p-pay-${i}`), id: p.id,
   }));
-  if(lpSaveTidy(a)){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(a)){ render(); toast(T("set.saved")); }
 }
 
 /* NISAの4つの表を、画面の値から作り直す */
@@ -3380,7 +3461,7 @@ function lpAddFund(key, i){
   const a = lpReadNisa();
   const row = a[key] && a[key][Number(i)];
   if(!row) return;
-  if((row.funds||[]).length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
+  if((row.funds||[]).length >= Core.LP_MAX_ROWS){ toast(L(`${Core.LP_MAX_ROWS}件までです`, `Up to ${Core.LP_MAX_ROWS} items`)); return; }
   row.funds = (row.funds||[]).concat([{ name:"", amount:"" }]);
   const n = row.funds.length - 1;
   if(lpSave(a)){ render(); focusField(`${key==="tsumitateSchedule"?"lp-ts":"lp-gs"}-fn-${i}-${n}`); }
@@ -3389,11 +3470,11 @@ function lpDeleteFund(key, i, n){
   const a = lpReadNisa();
   const row = a[key] && a[key][Number(i)];
   if(!row || !row.funds || !row.funds[Number(n)]) return;
-  if(typeof confirm==="function" && !confirm("この銘柄を消しますか？")) return;
+  if(typeof confirm==="function" && !confirm(L("この銘柄を消しますか？","Delete this fund?"))) return;
   row.funds = row.funds.filter((_,x)=>x!==Number(n));
-  if(lpSave(a)){ render(); toast("消しました ✓"); }
+  if(lpSave(a)){ render(); toast(L("消しました ✓","Deleted ✓")); }
 }
-function lpSaveNisa(){ if(lpSaveTidy(lpReadNisa())){ render(); toast("保存しました ✓"); } }
+function lpSaveNisa(){ if(lpSaveTidy(lpReadNisa())){ render(); toast(T("set.saved")); } }
 
 function lpReadIdeco(){
   const a = lpAssets();
@@ -3406,7 +3487,7 @@ function lpReadIdeco(){
   return a;
 }
 function lpSaveIdeco(){
-  if(lpSaveTidy(lpReadIdeco())){ render(); toast("保存しました ✓"); }
+  if(lpSaveTidy(lpReadIdeco())){ render(); toast(T("set.saved")); }
 }
 function lpReadInsurance(){
   const a = lpAssets();
@@ -3417,7 +3498,7 @@ function lpReadInsurance(){
   }));
   return a;
 }
-function lpSaveInsurance(){ if(lpSaveTidy(lpReadInsurance())){ render(); toast("保存しました ✓"); } }
+function lpSaveInsurance(){ if(lpSaveTidy(lpReadInsurance())){ render(); toast(T("set.saved")); } }
 
 /* 行を足す。書きかけを消さないよう、いま画面にある値をそのまま保存してから足す。 */
 /* 足した行の入力欄へ画面を移す。
@@ -3425,7 +3506,7 @@ function lpSaveInsurance(){ if(lpSaveTidy(lpReadInsurance())){ render(); toast("
 function lpAddRow(key){
   if(lpKind==="insurance"){
     const ai = lpReadInsurance();
-    if(ai.insurancePolicies.length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
+    if(ai.insurancePolicies.length >= Core.LP_MAX_ROWS){ toast(L(`${Core.LP_MAX_ROWS}件までです`, `Up to ${Core.LP_MAX_ROWS} items`)); return; }
     ai.insurancePolicies = ai.insurancePolicies.concat([{ name:"" }]);
     const i = ai.insurancePolicies.length - 1;
     if(lpSave(ai)){ render(); focusField(`lp-in-name-${i}`); }
@@ -3433,7 +3514,7 @@ function lpAddRow(key){
   }
   if(lpKind==="nisa"){
     const a0 = lpReadNisa();
-    if(a0[key].length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
+    if(a0[key].length >= Core.LP_MAX_ROWS){ toast(L(`${Core.LP_MAX_ROWS}件までです`, `Up to ${Core.LP_MAX_ROWS} items`)); return; }
     a0[key] = a0[key].concat([key==="lumpSums" ? {} : { funds: [] }]);
     const i = a0[key].length - 1;
     const id = key==="tsumitateSchedule" ? `lp-ts-from-${i}`
@@ -3448,7 +3529,7 @@ function lpAddRow(key){
   const a = lpAssets();
   const key2 = lpKind==="banks" ? "banks" : lpKind==="loans" ? "loans" : "privatePensionPlans";
   const key3 = key2;
-  if(a[key3].length >= Core.LP_MAX_ROWS){ toast(`${Core.LP_MAX_ROWS}件までです`); return; }
+  if(a[key3].length >= Core.LP_MAX_ROWS){ toast(L(`${Core.LP_MAX_ROWS}件までです`, `Up to ${Core.LP_MAX_ROWS} items`)); return; }
   a[key3] = a[key3].concat([{ name:"" }]);
   const i = a[key3].length - 1;
   const id = lpKind==="banks" ? `lp-b-name-${i}` : lpKind==="loans" ? `lp-l-name-${i}` : `lp-p-name-${i}`;
@@ -3472,30 +3553,30 @@ function lpDeleteRow(i, keyFromBtn){
   if(lpKind==="insurance"){
     const ai = lpReadInsurance();
     if(!ai.insurancePolicies[idx]) return;
-    if(typeof confirm==="function" && !confirm(`「${ai.insurancePolicies[idx].name||"（名前なし）"}」を消しますか？`)) return;
+    if(typeof confirm==="function" && !confirm(L(`「${ai.insurancePolicies[idx].name||"（名前なし）"}」を消しますか？`, `Delete "${ai.insurancePolicies[idx].name||"Unnamed"}"?`))) return;
     ai.insurancePolicies = ai.insurancePolicies.filter((_,n)=>n!==idx);
-    if(lpSave(ai)){ render(); toast("消しました ✓"); }
+    if(lpSave(ai)){ render(); toast(L("消しました ✓","Deleted ✓")); }
     return;
   }
   if(lpKind==="nisa"){
     const a0 = lpReadNisa();
     if(!a0[keyFromBtn] || !a0[keyFromBtn][idx]) return;
-    if(typeof confirm==="function" && !confirm("この行を消しますか？")) return;
+    if(typeof confirm==="function" && !confirm(L("この行を消しますか？","Delete this row?"))) return;
     a0[keyFromBtn] = a0[keyFromBtn].filter((_,n)=>n!==idx);
-    if(lpSave(a0)){ render(); toast("消しました ✓"); }
+    if(lpSave(a0)){ render(); toast(L("消しました ✓","Deleted ✓")); }
     return;
   }
   const key = lpKind==="banks" ? "banks" : lpKind==="loans" ? "loans" : "privatePensionPlans";
   const a0 = lpAssets();
   const target = a0[key][idx];
   if(!target) return;
-  if(typeof confirm==="function" && !confirm(`「${target.name||"（名前なし）"}」を消しますか？`)) return;
+  if(typeof confirm==="function" && !confirm(L(`「${target.name||"（名前なし）"}」を消しますか？`, `Delete "${target.name||"Unnamed"}"?`))) return;
   if(lpKind==="banks") lpSaveBanksQuiet();
   else if(lpKind==="loans") lpSaveLoansQuiet();
   else lpSavePensionQuiet();
   const a = lpAssets();
   a[key] = a[key].filter((_,n)=>n!==idx);
-  if(lpSave(a)){ render(); toast("消しました ✓"); }
+  if(lpSave(a)){ render(); toast(L("消しました ✓","Deleted ✓")); }
 }
 
 /* すべて初期設定に戻す。
@@ -3504,20 +3585,23 @@ function lpDeleteRow(i, keyFromBtn){
    保存に失敗したときは、消える前の状態へそのまま戻す。 */
 function resetAll(){
   if(typeof confirm!=="function") return;
-  if(!confirm("この端末のデータをすべて消して、最初の状態に戻します。\n"
+  if(!confirm(L("この端末のデータをすべて消して、最初の状態に戻します。\n"
     + "設定・記録・日記・健康・予定・写真が消えます。\n"
-    + "元に戻せません。\n\n先にバックアップを書き出しましたか？")) return;
-  if(!confirm("本当に、すべて消して最初から始めますか？")) return;
+    + "元に戻せません。\n\n先にバックアップを書き出しましたか？",
+    "This erases all data on this device and starts over.\n"
+    + "Settings, records, diary, health, schedule and photos will be gone.\n"
+    + "This cannot be undone.\n\nHave you exported a backup first?"))) return;
+  if(!confirm(L("本当に、すべて消して最初から始めますか？","Are you sure you want to erase everything and start over?"))) return;
   const before = JSON.parse(JSON.stringify(state));
   state = defaultState();
   if(!save()){
     state = before;                                 // 消える前へ完全に戻す
-    render(); toast("戻せませんでした。データはそのままです");
+    render(); toast(L("戻せませんでした。データはそのままです","Could not reset. Your data is unchanged"));
     return;
   }
   view = "home";
   render();
-  toast("最初の状態に戻しました ✓");
+  toast(L("最初の状態に戻しました ✓","Everything has been reset ✓"));
 }
 
 /* ---------- ライフプランへ渡す ---------- */
@@ -3528,8 +3612,9 @@ function lpExport(){
   if(Core.lpHasAny(state.settings.lp)) lpSave(lpAssets());
   const text = JSON.stringify(Core.buildLifePlanInputs(state.settings), null, 2);
   shareText(`lifeplan-assets-${todayISO()}.json`, text,
-    "コピーしました。ライフプランの「バックアップの読み込み」に貼りつけてください",
-    "ファイルに書き出しました");
+    L("コピーしました。ライフプランの「バックアップの読み込み」に貼りつけてください",
+      "Copied. Paste it into \"Restore from backup\" in the life plan app"),
+    L("ファイルに書き出しました","Exported to a file"));
 }
 
 /* ---------- イベント（委譲） ---------- */
@@ -3572,7 +3657,7 @@ function lpRefreshTotals(){
   [["tsumitateSchedule", a.tsumitateSchedule], ["growthSchedule", a.growthSchedule]].forEach(([key,rows])=>{
     rows.forEach((r,i)=>{
       put(`[data-live="${key}-${i}"]`, yen(r.monthlyYen));
-      put(`[data-liveage="${key}-${i}"]`, `${r.fromAge||0}歳 〜 ${r.toAge||0}歳`);
+      put(`[data-liveage="${key}-${i}"]`, ageRangeLabel(r.fromAge||0, r.toAge||0));
     });
   });
   put('[data-live="sum-insurance"]', yen(a.insurancePolicies.reduce((t,p)=>t+p.monthlyPremium,0)));
@@ -3592,8 +3677,16 @@ const SETTING_FIELD = {
   "f-gtarget": (s,v)=>{ s.goalTarget = settingNum(v); },
   "f-gcur":    (s,v)=>{ s.goalCurrent = settingNum(v); },
   "f-cycle":   (s,v)=>{ s.cycleStart = Core.normalizeCycleStart(v); },
+  "f-country": (s,v)=>{ s.country = Core.pickCountry(v); },
 };
 function settingNum(v){ const n=parseInt(String(v).replace(/[^\d]/g,""),10); return isNaN(n)?0:n; }
+/* 国は「押す」ではなく「選ぶ」操作なので change で受ける。
+   選んだその場で保存し、ことば・通貨・日付の出し方を入れ替えるため画面を作り直す。
+   （打つたびの自動保存に任せると、ことばが古いままになる） */
+function onCountryPicked(el){
+  if(!el || el.id !== "f-country") return false;
+  saveSettingsQuiet(); render(); return true;
+}
 function saveSettingField(id){
   const put = SETTING_FIELD[id]; if(!put) return;
   const el = $(id); if(!el) return;
@@ -3618,6 +3711,9 @@ document.addEventListener("input",(e)=>{
 document.addEventListener("change",(e)=>{
   const el = e && e.target;
   if(el && el.id === "d-date") pickDiaryDate(el.value);
+  /* 国は、ことば・通貨・日付の出し方がまとめて変わる。
+     打ちかけの他の欄も取りこぼさないよう、いったん全部保存してから描き直す。 */
+  if(onCountryPicked(el)) return;
 });
 
 document.addEventListener("visibilitychange",()=>{
@@ -3668,7 +3764,7 @@ function handleAct(a,e){
     /* 履歴が増えたときだけ端末に残す */
     if(sciState.history.length!==before.history.length){
       state.calcHistory=sciState.history.slice();
-      if(!save()){ state.calcHistory=before.history.slice(); toast("履歴を保存できませんでした"); }
+      if(!save()){ state.calcHistory=before.history.slice(); toast(L("履歴を保存できませんでした","Could not save the history")); }
     }
     render(); return;
   }
@@ -3683,12 +3779,12 @@ function handleAct(a,e){
     const before=sci();
     sciState=Core.sciClearHistory(before);
     state.calcHistory=[];
-    if(!save()){ state.calcHistory=before.history.slice(); sciState=before; toast("消せませんでした"); }
+    if(!save()){ state.calcHistory=before.history.slice(); sciState=before; toast(L("消せませんでした","Could not delete it")); }
     render(); return;
   }
   if(a==="sci-record"){
     const amount=Core.sciAmount(sci());
-    if(amount===null){ toast("先に ＝ を押してください"); return; }
+    if(amount===null){ toast(L("先に ＝ を押してください","Press = first")); return; }
     openRecord(null);
     sheetState.amount=String(amount);
     sheetState.calc=Core.calcFrom(amount);
@@ -3768,7 +3864,7 @@ $("diaryPhotoInput").addEventListener("change",e=>{ const f=e.target.files&&e.ta
   r.onload=()=>{ diaryPhotoPending=r.result;
     const cur=state.diary[diaryEditDate||todayISO()]||{}; cur.text=keepText;   // 本文を保って再描画
     render(); const t2=$("d-text"); if(t2) t2.value=keepText; };
-  r.onerror=()=>toast("写真を読み込めませんでした");
+  r.onerror=()=>toast(L("写真を読み込めませんでした","Could not read that photo"));
   r.readAsDataURL(f);
 });
 

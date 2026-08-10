@@ -64,8 +64,20 @@ function bootApp(opts) {
     Blob: function () {}, URL: { createObjectURL: () => "blob:", revokeObjectURL() {} },
     FileReader: function () {}, Image: ImageStub,
   };
+  /* 下のタブ。国を切り替えたときに、ことばが入れ替わるかを確かめるために要る。 */
+  const navButtons = ["home", "summary", "calendar", "diary", "health", "calc", "pulse"].map((k) => {
+    const el = makeEl("nav-" + k);
+    el.dataset = { nav: k };
+    el.setAttribute = function (n, v) { el["attr:" + n] = v; };
+    el.removeAttribute = function (n) { delete el["attr:" + n]; };
+    return el;
+  });
+  const docEl = makeEl("html");
+  docEl.setAttribute = function (n, v) { docEl["attr:" + n] = v; };
   sandbox.document = {
-    getElementById: get, querySelector: () => null, querySelectorAll: () => [],
+    getElementById: get, querySelector: () => null,
+    querySelectorAll: (sel) => (String(sel) === "#nav button" ? navButtons : []),
+    documentElement: docEl,
     addEventListener() {}, createElement: () => makeEl("tmp"),
     head: { appendChild() {} }, body: makeEl("body"),
   };
@@ -80,6 +92,8 @@ function bootApp(opts) {
     ctx,
     run: (code) => vm.runInContext(code, ctx),
     el: get,
+    nav: () => navButtons,
+    htmlLang: () => docEl["attr:lang"],
     toastText: () => get("toast").innerHTML,
     saved: () => store["kakeibo:v1:state"],
     /* 記録シートを開き、金額を入れて保存する */

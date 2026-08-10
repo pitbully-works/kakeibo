@@ -197,17 +197,494 @@
     return COUNTRY_RULES[normalizeCountry(country)];
   }
 
-  function formatMoney(v, settingsOrCountry) {
+  /* ---------- 画面のことば・書式（5カ国の土台。画面はJPとUSだけ） ----------
+     決めごと：
+       ・**保存するデータは国が変わっても同じ形**にする。
+         カテゴリは内部ID（food / rent …）のまま保存し、
+         「食費 / Food」は表示のときだけ切り替える。
+       ・国を足すときは、この下の表に1行足すだけで済むようにする。
+     -------------------------------------------------------------------- */
+
+  /* 国ごとの表示言語。日本だけ日本語、ほかは英語。 */
+  const COUNTRY_LANG = Object.freeze({ JP: "ja", US: "en", GB: "en", CA: "en", AU: "en" });
+
+  /* 通貨の小数桁。円は小数を使わない（¥1,234）。ドルは2桁（$1,234.56）。 */
+  const CURRENCY_DECIMALS = Object.freeze({ JPY: 0, USD: 2, GBP: 2, CAD: 2, AUD: 2 });
+
+  /* せっていの「国」で選べる国。土台は5カ国あるが、
+     画面（ことば・カテゴリ表示）を用意できた国だけをここに出す。
+     GB / CA / AU を出すときは、この配列に足して翻訳を足すだけでよい。 */
+  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US"]);
+
+  /* 設定オブジェクトでも国コードの文字列でも受け取れるようにする */
+  function countryOf(settingsOrCountry) {
     const obj = settingsOrCountry && typeof settingsOrCountry === "object" ? settingsOrCountry : null;
-    const country = normalizeCountry(obj ? obj.country : settingsOrCountry);
-    const rule = countryRule(country);
-    const n = Math.round(Number(v) || 0);
+    return normalizeCountry(obj ? obj.country : settingsOrCountry);
+  }
+  function countryLang(settingsOrCountry) {
+    return COUNTRY_LANG[countryOf(settingsOrCountry)] || "ja";
+  }
+  function countryLocale(settingsOrCountry) {
+    return countryRule(countryOf(settingsOrCountry)).locale;
+  }
+  function isSupportedCountry(v) {
+    const c = String(v == null ? "" : v).trim().toUpperCase();
+    return SUPPORTED_COUNTRIES.indexOf(c) >= 0;
+  }
+  /* 画面で選べない国が保存されていたら、選べる国へ寄せる（今は必ずJP）。
+     土台としては GB/CA/AU の保存値をそのまま保つので、
+     画面を用意したときに何も失われない。 */
+  function pickCountry(v) {
+    return isSupportedCountry(v) ? normalizeCountry(v) : SUPPORTED_COUNTRIES[0];
+  }
+  function currencyDecimals(currency) {
+    const d = CURRENCY_DECIMALS[String(currency == null ? "" : currency).toUpperCase()];
+    return d === undefined ? 0 : d;
+  }
+
+  /* ---------- 曜日・月・日付の書き方 ---------- */
+  const WEEKDAY_JA = Object.freeze(["日", "月", "火", "水", "木", "金", "土"]);
+  const WEEKDAY_EN = Object.freeze(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+  const MONTH_EN = Object.freeze(["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"]);
+  const MONTH_ABBR_EN = Object.freeze(["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]);
+  /* グラフの下に出す短い月。JPは「8月」、USは「Aug」。 */
+  function monthShort(month, settingsOrCountry) {
+    const m = Math.min(12, Math.max(1, Math.floor(Number(month) || 1)));
+    return countryLang(settingsOrCountry) === "en" ? MONTH_ABBR_EN[m - 1] : m + "月";
+  }
+
+  function weekdayShort(dow, settingsOrCountry) {
+    const i = ((Math.floor(Number(dow)) % 7) + 7) % 7;
+    return countryLang(settingsOrCountry) === "en" ? WEEKDAY_EN[i] : WEEKDAY_JA[i];
+  }
+  /* 曜日ぐせの棒グラフに出す見出し。JPは「月曜」、USは「Mon」。 */
+  function weekdayLabel(dow, settingsOrCountry) {
+    const s = weekdayShort(dow, settingsOrCountry);
+    return countryLang(settingsOrCountry) === "en" ? s : s + "曜";
+  }
+  /* 月だけ。JPは「8月」、USは「August」。 */
+  function monthName(month, settingsOrCountry) {
+    const m = Math.min(12, Math.max(1, Math.floor(Number(month) || 1)));
+    return countryLang(settingsOrCountry) === "en" ? MONTH_EN[m - 1] : m + "月";
+  }
+  /* 短い月日。JP「8/10」／US「8/10」。どちらも月/日の順で同じ。 */
+  function formatMonthDay(iso, settingsOrCountry) {
+    const s = String(iso || "");
+    const m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
+    if (!Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
+    return m + "/" + d;
+  }
+  /* 見出しの日付。JP「8月10日」／US「August 10」。 */
+  function formatDateHeading(iso, settingsOrCountry) {
+    const s = String(iso || "");
+    const m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
+    if (!Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
+    return countryLang(settingsOrCountry) === "en" ? MONTH_EN[m - 1] + " " + d : m + "月" + d + "日";
+  }
+  /* 年つきの日付。JP「2026/8/10」／US「8/10/2026」。 */
+  function formatDate(iso, settingsOrCountry) {
+    const s = String(iso || "");
+    const y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
+    return countryLang(settingsOrCountry) === "en" ? m + "/" + d + "/" + y : y + "/" + m + "/" + d;
+  }
+  /* 年月。JP「2026年8月」／US「August 2026」。 */
+  function formatYearMonth(ym, settingsOrCountry) {
+    const s = String(ym || "");
+    const y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !m) return s;
+    return countryLang(settingsOrCountry) === "en" ? MONTH_EN[m - 1] + " " + y : y + "年 " + m + "月";
+  }
+
+  /* ---------- カテゴリの表示名（保存する内部IDは変えない） ----------
+     保存されるのは food / rent などの内部IDだけ。
+     ここは「その内部IDを、その国のことばで何と出すか」の表でしかない。
+     だから国を切り替えても、過去の記録の中身は1バイトも変わらない。 */
+  const EXP_CAT_EN = Object.freeze({
+    food: "Groceries", daily: "Household", eatout: "Dining out", rent: "Housing",
+    power: "Electricity", gas: "Gas", water: "Water", comm: "Phone & internet",
+    insure: "Insurance", transit: "Transit", car: "Car", medical: "Health & medical",
+    clothes: "Clothing", social: "Gifts & social", hobby: "Hobbies", pet: "Pet",
+    pension: "Private pension", tax: "Taxes", subs: "Subscriptions",
+    fixother: "Other", other: "Other",
+  });
+  const INC_CAT_EN = Object.freeze({
+    salary: "Paycheck", bonus: "Bonus & extra", gift: "Gift", other: "Other income",
+  });
+
+  function catName(type, key, settingsOrCountry) {
+    const cat = catOf(type, key);
+    if (countryLang(settingsOrCountry) !== "en") return cat.n;
+    const map = type === "income" ? INC_CAT_EN : EXP_CAT_EN;
+    return map[key] || cat.n;
+  }
+  /* 絵文字つきの表示用オブジェクト。内部IDはそのまま持ち回る。 */
+  function catDisplay(type, key, settingsOrCountry) {
+    const cat = catOf(type, key);
+    return { k: cat.k, e: cat.e, n: catName(type, key, settingsOrCountry) };
+  }
+
+  /* ライフプラン欄から出てくる毎月の行（key は保存データではなく計算結果の印） */
+  const LP_ROW_EN = Object.freeze({
+    gold: "Gold contribution", banks: "Bank deposit", pension: "Private pension contribution",
+    ideco: "Retirement contribution", loans: "Loan repayment", insurance: "Insurance premium",
+    nisa: "Tax-free investing", lump: "Lump-sum investment",
+  });
+  function lpRowName(key, fallback, settingsOrCountry) {
+    if (countryLang(settingsOrCountry) !== "en") return fallback || key;
+    return LP_ROW_EN[key] || fallback || key;
+  }
+
+  /* ---------- 画面のことば ----------
+     ja は今の日本版の文言をそのまま持ってくる（見た目を変えないため）。
+     {name} のような目印は t() の第3引数で差し替える。 */
+  const UI_TEXT = Object.freeze({
+    /* 下のタブ */
+    "nav.home":     { ja: "ホーム",     en: "Home" },
+    "nav.summary":  { ja: "まとめ",     en: "Summary" },
+    "nav.calendar": { ja: "カレンダー", en: "Calendar" },
+    "nav.diary":    { ja: "日記",       en: "Diary" },
+    "nav.health":   { ja: "健康",       en: "Health" },
+    "nav.calc":     { ja: "電卓",       en: "Calc" },
+    "nav.pulse":    { ja: "心拍β",      en: "Pulse β" },
+    "nav.settings": { ja: "せってい",   en: "Settings" },
+
+    /* ホーム */
+    "home.greet":       { ja: "こんにちは 👋", en: "Hello 👋" },
+    "home.daysLeft":    { ja: "今月ののこり {n}日", en: "{n} days left this month" },
+    "home.heroLabel":   { ja: "今月 あと つかえるお金", en: "Left to spend this month" },
+    "home.heroNote":    { ja: "先取り貯金・NISA積立の予定額を除いています",
+                          en: "Planned savings and investing contributions are excluded" },
+    "home.heroEmpty":   { ja: "給料を記録すると、ここに出ます",
+                          en: "Record your paycheck and it will show up here" },
+    "home.over":        { ja: "今月は少し使いすぎ。来月そっと調整🍀",
+                          en: "A bit over budget. Ease up next month 🍀" },
+    "home.warn":        { ja: "のこりわずか。少しペース注意", en: "Running low — watch your pace" },
+    "home.good":        { ja: "👍 このペースなら大丈夫", en: "👍 You're on track" },
+    "home.miniIncome":  { ja: "収入",     en: "Income" },
+    "home.miniSpent":   { ja: "使った",   en: "Spent" },
+    "home.miniSetAside":{ ja: "先取り",   en: "Set aside" },
+    "home.goal":        { ja: "目標",     en: "Goal" },
+    "home.goalLeft":    { ja: "あと{n}%", en: "{n}% to go" },
+    "home.goalUnset":   { ja: "未設定",   en: "Not set" },
+    "home.goalTap":     { ja: "目標記入", en: "Edit goal" },
+    "home.tapin":       { ja: "固定金額入力", en: "Edit amount" },
+    "home.dreamLabel":  { ja: "― あなたの夢の進み ―", en: "— Progress toward your goals —" },
+    "home.dreamNote":   { ja: "金額はどれも毎月ぶんです", en: "All amounts are per month" },
+    "home.record":      { ja: "📸 記録する", en: "📸 Add a record" },
+    "home.perMonth":    { ja: "/月", en: "/mo" },
+    "home.todos":       { ja: "今日やること", en: "Today's to-do" },
+    "home.todayPlan":   { ja: "今日の予定", en: "Today's schedule" },
+    "home.morePlans":   { ja: "ほか {n}件 の予定があります", en: "{n} more scheduled" },
+    "home.monthPlans":  { ja: "今月の予定（{month}）", en: "This month's schedule ({month})" },
+    "home.planCount":   { ja: "{total}件　のこり", en: "{total} total · remaining" },
+    "home.planLeft":    { ja: "{n}件", en: "{n}" },
+    "home.planMore":    { ja: "ほか {n}件 をカレンダーで見る", en: "See {n} more in the calendar" },
+    "home.today":       { ja: " 今日", en: " Today" },
+
+    /* ライフプラン欄のタイル */
+    "lp.nisa":      { ja: "NISA",       en: "Investing" },
+    "lp.pension":   { ja: "民間年金",   en: "Private pension" },
+    "lp.insurance": { ja: "各種保険",   en: "Insurance" },
+    "lp.gold":      { ja: "金（きん）", en: "Gold" },
+    "lp.ideco":     { ja: "iDeCo",      en: "Retirement" },
+    "lp.loans":     { ja: "借入金",     en: "Loans" },
+    "lp.banks":     { ja: "銀行貯金",   en: "Bank savings" },
+
+    /* まとめ */
+    "sum.tabMonth":     { ja: "今月",     en: "This month" },
+    "sum.tabAnalysis":  { ja: "📈 分析",  en: "📈 Insights" },
+    "sum.title":        { ja: "今月のまとめ（{month}）", en: "Summary for {month}" },
+    "sum.income":       { ja: "収入",     en: "Income" },
+    "sum.spend":        { ja: "支出",     en: "Spending" },
+    "sum.setAside":     { ja: "先取り（予定）", en: "Set aside · planned" },
+    "sum.left":         { ja: "のこり",   en: "Left over" },
+    "sum.formula":      { ja: "収入 {income} － 支出 {spend} － 先取り {setAside} ＝ ",
+                          en: "Income {income} − spending {spend} − set aside {setAside} = " },
+    "sum.sameAsHome":   { ja: "この「のこり」は、ホームの「今月あと つかえるお金」と同じ金額です。",
+                          en: "This is the same figure as ‘Left to spend this month’ on Home." },
+    "sum.donutLabel":   { ja: "収入の使いみち（支出・先取り・のこり）",
+                          en: "Where your income goes — spending, set aside, left over" },
+    "sum.incomeBreak":  { ja: "収入の内わけ", en: "Income breakdown" },
+    "sum.incomeRegular":{ ja: "通常収入（記録した給与）", en: "Regular income — recorded paycheck" },
+    "sum.incomeExtra":  { ja: "臨時収入", en: "Extra income" },
+    "sum.notRecorded":  { ja: "未記録",   en: "Not recorded" },
+    "sum.spendBreak":   { ja: "支出の内わけ（今月）", en: "Spending breakdown — this month" },
+    "sum.barNote":      { ja: "　棒は収入に対する割合", en: " · bars show share of income" },
+    "sum.recurring":    { ja: "🔁 毎月固定", en: "🔁 Recurring" },
+    "sum.spot":         { ja: "それ以外", en: "Everything else" },
+    "sum.records":      { ja: "記録（タップで編集）", en: "Records — tap to edit" },
+    "sum.empty":        { ja: "まだ記録がありません。<br>ホームの「記録する」から、はじめの一歩を。",
+                          en: "No records yet.<br>Tap ‘Add a record’ on Home to get started." },
+    "sum.noSpend":      { ja: "今月の支出はまだありません", en: "No spending recorded this month yet" },
+    "sum.dayTotal":     { ja: "支出 {amount}", en: "Spent {amount}" },
+    "sum.incomeTag":    { ja: "収入・", en: "Income · " },
+    "sum.total":        { ja: "合計", en: "Total" },
+    "sum.setAsideTitle":{ ja: "先取り（貯まるお金）", en: "Money you set aside" },
+    "sum.setAsideNote": { ja: "毎月ひとりでに出ていくお金です。",
+                          en: "Money that leaves your account every month on its own." },
+    "sum.notFromRecords": { ja: "記録からは入れません", en: "Do not add these as records" },
+    "sum.doubleCount":  { ja: "（二重に引かれてしまうため）", en: " (they would be counted twice)" },
+    "sum.fixedTitle":   { ja: "毎月固定（支出）", en: "Recurring spending" },
+    "sum.fixedNote":    { ja: "出ていって戻らないお金なので、", en: "This money is gone once paid, so it counts as " },
+    "sum.asSpend":      { ja: "支出", en: "spending" },
+    "sum.counted":      { ja: "として数えています。", en: "." },
+    "sum.alsoNot":      { ja: "こちらも", en: "These, too, " },
+    "sum.carryTitle":   { ja: "🔁 先月の毎月固定が {n}件 あります",
+                          en: "🔁 {n} recurring items from last month" },
+    "sum.carryTotal":   { ja: "　合計 ", en: " · total " },
+    "sum.carrySkip":    { ja: "今月すでに入っている {n}件 は、はぶきます",
+                          en: "{n} already added this month will be skipped" },
+    "sum.carryBtn":     { ja: "今月にまとめて入れる", en: "Add them all to this month" },
+    "sum.carryNote":    { ja: "金額は先月と同じで入ります。ちがうときは、入れたあとで直してください。",
+                          en: "Amounts are copied from last month. Edit them afterwards if they differ." },
+
+    /* 分析 */
+    "an.title":       { ja: "{month}の分析（{elapsed}日目 / {days}日）",
+                        en: "{month} insights — day {elapsed} of {days}" },
+    "an.periodNote":  { ja: "この「{month}」は {period} の分です", en: "‘{month}’ here covers {period}" },
+    "an.empty":       { ja: "記録がたまると、ここに気づきが出ます",
+                        en: "Insights will appear once you have some records" },
+    "an.pace":        { ja: "つかうペース", en: "Spending pace" },
+    "an.soFar":       { ja: "これまで", en: "So far" },
+    "an.perDay":      { ja: "1日あたり", en: "Per day" },
+    "an.forecast":    { ja: "月末の予測", en: "End-of-month forecast" },
+    "an.budgetNote":  { ja: "つかってよい額 {budget}（収入 {income} － 先取り {setAside}）。1日あたり {perDay} のペースです。",
+                        en: "You can spend {budget} ({income} income − {setAside} set aside), or {perDay} per day." },
+    "an.noIncome":    { ja: "給料を記録すると、予算のペース（点線）が出ます。",
+                        en: "Record your paycheck to see the budget pace (dotted line)." },
+    "an.days":        { ja: "記録があった日 {spend}日 ／ つかわなかった日 {none}日",
+                        en: "{spend} days with spending / {none} days without" },
+    "an.recurringNote":{ ja: "🔁 毎月固定の {amount} は、日割りせずそのまま数えています。",
+                        en: "🔁 Recurring {amount} is counted in full, not spread across days." },
+    "an.trend":       { ja: "{n}か月の推移", en: "Last {n} months" },
+    "an.trendNote":   { ja: "先取り（予定額）は今の設定の金額なので、過去の月には当てはめていません。ここは収入と支出だけを並べています。",
+                        en: "Set-aside amounts come from today's settings, so they are not applied to past months. Only income and spending are shown here." },
+    "an.compare":     { ja: "先月とくらべる", en: "Compared with last month" },
+    "an.weekday":     { ja: "曜日のくせ", en: "By day of week" },
+    "an.share":       { ja: "支出の {share}% ・ 先月 {prev}", en: "{share}% of spending · last month {prev}" },
+    "an.avg":         { ja: " ・ {n}か月平均 {amount}", en: " · {n}-month average {amount}" },
+    "an.first":       { ja: "はじめて", en: "First time" },
+    "an.forecastLine":{ ja: "月末までの予測", en: "Forecast to month end" },
+    "an.budgetLine":  { ja: "予算のペース", en: "Budget pace" },
+    "an.noRecords":   { ja: "まだ支出の記録がありません", en: "No spending recorded yet" },
+    "an.spentLine":   { ja: "つかった累計", en: "Spent so far" },
+
+    /* 気づき */
+    "ins.noIncome": { ja: "給料をまだ記録していません。記録すると、使いすぎのペースが分かります",
+                      en: "No paycheck recorded yet. Add one to see whether you're overspending" },
+    "ins.paceOver": { ja: "このペースだと月末に {forecast}。つかってよい {budget} を {over} こえそうです",
+                      en: "At this pace you'll reach {forecast} by month end — {over} over your {budget} budget" },
+    "ins.paceOk":   { ja: "このペースなら月末に {forecast}。{left} のこりそうです",
+                      en: "At this pace you'll reach {forecast} by month end, leaving {left}" },
+    "ins.up":       { ja: "{emoji} {name} が先月より {amount} ふえています",
+                      en: "{emoji} {name} is up {amount} from last month" },
+    "ins.top":      { ja: "いちばん多いのは {emoji} {name} の {amount}（支出の {share}%）",
+                      en: "Your biggest category is {emoji} {name} at {amount} ({share}% of spending)" },
+    "ins.down":     { ja: "{emoji} {name} は先月より {amount} へっています",
+                      en: "{emoji} {name} is down {amount} from last month" },
+    "ins.noSpend":  { ja: "今月は {n}日、1円もつかいませんでした",
+                      en: "You spent nothing on {n} days this month" },
+    "ins.recurring":{ ja: "毎月かかるお金は {amount}（支出の {share}%）",
+                      en: "Recurring costs are {amount} ({share}% of spending)" },
+    "ins.weekday":  { ja: "よくつかうのは {name}曜（合計 {amount}）",
+                      en: "You spend most on {name} (total {amount})" },
+
+    /* 今日やること */
+    "task.carry":       { ja: "先月の毎月固定が {n}件、まだ入っていません",
+                          en: "{n} recurring items from last month are not added yet" },
+    "task.carrySub":    { ja: "まとめて入れられます（合計 {amount}）",
+                          en: "You can add them all at once — total {amount}" },
+    "task.salary":      { ja: "今月の給料が、まだ記録されていません",
+                          en: "This month's paycheck is not recorded yet" },
+    "task.salarySub":   { ja: "記録すると「あと つかえるお金」が出ます",
+                          en: "Record it to see what's left to spend" },
+    "task.quiet":       { ja: "{n}日、支出の記録がありません", en: "No spending recorded for {n} days" },
+    "task.quietSub":    { ja: "レシートが手元にあれば、いまのうちに",
+                          en: "If you have a receipt handy, now is a good time" },
+    "task.diary":       { ja: "今日の日記が、まだです", en: "Today's diary is still empty" },
+    "task.diarySub":    { ja: "ひとことでも大丈夫です", en: "A single line is enough" },
+    "task.health":      { ja: "今日の体重・血圧が、まだです", en: "Today's weight and blood pressure are not recorded" },
+    "task.healthSub":   { ja: "1日1件で、あとから直せます", en: "One entry a day — you can edit it later" },
+
+    /* 記録シート */
+    "rec.title":      { ja: "記録する",     en: "Add a record" },
+    "rec.titleEdit":  { ja: "記録をなおす", en: "Edit record" },
+    "rec.expense":    { ja: "支出", en: "Expense" },
+    "rec.income":     { ja: "収入", en: "Income" },
+    "rec.amount":     { ja: "金額", en: "Amount" },
+    "rec.date":       { ja: "日付", en: "Date" },
+    "rec.memo":       { ja: "メモ（任意）", en: "Note — optional" },
+    "rec.memoPh":     { ja: "お店・内容", en: "Store or details" },
+    "rec.catExpense": { ja: "支出のカテゴリ", en: "Expense category" },
+    "rec.save":       { ja: "✓ この内容で記録する", en: "✓ Save this record" },
+    "rec.update":     { ja: "更新する", en: "Update" },
+    "rec.delete":     { ja: "この記録を削除", en: "Delete this record" },
+    "rec.recurringOn":  { ja: "オン", en: "On" },
+    "rec.recurringOff": { ja: "オフ", en: "Off" },
+    "rec.recurring":  { ja: "🔁 毎月固定 ", en: "🔁 Recurring " },
+    "rec.recurHintOn":  { ja: "家賃・光熱費のような、毎月かかるお金として数えます",
+                          en: "Counted as a monthly fixed cost, like rent or utilities" },
+    "rec.recurHintOff": { ja: "家賃・光熱費など、毎月かかるものはオンにしてください",
+                          en: "Turn this on for monthly costs such as rent or utilities" },
+    "rec.salaryNote": { ja: "給料の入力口はここだけです。今月の通常収入になります。",
+                        en: "This is the only place to enter your paycheck. It becomes this month's regular income." },
+    "rec.extraNote":  { ja: "臨時の収入として、今月の収入に上のせされます。",
+                        en: "Added to this month's income as extra income." },
+    "rec.shoot":      { ja: "📸 レシートを撮る", en: "📸 Photograph a receipt" },
+    "rec.shootSub":   { ja: "合計の行にアップで寄せて撮ってください", en: "Zoom in on the total line" },
+    "rec.reshoot":    { ja: "📸 撮り直す", en: "📸 Retake" },
+    "rec.readCrop":   { ja: "🔍 この枠の金額を読み取る", en: "🔍 Read the amount in the box" },
+    "rec.cropHint":   { ja: "白い枠を動かして、<b>合計の金額だけ</b>を囲んでください。<br>枠の中しか読み取らないので、他の金額と混ざりません。<br>",
+                        en: "Move the white box so it surrounds <b>only the total</b>.<br>Only what's inside the box is read, so other amounts can't get mixed in.<br>" },
+    "rec.online":     { ja: "初回の読み取りにはインターネット接続が必要です",
+                        en: "An internet connection is needed the first time you use this" },
+    "rec.choices":    { ja: "タップして金額を入れます（記録はまだされません）",
+                        en: "Tap to fill in the amount (nothing is saved yet)" },
+    "rec.manual":     { ja: "✍️ 手入力する", en: "✍️ Enter it myself" },
+
+    /* せってい */
+    "set.title":       { ja: "せってい", en: "Settings" },
+    "set.country":     { ja: "国・通貨", en: "Country & currency" },
+    "set.countryLabel":{ ja: "お住まいの国", en: "Your country" },
+    "set.countryHelp": { ja: "国を変えると、ことば・通貨・日付の出し方が変わります。記録したデータはそのまま残ります。",
+                         en: "Changing the country switches the language, currency and date format. Your records are kept as they are." },
+    "set.countryJP":   { ja: "日本（円）", en: "Japan · JPY" },
+    "set.countryUS":   { ja: "アメリカ（ドル）", en: "United States · USD" },
+    "set.countryMix":  { ja: "記録は国ごとに分かれています。いま選んでいる国の記録だけが集計されます。",
+                         en: "Records are kept per country. Only records for the selected country are counted." },
+    "set.birth":       { ja: "生年月日", en: "Date of birth" },
+    "set.cycle":       { ja: "月の区切り", en: "Month cycle" },
+    "set.cycleLabel":  { ja: "1か月の始まりの日", en: "Day the month starts" },
+    "set.goal":        { ja: "夢・目標", en: "Goals" },
+    "set.goalName":    { ja: "目標の名前", en: "Goal name" },
+    "set.goalNamePh":  { ja: "例：旅行 / 車 / 緊急資金", en: "e.g. Trip / Car / Emergency fund" },
+    "set.goalTarget":  { ja: "目標金額", en: "Target amount" },
+    "set.goalCurrent": { ja: "いま貯まってる額", en: "Saved so far" },
+    "set.data":        { ja: "データ", en: "Data" },
+    "set.save":        { ja: "保存する", en: "Save" },
+    "set.saved":       { ja: "保存しました ✓", en: "Saved ✓" },
+    "set.saveFailed":  { ja: "設定を保存できませんでした", en: "Could not save settings" },
+
+    /* 円グラフ */
+    "donut.income": { ja: "収入", en: "Income" },
+    "donut.over":   { ja: "⚠️ 収入を {amount} 超えています", en: "⚠️ {amount} over your income" },
+
+    /* せってい（つづき） */
+    "set.birthWhy":   { ja: "<b>なぜ必要か。</b>NISA積立の年齢区間を正しく計算するために使用します。ライフプラン連携時には、生年月日の食い違い確認にも使用します。ライフプラン側の生年月日を自動で変更することはありません。",
+                        en: "<b>Why this is needed.</b> It is used to work out the age ranges for your investing schedule, and to flag a mismatch when data is handed to the life-plan app. It never changes the date of birth on the life-plan side." },
+    "set.birthHelp":  { ja: "入れなくても家計簿は使えます。入れると、NISA積立をスケジュールから自動で計算します",
+                        en: "The app works without it. With it, investing contributions are worked out from your schedule automatically." },
+    "set.birthNow":   { ja: "いまは {age} です", en: "You are {age}" },
+    "set.cycleWhy":   { ja: "給料日から次の給料日までを「1か月」として数えられます。<br>たとえば <b>20日</b> にすると、7月20日〜8月19日 が「7月分」になります。<br>1日のままなら、これまでどおり<b>1日〜月末</b>です。",
+                        en: "You can count a month from payday to payday.<br>For example, choosing <b>the 20th</b> makes July 20 – August 19 count as July.<br>Leaving it at the 1st keeps <b>the 1st through month end</b>." },
+    "set.cycleFirst": { ja: "1日（暦の月・これまでどおり）", en: "1st — calendar month" },
+    "set.cycleDay":   { ja: "{d}日", en: "Day {d}" },
+    "set.cycleHelp1": { ja: "1日から月末までを1か月として数えます", en: "A month runs from the 1st to the last day." },
+    "set.cycleHelpN": { ja: "いまの区切りは {from}〜{to}", en: "The current period runs {from} – {to}" },
+    "set.cycleTail":  { ja: "　※その日が無い月は、月末に合わせます",
+                        en: " · months without that day fall back to the last day" },
+    "set.usage":      { ja: "使用中のデータ：<b>{total}</b>（うち写真 {photos}／{count}枚）<br>この端末に保存できるのは<b>およそ5MB</b>までです。",
+                        en: "Data in use: <b>{total}</b> (photos {photos} / {count} images)<br>This device can hold roughly <b>5MB</b>." },
+    "set.nearLimit":  { ja: "空きが少なくなっています。", en: "Space is running low." },
+    "set.exportBk":   { ja: "📥 バックアップを書き出す（JSON）", en: "📥 Export a backup — JSON" },
+    "set.importBk":   { ja: "📤 バックアップを読み込む（JSON）", en: "📤 Restore from a backup — JSON" },
+    "set.purge":      { ja: "🗑 写真をすべて消す（記録は残ります）", en: "🗑 Delete all photos — records are kept" },
+    "set.reset":      { ja: "⚠️ すべて初期設定に戻す", en: "⚠️ Reset everything" },
+    "set.resetHelp":  { ja: "設定・記録・日記・健康・予定など、この端末のデータをすべて消して、最初の状態に戻します。<b>元に戻せません。</b>先にバックアップを書き出してください。",
+                        en: "This erases everything on this device — settings, records, diary, health and schedule — and starts over. <b>It cannot be undone.</b> Export a backup first." },
+    "set.localOnly":  { ja: "データはこの端末の中だけに保存されます（外部に送信しません）。",
+                        en: "Your data stays on this device and is never sent anywhere." },
+
+    /* カレンダーの凡例 */
+    "cal.diary":  { ja: "日記", en: "Diary" },
+    "cal.health": { ja: "健康", en: "Health" },
+    "cal.plan":   { ja: "予定", en: "Schedule" },
+    "cal.dayTitle": { ja: "{date} の記録", en: "Records for {date}" },
+    "cal.dayEmpty": { ja: "この日の記録はありません", en: "Nothing recorded on this day" },
+    "cal.writePlan": { ja: "📝 この日の予定を書く", en: "📝 Add a plan for this day" },
+
+    /* ライフプランへの入口 */
+    "ext.title": { ja: "将来のお金を試算する", en: "Project your future finances" },
+    "ext.sub":   { ja: "資産形成 総合ライフプラン", en: "Total Life Plan" },
+
+    /* カレンダー */
+    "cal.income":  { ja: "収入", en: "Income" },
+    "cal.expense": { ja: "支出", en: "Expense" },
+
+    /* 健康の項目名（保存されるのは weight などの内部IDのまま） */
+    "health.weight": { ja: "体重",     en: "Weight" },
+    "health.bpHigh": { ja: "血圧(上)", en: "BP upper" },
+    "health.bpLow":  { ja: "血圧(下)", en: "BP lower" },
+    "health.pulse":  { ja: "心拍数",   en: "Heart rate" },
+
+    /* 心拍の測定品質。星の数はそのまま、呼び名だけ切り替える。 */
+    "pulse.q5": { ja: "とても良好", en: "Very good" },
+    "pulse.q4": { ja: "良好",       en: "Good" },
+    "pulse.q3": { ja: "普通",       en: "Fair" },
+    "pulse.q2": { ja: "やや不安定", en: "A bit unsteady" },
+    "pulse.q1": { ja: "再測定推奨", en: "Measure again" },
+    "pulse.fail": { ja: "測定品質が不足しています。安静にして再測定してください。",
+                    en: "The reading was not steady enough. Sit still and measure again." },
+    "pulse.rest":  { ja: "安静時",  en: "At rest" },
+    "pulse.post":  { ja: "運動後",  en: "After exercise" },
+    "pulse.other": { ja: "その他",  en: "Other" },
+
+    /* 電卓のエラー */
+    "calc.badExpr":  { ja: "式が正しくありません",   en: "That expression isn't valid" },
+    "calc.parens":   { ja: "かっこが合っていません", en: "The brackets don't match" },
+    "calc.divZero":  { ja: "0では割れません",       en: "You can't divide by zero" },
+    "calc.notNum":   { ja: "計算できません",         en: "That can't be worked out" },
+    "calc.tooLong":  { ja: "式が長すぎます",         en: "That expression is too long" },
+  });
+
+  function t(key, settingsOrCountry, vars) {
+    const row = UI_TEXT[key];
+    const lang = countryLang(settingsOrCountry);
+    let s = row ? (row[lang] === undefined ? row.ja : row[lang]) : String(key);
+    if (vars) {
+      Object.keys(vars).forEach(function (k) {
+        s = s.split("{" + k + "}").join(String(vars[k]));
+      });
+    }
+    return s;
+  }
+
+  /* ---------- 記録は国ごとに分ける ----------
+     国を切り替えたときに、円で記録したものがドルとして数えられてしまうと
+     金額がまったく違うものになる。だから記録1件ごとに国の印を持たせ、
+     いま選んでいる国のものだけを集計する。
+
+     旧データ（印を持たない記録）は必ずJPとして扱う。
+     日本のユーザーの保存データは1バイトも書き換えずに、そのまま動く。 */
+  function txCountry(t2) {
+    return normalizeCountry(t2 && t2.country ? t2.country : "JP");
+  }
+  function txsForCountry(txs, settingsOrCountry) {
+    const c = countryOf(settingsOrCountry);
+    return (Array.isArray(txs) ? txs : []).filter(function (t2) { return txCountry(t2) === c; });
+  }
+
+  function formatMoney(v, settingsOrCountry) {
+    const rule = countryRule(countryOf(settingsOrCountry));
+    const dec = currencyDecimals(rule.currency);
+    /* 円は小数を使わない。ここは日本版が今まで出していた「¥1,234」と
+       1文字も変えない（見た目を守るのが最優先のため、Intl に任せない）。 */
+    if (dec === 0) {
+      return "¥" + Math.round(Number(v) || 0).toLocaleString("en-US");
+    }
+    const n = Math.round((Number(v) || 0) * Math.pow(10, dec)) / Math.pow(10, dec);
     try {
       return new Intl.NumberFormat(rule.locale, {
-        style: "currency", currency: rule.currency, maximumFractionDigits: 0, minimumFractionDigits: 0,
+        style: "currency", currency: rule.currency,
+        minimumFractionDigits: dec, maximumFractionDigits: dec,
       }).format(n);
     } catch (e) {
-      return rule.symbol + n.toLocaleString(rule.locale);
+      const parts = Math.abs(n).toFixed(dec).split(".");
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      return (n < 0 ? "-" : "") + rule.symbol + parts.join(".");
     }
   }
 
@@ -787,6 +1264,9 @@
       schemaVersion: 1,
       appVersion: APP_VERSION,
       generatedAt: on,
+      /* どの国のデータかを必ず添える。JPとUSのデータが混ざらないようにするため。 */
+      countryCode: normalizeSettings(s).country,
+      baseCurrency: normalizeSettings(s).currency,
       /* 生年月日。ライフプラン側は書き換えず、食い違っていたら知らせるだけに使う。
          これを渡していなかったため、その知らせが実際には出ていなかった。 */
       birth: normalizeBirth(s.birth),
@@ -818,7 +1298,9 @@
   /* ---------- 当月の計算（唯一の正） ---------- */
   function computeMonth(settings, txs, ym) {
     const s = normalizeSettings(settings);
-    const all = Array.isArray(txs) ? txs : [];
+    /* 国ごとに分ける。印の無い旧データはJP扱いなので、
+       日本のユーザーの集計はこれまでと1円も変わらない。 */
+    const all = txsForCountry(txs, s);
     const month = all.filter(function (t) { return cycleOf(t.date, s.cycleStart) === ym; });
 
     /* --- 収入：給与は「記録」だけが入力口（設定に手取りは無い） --- */
@@ -915,8 +1397,8 @@
   }
 
   /* ---------- 今週つかった（記録した支出すべて） ---------- */
-  function weekSpent(txs, from, to) {
-    const all = Array.isArray(txs) ? txs : [];
+  function weekSpent(txs, from, to, settingsOrCountry) {
+    const all = txsForCountry(txs, settingsOrCountry);
     return sum(all.filter(function (t) {
       return t.type === "expense" && t.date >= from && t.date <= to;
     }), function (t) { return t.amount; });
@@ -1686,6 +2168,10 @@
 
     const out = { id: id, type: type, amount: amount, cat: cat, date: tx.date, memo: memo, photo: photo };
     if (recurring) out.recurring = true;
+    /* 国の印。JPのときはキーごと持たない。
+       こうすると、これまでの日本のデータと保存の形がまったく同じになる。 */
+    const country = normalizeCountry(tx.country);
+    if (tx.country && country !== "JP") out.country = country;
     return out;
   }
 
@@ -1731,6 +2217,14 @@
      入れ物は日付キーの1日1件。同じ日に記録し直せば上書き。
      { "2026-07-25": { weight:62.5, bpHigh:120, bpLow:78 } }
      ======================================================================= */
+  /* 健康の項目名。保存されるのは k（内部ID）だけで、n は日本語の表示名。
+     英語の表示名は t("health.<k>") から取る。 */
+  function healthFieldName(key, settingsOrCountry) {
+    const f = HEALTH_FIELDS.filter(function (x) { return x.k === key; })[0];
+    if (!f) return String(key || "");
+    return UI_TEXT["health." + key] ? t("health." + key, settingsOrCountry) : f.n;
+  }
+
   const HEALTH_FIELDS = [
     { k: "weight", n: "体重",   unit: "kg",   min: 0,   max: 500, decimals: 1 },
     { k: "bpHigh", n: "血圧(上)", unit: "mmHg", min: 0,   max: 300, decimals: 0 },
@@ -1872,11 +2366,17 @@
     1: "再測定推奨",
   };
   const PULSE_CONDS = { rest: "安静時", post: "運動後", other: "その他" };
+  /* 測定状態の呼び名。保存されるのは rest / post / other という内部IDのまま。 */
+  function pulseCondLabel(cond, settingsOrCountry) {
+    return PULSE_CONDS[cond] ? t("pulse." + cond, settingsOrCountry) : String(cond || "");
+  }
+  function pulseFailMessage(settingsOrCountry) { return t("pulse.fail", settingsOrCountry); }
   const PULSE_MAX = 500;          // 履歴の上限件数（古いものから落とす）
 
-  function pulseQualityLabel(stars) {
+  function pulseQualityLabel(stars, settingsOrCountry) {
     const n = Math.round(Number(stars));
-    return PULSE_QUALITY_LABELS[n] || "—";
+    if (!PULSE_QUALITY_LABELS[n]) return "—";
+    return t("pulse.q" + n, settingsOrCountry);
   }
   /* ★★★☆☆ の形。画面はこれを出すだけでよい。 */
   function pulseStarText(stars) {
@@ -2681,13 +3181,13 @@
     const o = opts || {};
     if (!Array.isArray(tokens) || !tokens.length) return { ok: false, error: "" };
     const list = sciTokenize(tokens, o.ans || 0);
-    if (!list) return { ok: false, error: "式が正しくありません" };
+    if (!list) return { ok: false, error: "式が正しくありません", errorKey: "calc.badExpr" };
     const rpn = sciToRpn(list);
-    if (!rpn) return { ok: false, error: "かっこが合っていません" };
+    if (!rpn) return { ok: false, error: "かっこが合っていません", errorKey: "calc.parens" };
     const r = sciRunRpn(rpn, o.deg !== false);
-    if (!r) return { ok: false, error: "式が正しくありません" };
-    if (r.divZero) return { ok: false, error: "0では割れません" };
-    if (!Number.isFinite(r.value)) return { ok: false, error: "計算できません" };
+    if (!r) return { ok: false, error: "式が正しくありません", errorKey: "calc.badExpr" };
+    if (r.divZero) return { ok: false, error: "0では割れません", errorKey: "calc.divZero" };
+    if (!Number.isFinite(r.value)) return { ok: false, error: "計算できません", errorKey: "calc.notNum" };
     return { ok: true, value: r.value };
   }
 
@@ -2725,7 +3225,7 @@
       s.result = null;
     }
 
-    if (s.tokens.length >= SCI_TOKENS_MAX) { s.error = "式が長すぎます"; return s; }
+    if (s.tokens.length >= SCI_TOKENS_MAX) { s.error = "式が長すぎます"; s.errorKey = "calc.tooLong"; return s; }
     if (!isSciDigit(k) && !SCI_FUNCS[k] && !SCI_OPS[k] && k !== "(" && k !== ")"
         && !Object.prototype.hasOwnProperty.call(SCI_CONSTS, k) && k !== "Ans") return s;
     s.tokens.push(k);
@@ -2870,7 +3370,8 @@
      ======================================================================= */
   function dayDetail(state, date) {
     const st = state || {};
-    const txs = (Array.isArray(st.tx) ? st.tx : []).filter(function (t) { return t && t.date === date; });
+    const mine = txsForCountry(st.tx, st.settings);
+    const txs = mine.filter(function (t) { return t && t.date === date; });
     const expense = txs.filter(function (t) { return t.type === "expense"; });
     const income = txs.filter(function (t) { return t.type === "income"; });
     const sum = function (a) { return a.reduce(function (s, t) { return s + (Number(t.amount) || 0); }, 0); };
@@ -2891,7 +3392,7 @@
   function monthMarks(state, ym) {
     const st = state || {};
     const marks = {};
-    (Array.isArray(st.tx) ? st.tx : []).forEach(function (t) {
+    txsForCountry(st.tx, st.settings).forEach(function (t) {
       if (t && typeof t.date === "string" && t.date.slice(0, 7) === ym) {
         marks[t.date] = marks[t.date] || {};
         marks[t.date][t.type === "income" ? "income" : "expense"] = true;
@@ -2909,7 +3410,9 @@
   /* =======================================================================
      まとめの円グラフ用：収入を100%として、支出・先取り・のこりの割合を返す
      ======================================================================= */
-  function budgetBreakdown(c) {
+  function budgetBreakdown(c, settingsOrCountry) {
+    /* 国は、渡されなければ計算結果の設定から取る（画面が渡し忘れても正しく出る） */
+    const c1 = settingsOrCountry === undefined ? ((c && c.settings) || "JP") : settingsOrCountry;
     const income = Math.max(0, Number(c && c.incomeTotal) || 0);
     const spend = Math.max(0, Number(c && c.spendTotal) || 0);
     const setAside = Math.max(0, Number(c && c.setAside) || 0);
@@ -2918,9 +3421,9 @@
     const base = income > 0 ? income : (spend + setAside);   // 収入0なら支出+先取りを基準に
     const pct = function (v) { return base > 0 ? Math.round((v / base) * 100) : 0; };
     const parts = [
-      { key: "spend",    name: "支出",   amount: spend,    color: "#c2694f", pct: pct(spend) },
-      { key: "setAside", name: "先取り", amount: setAside, color: "#7f9cc0", pct: pct(setAside) },
-      { key: "remain",   name: "のこり", amount: remain,   color: "#6f9c78", pct: pct(remain) },
+      { key: "spend",    name: t("sum.spend", c1),    amount: spend,    color: "#c2694f", pct: pct(spend) },
+      { key: "setAside", name: t("home.miniSetAside", c1), amount: setAside, color: "#7f9cc0", pct: pct(setAside) },
+      { key: "remain",   name: t("sum.left", c1),     amount: remain,   color: "#6f9c78", pct: pct(remain) },
     ];
     return { income: income, base: base, over: over, parts: parts };
   }
@@ -2978,7 +3481,7 @@
       const c = computeMonth(settings, txs, m);
       return {
         ym: m,
-        label: String(Number(m.slice(5, 7))) + "月",
+        label: monthShort(Number(m.slice(5, 7)), settings),
         income: c.incomeTotal,
         spend: c.spendTotal,
         net: c.incomeTotal - c.spendTotal,
@@ -2999,7 +3502,7 @@
 
   /* 当月・前月・過去n か月の平均をカテゴリごとに並べる。
      平均は「記録のあった月」だけで割る（使いはじめの月に薄まらないように）。 */
-  function categoryCompare(txs, ym, n, startDay) {
+  function categoryCompare(txs, ym, n, startDay, settingsOrCountry) {
     const back = Math.max(1, Math.floor(Number(n) || COMPARE_MONTHS));
     const pastYms = recentMonths(shiftYm(ym, -1), back);      // 当月は含めない
     const now = categorySpend(txs, ym, startDay);
@@ -3020,7 +3523,7 @@
       const sumPast = past.reduce(function (a, map) { return a + (map[k] || 0); }, 0);
       return {
         key: k,
-        name: cat.n,
+        name: catName("expense", k, settingsOrCountry),
         emoji: cat.e,
         now: now[k] || 0,
         prev: prev[k] || 0,
@@ -3033,9 +3536,9 @@
 
   /* ---------- 曜日ぐせ ---------- */
   /* 日付はUTC固定で読む。端末のタイムゾーンで曜日がずれないようにするため。 */
-  function weekdaySpend(txs, ym, startDay) {
+  function weekdaySpend(txs, ym, startDay, settingsOrCountry) {
     const rows = WEEKDAY_NAMES.map(function (n, i) {
-      return { dow: i, name: n, amount: 0, count: 0 };
+      return { dow: i, name: weekdayShort(i, settingsOrCountry), amount: 0, count: 0 };
     });
     (Array.isArray(txs) ? txs : []).forEach(function (t) {
       if (!t || t.type !== "expense" || cycleOf(t.date, startDay) !== ym) return;
@@ -3125,22 +3628,25 @@
 
   /* ---------- 気づき（ことばにする） ---------- */
   /* level: "good" ほめる ／ "warn" 気をつける ／ "info" ただの事実 */
-  function analysisInsights(a) {
+  function analysisInsights(a, settingsOrCountry) {
     const out = [];
     const pace = a.pace, cats = a.cats || [];
+    /* 文章はことばの表（UI_TEXT）から組み立てる。
+       日本語は今までと同じ文字列になるように書いてある。 */
+    const c0 = settingsOrCountry === undefined ? (a.country || "JP") : settingsOrCountry;
+    const T = function (key, vars) { return t(key, c0, vars); };
+    const M = function (v) { return formatMoney(v, c0); };
 
     if (!pace.hasIncome) {
       out.push({ level: "info", key: "no-income",
-        text: "給料をまだ記録していません。記録すると、使いすぎのペースが分かります" });
+        text: T("ins.noIncome") });
     } else if (pace.spendTotal > 0 && pace.budget > 0 && pace.isCurrent) {
       if (pace.over > 0) {
         out.push({ level: "warn", key: "pace",
-          text: "このペースだと月末に " + fmtYen(pace.forecast) + "。つかってよい "
-            + fmtYen(pace.budget) + " を " + fmtYen(pace.over) + " こえそうです" });
+          text: T("ins.paceOver", { forecast: M(pace.forecast), budget: M(pace.budget), over: M(pace.over) }) });
       } else {
         out.push({ level: "good", key: "pace",
-          text: "このペースなら月末に " + fmtYen(pace.forecast) + "。"
-            + fmtYen(-pace.over) + " のこりそうです" });
+          text: T("ins.paceOk", { forecast: M(pace.forecast), left: M(-pace.over) }) });
       }
     }
 
@@ -3148,31 +3654,30 @@
     const up = cats.slice().sort(function (x, y) { return y.diff - x.diff; })[0];
     if (up && up.diff > 0 && up.prev > 0) {
       out.push({ level: "warn", key: "up",
-        text: up.emoji + " " + up.name + " が先月より " + fmtYen(up.diff) + " ふえています" });
+        text: T("ins.up", { emoji: up.emoji, name: up.name, amount: M(up.diff) }) });
     }
     if (spent.length) {
       out.push({ level: "info", key: "top",
-        text: "いちばん多いのは " + spent[0].emoji + " " + spent[0].name + " の "
-          + fmtYen(spent[0].now) + "（支出の " + spent[0].share + "%）" });
+        text: T("ins.top", { emoji: spent[0].emoji, name: spent[0].name, amount: M(spent[0].now), share: spent[0].share }) });
     }
     const down = cats.slice().sort(function (x, y) { return x.diff - y.diff; })[0];
     if (down && down.diff < 0 && down.prev > 0) {
       out.push({ level: "good", key: "down",
-        text: down.emoji + " " + down.name + " は先月より " + fmtYen(-down.diff) + " へっています" });
+        text: T("ins.down", { emoji: down.emoji, name: down.name, amount: M(-down.diff) }) });
     }
     if (pace.noSpendDays > 0 && pace.spendTotal > 0) {
       out.push({ level: "good", key: "no-spend",
-        text: "今月は " + pace.noSpendDays + "日、1円もつかいませんでした" });
+        text: T("ins.noSpend", { n: pace.noSpendDays }) });
     }
     if (pace.recurringSoFar > 0 && pace.spentSoFar > 0) {
       out.push({ level: "info", key: "recurring",
-        text: "毎月かかるお金は " + fmtYen(pace.recurringSoFar)
-          + "（支出の " + Math.round((pace.recurringSoFar / pace.spentSoFar) * 100) + "%）" });
+        text: T("ins.recurring", { amount: M(pace.recurringSoFar),
+          share: Math.round((pace.recurringSoFar / pace.spentSoFar) * 100) }) });
     }
     const busiest = (a.week || []).slice().sort(function (x, y) { return y.amount - x.amount; })[0];
     if (busiest && busiest.amount > 0) {
       out.push({ level: "info", key: "weekday",
-        text: "よくつかうのは " + busiest.name + "曜（合計 " + fmtYen(busiest.amount) + "）" });
+        text: T("ins.weekday", { name: busiest.name, amount: M(busiest.amount) }) });
     }
     return out.slice(0, 5);
   }
@@ -3180,16 +3685,20 @@
   /* ---------- 分析ぜんぶ（画面はこれだけを読む） ---------- */
   function analyzeMonth(settings, txs, ym, opts) {
     const o = opts || {};
-    const startDay = normalizeSettings(settings).cycleStart;
+    const s = normalizeSettings(settings);
+    const startDay = s.cycleStart;
+    /* いまの国の記録だけを見る。ここで1回絞れば、下の集計は全部そろう。 */
+    const mine = txsForCountry(txs, s);
     const out = {
       ym: ym,
-      month: computeMonth(settings, txs, ym),
-      trend: monthlyTrend(settings, txs, ym, o.trendMonths || TREND_MONTHS),
-      cats: categoryCompare(txs, ym, o.compareMonths || COMPARE_MONTHS, startDay),
-      week: weekdaySpend(txs, ym, startDay),
-      pace: spendPace(settings, txs, ym, o.today || null),
+      country: s.country,
+      month: computeMonth(settings, mine, ym),
+      trend: monthlyTrend(settings, mine, ym, o.trendMonths || TREND_MONTHS),
+      cats: categoryCompare(mine, ym, o.compareMonths || COMPARE_MONTHS, startDay, s),
+      week: weekdaySpend(mine, ym, startDay, s),
+      pace: spendPace(settings, mine, ym, o.today || null),
     };
-    out.insights = analysisInsights(out);
+    out.insights = analysisInsights(out, s);
     return out;
   }
 
@@ -3204,8 +3713,8 @@
        金額がちがっても入れない。電気代のように額が変わるものを
        2件に増やすより、1件を直してもらうほうが安全なため。
      ======================================================================= */
-  function recurringCarryPlan(txs, ym, startDay) {
-    const all = Array.isArray(txs) ? txs : [];
+  function recurringCarryPlan(txs, ym, startDay, settingsOrCountry) {
+    const all = txsForCountry(txs, settingsOrCountry);
     const prevYm = shiftYm(ym, -1);
 
     const prev = all.filter(function (t) {
@@ -3223,7 +3732,7 @@
       const date = dateInCycle(ym, startDay, Number(String(t.date).slice(8, 10)));
       return {
         cat: t.cat,
-        name: cat.n,
+        name: catName("expense", t.cat, settingsOrCountry),
         emoji: cat.e,
         amount: num(t.amount),
         memo: String(t.memo || "").slice(0, MEMO_MAX),
@@ -3306,18 +3815,21 @@
   function todayTasks(state, today) {
     const st = state || {};
     if (!validateDateString(today)) return [];
-    const txs = Array.isArray(st.tx) ? st.tx : [];
-    const startDay = normalizeSettings(st.settings).cycleStart;
+    const s = normalizeSettings(st.settings);
+    /* いまの国の記録だけを見る（印の無い旧データはJP） */
+    const txs = txsForCountry(st.tx, s);
+    const startDay = s.cycleStart;
     const ym = cycleOf(today, startDay);
     const out = [];
+    const T = function (key, vars) { return t(key, s, vars); };
 
     /* 1. 先月の「毎月固定」がまだ入っていない（金額に効くので最優先） */
-    const plan = recurringCarryPlan(txs, ym, startDay);
+    const plan = recurringCarryPlan(txs, ym, startDay, s);
     if (plan.toAdd.length > 0) {
       out.push({
         key: "carry", icon: "🔁", act: "carry",
-        text: "先月の毎月固定が " + plan.toAdd.length + "件、まだ入っていません",
-        sub: "まとめて入れられます（合計 " + fmtYen(plan.total) + "）",
+        text: T("task.carry", { n: plan.toAdd.length }),
+        sub: T("task.carrySub", { amount: formatMoney(plan.total, s) }),
       });
     }
 
@@ -3329,8 +3841,8 @@
       if (hint !== null && today >= dateInCycle(ym, startDay, hint)) {
         out.push({
           key: "salary", icon: "💴", act: "salary",
-          text: "今月の給料が、まだ記録されていません",
-          sub: "記録すると「あと つかえるお金」が出ます",
+          text: T("task.salary"),
+          sub: T("task.salarySub"),
         });
       }
     }
@@ -3342,8 +3854,8 @@
       if (gap >= TASK_QUIET_DAYS) {
         out.push({
           key: "quiet", icon: "🧾", act: "record",
-          text: gap + "日、支出の記録がありません",
-          sub: "レシートが手元にあれば、いまのうちに",
+          text: T("task.quiet", { n: gap }),
+          sub: T("task.quietSub"),
         });
       }
     }
@@ -3352,13 +3864,13 @@
     if (isHabit(st.diary, today) && !(st.diary || {})[today]) {
       out.push({
         key: "diary", icon: "📖", act: "diary",
-        text: "今日の日記が、まだです", sub: "ひとことでも大丈夫です",
+        text: T("task.diary"), sub: T("task.diarySub"),
       });
     }
     if (isHabit(st.health, today) && !(st.health || {})[today]) {
       out.push({
         key: "health", icon: "❤️", act: "health",
-        text: "今日の体重・血圧が、まだです", sub: "1日1件で、あとから直せます",
+        text: T("task.health"), sub: T("task.healthSub"),
       });
     }
 
@@ -3390,6 +3902,7 @@
       schema_version: "2.2",
       country_code: c.settings.country,
       base_currency: c.currency,
+      locale: countryLocale(c.settings),
       year_month: ym,
       /* 月の区切り。起点が1日なら period_from/to はその月の1日と末日になる。 */
       cycle_start_day: c.cycleStart,
@@ -3411,13 +3924,14 @@
          どちらも足すと spend_total になる。 */
       fixed_cost: c.recurringSpend,
       fixed_cost_items: Object.keys(c.byCatRecurring).map(function (k) {
-        return { key: k, name: catOf("expense", k).n, amount: c.byCatRecurring[k] };
+        /* key は国が変わっても同じ内部ID。name は表示用にその国のことばで添える。 */
+        return { key: k, name: catName("expense", k, c.settings), amount: c.byCatRecurring[k] };
       }),
       variable_spend: c.spotSpend,
       spend_total: c.spendTotal,
       expense_total: c.spendTotal,
       by_category: Object.keys(c.byCat).map(function (k) {
-        return { key: k, name: catOf("expense", k).n, amount: c.byCat[k] };
+        return { key: k, name: catName("expense", k, c.settings), amount: c.byCat[k] };
       }),
 
       /* 先取りは「予定額」であることを構造で明示 */
@@ -3459,9 +3973,35 @@
     CYCLE_START_MIN: CYCLE_START_MIN,
     CYCLE_START_MAX: CYCLE_START_MAX,
     COUNTRY_RULES: COUNTRY_RULES,
+    SUPPORTED_COUNTRIES: SUPPORTED_COUNTRIES,
+    COUNTRY_LANG: COUNTRY_LANG,
+    CURRENCY_DECIMALS: CURRENCY_DECIMALS,
     normalizeCountry: normalizeCountry,
     countryFromCurrency: countryFromCurrency,
     countryRule: countryRule,
+    countryOf: countryOf,
+    countryLang: countryLang,
+    countryLocale: countryLocale,
+    isSupportedCountry: isSupportedCountry,
+    pickCountry: pickCountry,
+    currencyDecimals: currencyDecimals,
+    weekdayShort: weekdayShort,
+    weekdayLabel: weekdayLabel,
+    monthName: monthName,
+    monthShort: monthShort,
+    formatMonthDay: formatMonthDay,
+    formatDateHeading: formatDateHeading,
+    formatDate: formatDate,
+    formatYearMonth: formatYearMonth,
+    EXP_CAT_EN: EXP_CAT_EN,
+    INC_CAT_EN: INC_CAT_EN,
+    catName: catName,
+    catDisplay: catDisplay,
+    lpRowName: lpRowName,
+    UI_TEXT: UI_TEXT,
+    t: t,
+    txCountry: txCountry,
+    txsForCountry: txsForCountry,
     formatMoney: formatMoney,
     normalizeSettings: normalizeSettings,
     LP_MAX_ROWS: LP_MAX_ROWS,
@@ -3552,6 +4092,9 @@
     PULSE_CONDS: PULSE_CONDS,
     PULSE_MAX: PULSE_MAX,
     pulseQualityLabel: pulseQualityLabel,
+    pulseCondLabel: pulseCondLabel,
+    pulseFailMessage: pulseFailMessage,
+    healthFieldName: healthFieldName,
     pulseStarText: pulseStarText,
     pulseStars: pulseStars,
     pulseFrameOk: pulseFrameOk,
