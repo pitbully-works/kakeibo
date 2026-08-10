@@ -799,9 +799,11 @@
   "country_us.test.js"
  ],
  "国と通貨の組をほどく": [
+  "country_guard.test.js",
   "country_us.test.js"
  ],
  "まだ用意していない国も選ばせる": [
+  "country_guard.test.js",
   "country_us.test.js"
  ],
  "英語のときも日本語のカテゴリ名を出す": [
