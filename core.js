@@ -218,7 +218,7 @@
   /* せっていの「国」で選べる国。土台は5カ国あるが、
      画面（ことば・カテゴリ表示）を用意できた国だけをここに出す。
      GB / CA / AU を出すときは、この配列に足して翻訳を足すだけでよい。 */
-  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB"]);
+  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB", "CA"]);
 
   /* 設定オブジェクトでも国コードの文字列でも受け取れるようにする */
   function countryOf(settingsOrCountry) {
@@ -294,6 +294,7 @@
     const y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
     if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
     if (countryOf(settingsOrCountry) === "GB") return d + "/" + m + "/" + y;
+    if (countryOf(settingsOrCountry) === "CA") return y + "-" + pad2(m) + "-" + pad2(d);
     return countryLang(settingsOrCountry) === "en" ? m + "/" + d + "/" + y : y + "/" + m + "/" + d;
   }
   /* 年月。JP「2026年8月」／US「August 2026」。 */
@@ -560,6 +561,7 @@
     "set.countryJP":   { ja: "日本（円）", en: "Japan · JPY" },
     "set.countryUS":   { ja: "アメリカ（ドル）", en: "United States · USD" },
     "set.countryGB":   { ja: "イギリス（ポンド）", en: "United Kingdom · GBP" },
+    "set.countryCA":   { ja: "カナダ（カナダドル）", en: "Canada · CAD" },
     "set.countryMix":  { ja: "記録は国ごとに分かれています。いま選んでいる国の記録だけが集計されます。",
                          en: "Records are kept per country. Only records for the selected country are counted." },
     "set.birth":       { ja: "生年月日", en: "Date of birth" },
@@ -683,6 +685,12 @@
       return "¥" + Math.round(Number(v) || 0).toLocaleString("en-US");
     }
     const n = Math.round((Number(v) || 0) * Math.pow(10, dec)) / Math.pow(10, dec);
+    /* en-CA の Intl は環境によって "$" だけになるため、CAD は CA$ と明示する。 */
+    if (rule.currency === "CAD") {
+      const parts = Math.abs(n).toFixed(dec).split(".");
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      return (n < 0 ? "-" : "") + "CA$" + parts.join(".");
+    }
     try {
       return new Intl.NumberFormat(rule.locale, {
         style: "currency", currency: rule.currency,

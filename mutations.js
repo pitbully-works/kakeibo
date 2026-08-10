@@ -788,6 +788,23 @@ const MUTATIONS = [
     file: "core.js", from: '      return gb ? d + "/" + m : m + "/" + d;',
     to: '      return m + "/" + d;' },
 
+  /* ---- CA（カナダ）の国・通貨・日付 ---- */
+  { name: "CAを選択対象から外す", guards: "CAを設定画面から選べる",
+    file: "core.js", from: '  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB", "CA"]);',
+    to: '  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB"]);' },
+  { name: "CAの通貨をUSDにする", guards: "CAはCAD/CA$",
+    file: "core.js", from: '    CA: Object.freeze({ country: "CA", currency: "CAD", locale: "en-CA", symbol: "CA$" }),',
+    to: '    CA: Object.freeze({ country: "CA", currency: "USD", locale: "en-CA", symbol: "$" }),' },
+  { name: "CAの日付を米国式にする", guards: "CAの完全日付はISO式",
+    file: "core.js", from: '    if (countryOf(settingsOrCountry) === "CA") return y + "-" + pad2(m) + "-" + pad2(d);',
+    to: '    if (countryOf(settingsOrCountry) === "CA") return m + "/" + d + "/" + y;' },
+  { name: "CAのlocaleを米国にする", guards: "CAはen-CA",
+    file: "core.js", from: '    CA: Object.freeze({ country: "CA", currency: "CAD", locale: "en-CA", symbol: "CA$" }),',
+    to: '    CA: Object.freeze({ country: "CA", currency: "CAD", locale: "en-US", symbol: "CA$" }),' },
+  { name: "CAを未対応国へ戻す", guards: "CAは選択可能国",
+    file: "core.js", from: '    "set.countryCA":   { ja: "カナダ（カナダドル）", en: "Canada · CAD" },',
+    to: '    "set.countryCA":   { ja: "カナダ（カナダドル）", en: "Canada" },' },
+
   /* ---- カレンダーは暦の月（家計の区切りキーではない） ---- */
   { name: "カレンダーの今月を区切りキーにする", guards: "起点20日でも暦の月を表示",
     file: "index.html", from: "function calCurYM(){ return ymOf(todayISO()); }",
