@@ -22,7 +22,7 @@ const { spawn } = require("node:child_process");
 const ROOT = __dirname;
 
 /* テストを走らせるのに要るファイルだけを写す（写真は要らない） */
-const COPY_EXT = new Set([".js", ".cjs", ".mjs", ".html", ".json", ".webmanifest"]);
+const COPY_EXT = new Set([".js", ".cjs", ".mjs", ".html", ".json", ".webmanifest", ".md", ".yml", ".yaml"]);
 
 /* 後始末する一時フォルダの控え。中断されてもここを見て消す。 */
 const workspaces = new Set();
@@ -55,6 +55,18 @@ function makeWorkspace() {
     const from = path.join(ROOT, name);
     if (!fs.statSync(from).isFile()) continue;
     fs.copyFileSync(from, path.join(dir, name));
+  }
+
+  /* ci_test.js も通常テストの一部。
+     そのテストは GitHub Actions の設定ファイルを読むため、
+     一時フォルダにも .github/workflows/test.yml を同じ場所へ写す。
+     これが無いと、元リポジトリでは965件PASSでも mutation の
+     ベースラインだけ ENOENT で落ちる。 */
+  const workflow = path.join(ROOT, ".github", "workflows", "test.yml");
+  if (fs.existsSync(workflow)) {
+    const workflowDir = path.join(dir, ".github", "workflows");
+    fs.mkdirSync(workflowDir, { recursive: true });
+    fs.copyFileSync(workflow, path.join(workflowDir, "test.yml"));
   }
   return dir;
 }
