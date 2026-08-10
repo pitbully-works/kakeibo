@@ -163,10 +163,14 @@
   }
 
   /* 画面に出す期間の文字（例 "7/20〜8/19"）。起点が1日なら空文字。 */
-  function cycleLabel(ym, startDay) {
+  function cycleLabel(ym, startDay, settingsOrCountry) {
     if (normalizeCycleStart(startDay) === 1) return "";
     const r = cycleRange(ym, startDay);
-    const f = function (iso) { return Number(iso.slice(5, 7)) + "/" + Number(iso.slice(8, 10)); };
+    const gb = countryOf(settingsOrCountry) === "GB";
+    const f = function (iso) {
+      const m = Number(iso.slice(5, 7)), d = Number(iso.slice(8, 10));
+      return gb ? d + "/" + m : m + "/" + d;
+    };
     return f(r.from) + "〜" + f(r.to);
   }
 
@@ -214,7 +218,7 @@
   /* せっていの「国」で選べる国。土台は5カ国あるが、
      画面（ことば・カテゴリ表示）を用意できた国だけをここに出す。
      GB / CA / AU を出すときは、この配列に足して翻訳を足すだけでよい。 */
-  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US"]);
+  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB"]);
 
   /* 設定オブジェクトでも国コードの文字列でも受け取れるようにする */
   function countryOf(settingsOrCountry) {
@@ -274,13 +278,14 @@
     const s = String(iso || "");
     const m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
     if (!Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
-    return m + "/" + d;
+    return countryOf(settingsOrCountry) === "GB" ? d + "/" + m : m + "/" + d;
   }
   /* 見出しの日付。JP「8月10日」／US「August 10」。 */
   function formatDateHeading(iso, settingsOrCountry) {
     const s = String(iso || "");
     const m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
     if (!Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
+    if (countryOf(settingsOrCountry) === "GB") return d + " " + MONTH_EN[m - 1];
     return countryLang(settingsOrCountry) === "en" ? MONTH_EN[m - 1] + " " + d : m + "月" + d + "日";
   }
   /* 年つきの日付。JP「2026/8/10」／US「8/10/2026」。 */
@@ -288,6 +293,7 @@
     const s = String(iso || "");
     const y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
     if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d) || !m || !d) return s;
+    if (countryOf(settingsOrCountry) === "GB") return d + "/" + m + "/" + y;
     return countryLang(settingsOrCountry) === "en" ? m + "/" + d + "/" + y : y + "/" + m + "/" + d;
   }
   /* 年月。JP「2026年8月」／US「August 2026」。 */
@@ -553,6 +559,7 @@
                          en: "Changing the country switches the language, currency and date format. Your records are kept as they are." },
     "set.countryJP":   { ja: "日本（円）", en: "Japan · JPY" },
     "set.countryUS":   { ja: "アメリカ（ドル）", en: "United States · USD" },
+    "set.countryGB":   { ja: "イギリス（ポンド）", en: "United Kingdom · GBP" },
     "set.countryMix":  { ja: "記録は国ごとに分かれています。いま選んでいる国の記録だけが集計されます。",
                          en: "Records are kept per country. Only records for the selected country are counted." },
     "set.birth":       { ja: "生年月日", en: "Date of birth" },
@@ -1399,7 +1406,7 @@
       periodFrom: cycleRange(ym, s.cycleStart).from,
       periodTo: cycleRange(ym, s.cycleStart).to,
       periodDays: cycleRange(ym, s.cycleStart).days,
-      periodLabel: cycleLabel(ym, s.cycleStart),
+      periodLabel: cycleLabel(ym, s.cycleStart, s),
       /* 収入 */
       incomeRegular: incomeRegular,
       incomeRegularRecorded: incomeRegularRecorded,

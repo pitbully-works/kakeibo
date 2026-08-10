@@ -771,6 +771,23 @@ const MUTATIONS = [
     file: "core.js", from: '      moneyProfiles: normalizeMoneyProfiles(st.moneyProfiles, st.settings),\n',
     to: '' },
 
+  /* ---- GB（英国）の国・通貨・日付 ---- */
+  { name: "GBを選択対象から外す", guards: "GBを設定画面から選べる",
+    file: "core.js", from: '  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US", "GB"]);',
+    to: '  const SUPPORTED_COUNTRIES = Object.freeze(["JP", "US"]);' },
+  { name: "GBの通貨をUSDにする", guards: "GBはGBP/£",
+    file: "core.js", from: '    GB: Object.freeze({ country: "GB", currency: "GBP", locale: "en-GB", symbol: "£" }),',
+    to: '    GB: Object.freeze({ country: "GB", currency: "USD", locale: "en-GB", symbol: "$" }),' },
+  { name: "GBの日付を月日順にする", guards: "GBは日/月/年",
+    file: "core.js", from: '    if (countryOf(settingsOrCountry) === "GB") return d + "/" + m + "/" + y;',
+    to: '    if (countryOf(settingsOrCountry) === "GB") return m + "/" + d + "/" + y;' },
+  { name: "GBの見出し日付を米国順にする", guards: "GBは10 August",
+    file: "core.js", from: '    if (countryOf(settingsOrCountry) === "GB") return d + " " + MONTH_EN[m - 1];',
+    to: '    if (countryOf(settingsOrCountry) === "GB") return MONTH_EN[m - 1] + " " + d;' },
+  { name: "GBの月区切り表示を米国順にする", guards: "GBの区切りは20/7〜19/8",
+    file: "core.js", from: '      return gb ? d + "/" + m : m + "/" + d;',
+    to: '      return m + "/" + d;' },
+
   /* ---- カレンダーは暦の月（家計の区切りキーではない） ---- */
   { name: "カレンダーの今月を区切りキーにする", guards: "起点20日でも暦の月を表示",
     file: "index.html", from: "function calCurYM(){ return ymOf(todayISO()); }",

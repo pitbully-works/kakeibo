@@ -850,7 +850,7 @@ function renderHome(){
   const d=new Date();
   const wdName=wd(d.getDay());
   const dateBig=`${Core.formatDateHeading(todayISO(d), state.settings)}<span class="wd">${isEn()?` (${wdName})`:`（${wdName}）`}</span>`;
-  const period=Core.cycleLabel(curYM(), cycleStart());
+  const period=Core.cycleLabel(curYM(), cycleStart(), state.settings);
   const monthLabel=`${T("home.daysLeft",{n:daysLeftInCycle()})}${period?`${isEn()?" · ":"　（"}${period}${isEn()?"":"）"}`:""}`;
 
   let heroN, heroCls="", ok="", note;
@@ -1053,7 +1053,7 @@ function renderSummary(){
   return `<div class="screen">
     ${sumTabs()}
     ${carryCard()}
-    <div class="stitle" style="margin-top:6px">${T("sum.title",{month:Core.monthName(Number(curYM().slice(5,7)), state.settings)+(Core.cycleLabel(curYM(), cycleStart())?(isEn()?" · ":"・")+Core.cycleLabel(curYM(), cycleStart()):"")})}</div>
+    <div class="stitle" style="margin-top:6px">${T("sum.title",{month:Core.monthName(Number(curYM().slice(5,7)), state.settings)+(Core.cycleLabel(curYM(), cycleStart(), state.settings)?(isEn()?" · ":"・")+Core.cycleLabel(curYM(), cycleStart(), state.settings):"")})}</div>
     <div class="sumcards">
       <div class="sc"><div class="l">${T("sum.income")}</div><div class="v inc mono">${yen(c.incomeTotal)}</div></div>
       <div class="sc"><div class="l">${T("sum.spend")}</div><div class="v exp mono">${yen(c.spendTotal)}</div></div>
