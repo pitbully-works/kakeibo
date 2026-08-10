@@ -1,0 +1,118 @@
+# =============================================================================
+# かけいぼ ― ② 全mutation完全検査（リリース前）
+# -----------------------------------------------------------------------------
+# 変異を1件も省かずに全部試すほう。ふだんは動かさない。
+# リリース前と、大きな変更のあとに、Actions の画面から手で走らせる。
+#
+#   node run-mutations.js        … 変異は全件。判定は全テストで行う。
+#
+# 「早期検出」で短くはしているが、判定はゆるめていない。
+#   ・捕まえるはずのテストで先に落ちた → その時点で「検出」（全テストでも落ちる）
+#   ・落ちなかった                     → 全テストで確かめてから「見逃し」を判定
+# つまり「見逃し」と言えるのは、全テストが通ってしまったときだけ。
+#
+# 対応表（mutation-map.json）を作り直すことができる。
+# 作り直すと、①の高速検査がより速く・より正確になる。
+# =============================================================================
+name: ② 全mutation完全検査（リリース前）
+
+on:
+  workflow_dispatch:
+    inputs:
+      update_map:
+        description: "対応表（mutation-map.json）を作り直して commit する"
+        type: boolean
+        default: false
+
+concurrency:
+  group: mutation-full-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  full:
+    name: 全mutation完全検査
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # 対応表を作り直すときだけ、書き込みを許す
+    permissions:
+      contents: ${{ inputs.update_map && 'write' || 'read' }}
+
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Node.js を用意（安定版）
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Node のバージョンを記録
+        run: node --version
+
+      # --- 1. 通常テスト（完全検査の前に、まず素の状態で全部通ることを確認）
+      - name: 通常テストを実行
+        run: node --test --test-reporter=spec
+
+      - name: 通常テストの件数を記録
+        if: always()
+        run: |
+          node --test --test-reporter=tap > test-output.txt 2>&1 || true
+          {
+            echo "## 通常テスト"
+            echo ""
+            echo '```'
+            grep -E '^# (tests|pass|fail|skipped) ' test-output.txt || echo "件数を取得できませんでした"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # --- 2. 全mutation ---------------------------------------------------
+      - name: 古い mutation レポートを削除
+        run: rm -f MUTATION-REPORT.md
+
+      - name: 全mutation完全検査を実行
+        id: mutation
+        run: node run-mutations.js ${{ inputs.update_map && '--write-map' || '' }}
+
+      - name: mutation test の結果をサマリーに追記
+        if: always() && steps.mutation.outcome != 'skipped' && hashFiles('MUTATION-REPORT.md') != ''
+        run: |
+          {
+            echo ""
+            echo "## 自作 mutation test（完全検査）"
+            echo ""
+            cat MUTATION-REPORT.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # --- 3. 元のソースが無傷か -------------------------------------------
+      # 変更が出てよいのは、レポートと（作り直したときの）対応表だけ。
+      - name: ソースが元に戻っているか確認
+        run: |
+          git diff --exit-code -- . ':(exclude)MUTATION-REPORT.md' ':(exclude)mutation-map.json' \
+            || (echo "::error::mutation test がソースを戻せていません" && exit 1)
+
+      # --- 4. 対応表の更新（指示したときだけ） -------------------------------
+      - name: 対応表を commit する
+        if: inputs.update_map && success()
+        run: |
+          if git diff --quiet -- mutation-map.json; then
+            echo "対応表に変更はありませんでした"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mutation-map.json
+          git commit -m "chore: mutation の対応表を更新 [skip ci]"
+          git push
+
+      - name: mutation test の結果を保存
+        if: always() && steps.mutation.outcome != 'skipped' && hashFiles('MUTATION-REPORT.md') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-full
+          path: |
+            MUTATION-REPORT.md
+            mutation-map.json
+          if-no-files-found: error

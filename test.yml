@@ -1,0 +1,135 @@
+# =============================================================================
+# かけいぼ ― ① 通常テスト＋高速mutation（毎回）
+# -----------------------------------------------------------------------------
+# ふだんの変更で毎回動くほう。数分で結果が出る。
+#
+#   1. 通常テスト        : node --test          … 1件も減らさず全部実行
+#   2. 高速 mutation test: node run-mutations.js --fast
+#                          変えたファイルに関わる変異を、
+#                          それを捕まえるテストで試す（対応表 mutation-map.json）
+#
+# 変異そのものは1件も減らしていない（一覧は mutations.js のまま）。
+# 減らしているのは「毎回ぜんぶ試す」ことだけで、
+# 全部を試すほうは ②「全mutation完全検査（リリース前）」に用意してある。
+#
+# どちらか一方でも失敗すれば、このワークフローは赤になる。
+# 外部APIやシークレットは一切使わない。
+# =============================================================================
+name: ① 通常テスト＋高速mutation（毎回）
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同じブランチへ続けて push したときは、古い実行を止めて最新だけ走らせる
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 通常テスト＋高速mutation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # 変えたファイルを調べるため、履歴ごと取得する
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node.js を用意（安定版）
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Node のバージョンを記録
+        run: node --version
+
+      # --- 1. 通常テスト -------------------------------------------------
+      # ルートの *_test.js / *.test.js をすべて実行する。1件でも落ちれば非ゼロ終了。
+      - name: 通常テストを実行
+        run: node --test --test-reporter=spec
+
+      # 件数を GitHub の実行サマリーに残す（落ちても残るよう always）
+      # 件数の表示形式は Node のバージョンで変わるため、tap を明示して固定する
+      - name: 通常テストの件数を記録
+        if: always()
+        run: |
+          node --test --test-reporter=tap > test-output.txt 2>&1 || true
+          {
+            echo "## 通常テスト"
+            echo ""
+            echo '```'
+            grep -E '^# (tests|pass|fail|skipped) ' test-output.txt || echo "件数を取得できませんでした"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # --- 2. 変えたファイルを調べる --------------------------------------
+      # 分からないときは空にする。空のときスクリプト側は「絞らない」に倒れる
+      # （黙って何も試さないのが一番あぶないため）。
+      - name: 変えたファイルを調べる
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          FILES=""
+          if [ -n "$BASE" ] && git cat-file -e "$BASE" 2>/dev/null; then
+            FILES="$(git diff --name-only "$BASE" "$HEAD" | paste -sd, -)"
+          fi
+          echo "変えたファイル: ${FILES:-（判定できないため絞りません）}"
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+
+      # --- 3. 高速 mutation test ------------------------------------------
+      # リポジトリに入っている過去のレポートを先に消す。
+      # 残しておくと、mutation が動かなかった回に古い結果を
+      # 「今回の結果」として表示・保存してしまう。
+      - name: 古い mutation レポートを削除
+        run: rm -f MUTATION-REPORT.md
+
+      # ソースの写しをわざと壊し、テストが落ちるかを確認する。
+      # 1件でも「見逃し」があれば非ゼロ終了で赤になる。
+      - name: 高速 mutation test を実行
+        id: mutation
+        env:
+          CHANGED_FILES: ${{ steps.changed.outputs.files }}
+        run: node run-mutations.js --fast
+
+      # このステップが実際に動いた回だけ、その回のレポートを表示する。
+      # 通常テストで落ちて mutation が skipped になった回は表示しない。
+      - name: mutation test の結果をサマリーに追記
+        if: always() && steps.mutation.outcome != 'skipped' && hashFiles('MUTATION-REPORT.md') != ''
+        run: |
+          {
+            echo ""
+            echo "## 自作 mutation test（高速）"
+            echo ""
+            cat MUTATION-REPORT.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # --- 4. 変更が残っていないか確認 ------------------------------------
+      # mutation test は一時フォルダの写しだけを壊すので、
+      # 元のソースは1バイトも変わらないはず。念のためここでも確かめる。
+      - name: ソースが元に戻っているか確認
+        run: |
+          git diff --exit-code -- . ':(exclude)MUTATION-REPORT.md' \
+            || (echo "::error::mutation test がソースを戻せていません" && exit 1)
+
+      - name: mutation test の結果を保存
+        if: always() && steps.mutation.outcome != 'skipped' && hashFiles('MUTATION-REPORT.md') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-fast
+          path: MUTATION-REPORT.md
+          if-no-files-found: error
