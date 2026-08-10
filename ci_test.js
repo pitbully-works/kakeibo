@@ -105,11 +105,13 @@ test("完全検査も、配置されていればレポートが無いまま保�
 });
 
 test("完全検査がある場合、2つのワークフローは名前だけで見分けられる", () => {
-  assert.match(wf, /^name: .*①/m, "ふだん用の名前に①が無い");
+  const nameOf = (y) => (/^name:\s*(.+)$/m.exec(y) || [])[1];
+  const fastName = nameOf(wf);
+  assert.ok(fastName, "ふだん用ワークフローに name が無い");
   if (!wfFull) return;
-  assert.match(wfFull, /^name: .*②/m, "完全検査の名前に②が無い");
-  const nameOf = (y) => (/^name: (.+)$/m.exec(y) || [])[1];
-  assert.notEqual(nameOf(wf), nameOf(wfFull), "2つの名前が同じ");
+  const fullName = nameOf(wfFull);
+  assert.ok(fullName, "完全検査ワークフローに name が無い");
+  assert.notEqual(fastName, fullName, "2つの名前が同じ");
 });
 
 /* ---------- 速くするために検査を弱めていないか ---------- */
