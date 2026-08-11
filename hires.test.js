@@ -201,7 +201,7 @@ test("保存に成功したら、高解像度画像が解放される", async ()
   const app = bootApp({});
   await app.record(1234, PHOTO, PHOTO_HI);
   assert.equal(app.run("state.tx.length"), 1, "記録できていない");
-  assert.equal(app.run("sheetState"), null, "シートが閉じていない");
+  assert.equal(app.run("sheetState.mode"), "add", "保存後も次の記録を続けられる状態になっていない");
   const saved = String(app.saved() || "");
   assert.ok(saved.includes("1234"), "端末に保存されていない");
   assert.equal(saved.includes("photoHi"), false, "保存データに高解像度画像が入っている");
@@ -215,7 +215,7 @@ test("容量超過で写真を外した再保存でも、成功したら解放�
   assert.equal(app.run("state.tx.length"), 1, "記録が残っていない");
   assert.equal(app.run("state.tx[0].photo"), null, "写真が外されていない");
   assert.match(app.toastText(), /容量オーバー/, "写真を外した旨を伝えていない");
-  assert.equal(app.run("sheetState"), null, "シートが閉じていない");
+  assert.equal(app.run("sheetState.mode"), "add", "保存後も次の記録を続けられる状態になっていない");
   assert.equal(String(app.saved() || "").includes("photoHi"), false, "高解像度が保存されている");
 });
 

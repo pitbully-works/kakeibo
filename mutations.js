@@ -328,7 +328,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: "const CACHE = \"kakeibo-v53\";",
+    file: "sw.js", from: "const CACHE = \"kakeibo-v54\";",
     to: "const CACHE = \"kakeibo-v20\";" },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "  if(!save()) state.settings = before;        // 失敗したら元のまま",
@@ -591,7 +591,7 @@ const MUTATIONS = [
   { name: "式を出さない", guards: "打っている式が見える",
     file: "core.js", from: '      c.expr = calcFmt(c.acc, c) + " " + CALC_OP_LABEL[k];', to: '      c.expr = "";' },
   { name: "記録するとき、待っている計算を捨てる", guards: "＝を押し忘れても計算される",
-    file: "index.html", from: '  if(st.calc && st.calc.op) st.amount=Core.minorToMajorText(Core.calcValue(st.calc), st.calc.dec||0);', to: "" },
+    file: "index.html", from: '  if(st.calc && st.calc.op){ st.calc=Core.calcPress(st.calc,"="); st.amount=Core.calcDisplay(st.calc); }', to: "" },
   { name: "金額欄にキーボードを出す", guards: "アプリの電卓だけで打つ",
     file: "index.html", from: 'id="s-amt" readonly inputmode="none"', to: 'id="s-amt" inputmode="numeric"' },
 
