@@ -672,7 +672,7 @@ function load(){
       id:String(h.id||uid()), txId:String(h.txId||""), expr:String(h.expr||"").slice(0,120),
       result:String(h.result||"").slice(0,40), cat:String(h.cat||"food").slice(0,30),
       type:h.type==="income"?"income":"expense", country:Core.normalizeCountry(h.country),
-      date:Core.normalizeDateString(h.date)||todayISO()
+      date:Core.validateDateString(h.date)?h.date:todayISO()
     })).filter(h=>h.expr&&h.result) : [];
     const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans), pulse:Core.normalizePulseList(s.pulse), calcHistory:Core.normalizeSciHistory(s.calcHistory), recordCalcHistory };
     if(profiles) out.moneyProfiles=profiles;

@@ -18,3 +18,14 @@ test("計算しない直接入力の金額も記録履歴に残す",()=>{
   assert.match(src,/calcHistCandidate\.result=calcHistCandidate\.expr/);
   assert.match(src,/expr===result \? expr/);
 });
+test("計算履歴がある状態で再起動しても家計簿記録を失わない",()=>{
+  const {bootApp}=require("./boot-app.cjs");
+  const tx={id:"tx1",type:"expense",amount:126,cat:"food",date:"2026-08-11",memo:"",photo:null};
+  const history={id:"h1",txId:"tx1",expr:"63.22+63.22",result:"126.44",cat:"food",type:"expense",country:"JP",date:"2026-08-11"};
+  const app=bootApp({state:{settings:{},tx:[tx],recordCalcHistory:[history]}});
+  const loaded=app.run(`({tx:state.tx, history:state.recordCalcHistory})`);
+  assert.equal(loaded.tx.length,1);
+  assert.equal(loaded.tx[0].amount,126);
+  assert.equal(loaded.history.length,1);
+  assert.equal(loaded.history[0].txId,"tx1");
+});
