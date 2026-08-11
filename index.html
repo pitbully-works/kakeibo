@@ -2714,8 +2714,14 @@ function onBackupPicked(file){
 
     const before = JSON.parse(JSON.stringify(state));
     // state.settings = restored.settings; 旧形式の目印。実際は下で国別プロファイルから復元する。
+    /* 古いバックアップには生年月日が無いものがある。
+       NISAの年齢区間は生年月日が無いと自動計算できず、旧nisaMonthlyへ戻ってしまう。
+       復元データに正しい生年月日が無い場合だけ、端末に現在入っている生年月日を残す。 */
+    const restoredBirth = Core.validateDateString(restored.settings.birth)
+      ? restored.settings.birth
+      : ((state.settings && Core.validateDateString(state.settings.birth)) ? state.settings.birth : "");
     state.moneyProfiles = restored.moneyProfiles || Core.normalizeMoneyProfiles(null, restored.settings);
-    state.settings = Core.settingsForCountry(state.moneyProfiles, restored.settings.country, restored.settings.birth);
+    state.settings = Core.settingsForCountry(state.moneyProfiles, restored.settings.country, restoredBirth);
     state.tx = restored.tx;
     state.health = restored.health || {};
     state.diary = restored.diary || {};
