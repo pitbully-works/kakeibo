@@ -76,6 +76,8 @@ function bootApp(opts) {
     localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem },
     sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     navigator: { onLine: true },
+    location: { hash: String(o.hash || ""), pathname: "/", search: "" },
+    history: { replaceState(_a,_b,url) { sandbox.location.hash = ""; sandbox.location.replacedUrl = url; } },
     setTimeout: (f) => { try { f(); } catch (e) {} return 0; },
     clearTimeout() {}, scrollTo() {},
     Blob: function () {}, URL: { createObjectURL: () => "blob:", revokeObjectURL() {} },

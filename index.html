@@ -613,11 +613,63 @@ function backupBeforeMigration(raw){
   }catch(e){ return false; }
 }
 
+function readLifePlanBridge(){
+  try{
+    if(typeof location==="undefined") return null;
+    const hash=String(location.hash||"");
+    const m=hash.match(/(?:^#|&)lpbridge=([^&]+)/);
+    if(!m) return null;
+    const parsed=JSON.parse(decodeURIComponent(m[1]));
+    if(!parsed || parsed.source!=="lifeplan" || Number(parsed.schemaVersion)!==1) return null;
+    return parsed;
+  }catch(e){ return null; }
+}
+function cleanBridgeSchedule(rows){
+  if(!Array.isArray(rows)) return [];
+  return rows.map(r=>({
+    fromAge:Number(r&&r.fromAge)||0,
+    toAge:Number(r&&r.toAge)||0,
+    monthlyYen:Math.max(0,Number(r&&r.monthlyYen)||0)
+  })).filter(r=>r.toAge>=r.fromAge && r.monthlyYen>0);
+}
+function applyLifePlanBridge(current,payload){
+  if(!current || !payload) return current;
+  const next=Object.assign({},current);
+  const s=Core.normalizeSettings(current.settings||{});
+  const nisa=(payload.nisa&&typeof payload.nisa==="object")?payload.nisa:{};
+  const lp=Object.assign({},s.lp||{}, {
+    tsumitateSchedule:cleanBridgeSchedule(nisa.tsumitateSchedule),
+    growthSchedule:cleanBridgeSchedule(nisa.growthSchedule)
+  });
+  const birth=/^\d{4}-\d{2}-\d{2}$/.test(String(payload.birth||"")) ? String(payload.birth) : s.birth;
+  const country=Core.normalizeCountry(payload.country||s.country);
+  const currency=String(payload.currency||s.currency||"");
+  next.settings=Core.normalizeSettings(Object.assign({},s,{birth,country,currency,lp}));
+  if(next.moneyProfiles && typeof next.moneyProfiles==="object") {
+    next.moneyProfiles=Core.normalizeMoneyProfiles(next.moneyProfiles,current.settings||{});
+    next.moneyProfiles[country]=Core.normalizeSettings(next.settings);
+  }
+  return next;
+}
+function clearLifePlanBridgeHash(){
+  try{
+    if(typeof history!=="undefined" && history && typeof history.replaceState==="function" && typeof location!=="undefined")
+      history.replaceState(null,"",String(location.pathname||"")+String(location.search||""));
+  }catch(e){}
+}
+
 let state = load();
 /* 移行できたときは、その場で書き込んで印を確定させる。
    ここで書けなかったら印も付かないので、次に開いたときにやり直す
    （＝金額だけ移行されて印が無い、という状態にはならない）。 */
 if(migrationDone && !save()) migrationDone=null;
+/* ライフプランから開かれたときだけ、NISA関連の最小データを上書きする。
+   tx / diary / plans / health / pulse には一切触れない。 */
+const lifePlanBridge=readLifePlanBridge();
+if(lifePlanBridge){
+  state=applyLifePlanBridge(state,lifePlanBridge);
+  if(save()) clearLifePlanBridgeHash();
+}
 let view = "home";
 let sumTab = "month";   // まとめ画面のタブ： "month"（今月）／"analysis"（分析）
 
