@@ -201,14 +201,15 @@ test("直すときは、セントまでそのまま出て、そのまま戻る",
   assert.equal(JSON.parse(app.saved()).tx[0].amount, 1234, "直しただけで金額が変わった");
 });
 
-test("US画面のまま日本の記録を直しても、円の電卓のまま", () => {
+test("US画面のまま日本の記録を直しても、記録国は日本のまま・計算だけ小数第2位まで", () => {
   const app = bootApp({ state: {
     settings: { country: "US" },
     tx: [{ id: "j1", type: "expense", amount: 12345, cat: "food", date: D(1), memo: "", photo: null }],
   } });
   app.run(`openRecord("j1");`);
   assert.equal(app.run(`sheetState.amount`), "12345", "円の金額に小数点が付いた");
-  assert.equal(app.run(`sheetState.calc.dec`), 0, "円の記録なのにセントの電卓になっている");
+  assert.equal(app.run(`sheetState.calc.dec`), 2, "日本の記録電卓が小数第2位計算になっていない");
+  assert.equal(app.run(`sheetDec()`), 0, "記録時の通貨桁まで2桁に変わっている");
 });
 
 test("設定の金額欄にも小数を入れられる", () => {
@@ -407,4 +408,36 @@ test("電卓は、その通貨より2桁多くは打たせない", () => {
   /* 打てる小数は通貨の桁と2桁の大きいほう。ドルで3桁目は入らない。 */
   assert.equal(shown(2, ["1", ".", "2", "3", "4"]), "1.23", "ドルで小数3桁が打てる");
   assert.equal(shown(0, ["1", ".", "2", "3", "4"]), "1.23", "円で小数3桁が打てる");
+});
+
+test("日本の記録電卓は小数第2位まで保持し、＝でも丸めない", () => {
+  const app = bootApp({ state: { settings: { country: "JP" }, tx: [] } });
+  app.run(`openRecord(null);`);
+  for (const k of ["6","3",".","2","2","+","6","3",".","2","2","="]) {
+    app.run(`handleAct("calc",{target:{closest:(s)=>String(s).indexOf("data-key")>=0?{dataset:{key:${JSON.stringify(k)}}}:null}});`);
+  }
+  assert.equal(app.run(`Core.calcDisplay(sheetState.calc)`), "126.44", "＝の時点で1円に丸めている");
+  assert.equal(app.run(`sheetState.calc.dec`), 2, "日本の記録電卓が小数第2位計算になっていない");
+});
+
+test("日本は記録時だけ1円へ四捨五入し、海外4か国は従来どおり2桁保存", async () => {
+  const jp = await saveWith("JP", ["6","3",".","2","2","+","6","3",".","2","2","="]);
+  assert.equal(jp.amount, 126, "日本が記録時に1円へ四捨五入されていない");
+
+  for (const country of ["US", "GB", "CA", "AU"]) {
+    const r = await saveWith(country, ["6","3",".","2","2","+","6","3",".","2","2","="]);
+    assert.equal(r.amount, 12644, country + " の小数2桁保存を変えてしまった");
+  }
+});
+
+test("四捨五入の説明は日本の記録電卓だけに表示する", () => {
+  const jp = bootApp({ state: { settings: { country: "JP" }, tx: [] } });
+  jp.run(`openRecord(null);`);
+  assert.match(jp.run(`document.getElementById("sheet").innerHTML`), /記録するときに1円単位へ四捨五入されます/);
+
+  for (const country of ["US", "GB", "CA", "AU"]) {
+    const app = bootApp({ state: { settings: { country: country }, tx: [] } });
+    app.run(`openRecord(null);`);
+    assert.equal(/1円単位へ四捨五入/.test(app.run(`document.getElementById("sheet").innerHTML`)), false, country + " に日本用の説明が出ている");
+  }
 });

@@ -180,10 +180,10 @@ test("キーを押すと、金額と式の表示が変わる", () => {
   assert.equal(exprLine(app), "");
   press(app, "+", "3", "8", "0");
   assert.equal(bigNumber(app), "380");
-  assert.equal(exprLine(app), "1,200 ＋");
+  assert.equal(exprLine(app), "1,200.00 ＋");
   press(app, "=");
-  assert.equal(bigNumber(app), "1580");
-  assert.equal(exprLine(app), "1,200 ＋ 380 ＝");
+  assert.equal(bigNumber(app), "1580.00");
+  assert.equal(exprLine(app), "1,200.00 ＋ 380.00 ＝");
 });
 
 test("＝ を押さずに記録しても、計算された金額で残る", async () => {
@@ -202,7 +202,7 @@ test("記録を直すときは、その金額から始まる", () => {
   app.run(`openRecord("t1");`);
   assert.equal(bigNumber(app), "2400");
   press(app, "+", "6", "0", "0", "=");
-  assert.equal(bigNumber(app), "3000");
+  assert.equal(bigNumber(app), "3000.00");
 });
 
 test("C を押すと、金額の表示が空に戻る", () => {

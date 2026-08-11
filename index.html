@@ -1957,6 +1957,13 @@ function sheetDec(){
   }
   return decOf(curCountry());
 }
+/* 記録電卓の計算桁。日本円も計算中だけは小数第2位まで保持する。
+   保存時の通貨桁は sheetDec() のままなので、JPだけ記録時に1円へ四捨五入される。
+   US/GB/CA/AU は従来どおり2桁のまま保存される。 */
+function sheetCalcDec(){
+  const d=sheetDec();
+  return d===0 ? 2 : d;
+}
 /* その記録がどの国のものか。国の印が無ければ日本。
    打ち込みの換算は「いま選んでいる国」ではなく **その記録の国** で決める。
    ここを取り違えると、US画面で日本の記録を直したときに100倍になる。 */
@@ -1967,7 +1974,7 @@ function openRecord(editId){
   } else {
     sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total", recurring:false};
   }
-  sheetState.calc=Core.calcFrom(sheetState.amount, sheetDec());
+  sheetState.calc=Core.calcFrom(sheetState.amount, sheetCalcDec());
   renderSheet(); showSheet(true);
 }
 /* 電卓のキー。押した結果は Core.calcPress が決める（計算式は画面に書かない）。 */
@@ -1988,7 +1995,7 @@ function renderSheet(){
   /* 電卓の状態。無ければ、いまの金額から作る（金額を外から入れる所では作り直している）。 */
   /* 電卓の小数桁は、その記録の国の通貨で決める
      （US画面のまま日本の記録を直しても、円の電卓のまま） */
-  if(!st.calc) st.calc=Core.calcFrom(st.amount, sheetDec());
+  if(!st.calc) st.calc=Core.calcFrom(st.amount, sheetCalcDec());
   const calc=st.calc;
   const cats = st.type==="income" ? INC_CATS : EXP_PICK_CATS;
   if(st.cat && !cats.find(c=>c.k===st.cat)) st.cat = cats[0].k;
@@ -2037,6 +2044,7 @@ function renderSheet(){
       <input class="amtinput mono" id="s-amt" readonly inputmode="none" placeholder="0" value="${escapeAttr(Core.calcDisplay(calc))}">
       <div class="calcerr">${escapeHtml(errText(calc))}</div>
       ${calcPad(calc)}
+      ${sheetDec()===0 ? `<div class="fixhint" style="margin-top:8px;text-align:center">※ 小数第2位まで計算できます。記録するときに1円単位へ四捨五入されます。</div>` : ""}
       ${st.type==="expense" ? `<button class="fixtog${st.recurring?" on":""}" data-act="toggle-recurring">
           <span class="sw"><i></i></span>${T("rec.recurring")}${st.recurring?T("rec.recurringOn"):T("rec.recurringOff")}</button>
         <div class="fixhint">${st.recurring
@@ -4013,7 +4021,7 @@ document.addEventListener("click",e=>{
   if(pick&&sheetState){ readSheetInputs();
     /* 候補は最小単位で持っている。打ち込み欄の字（主単位）へ戻す。 */
     sheetState.amount=Core.minorToMajorText(pick.dataset.pick, sheetDec());
-    sheetState.calc=Core.calcFrom(sheetState.amount, sheetDec());
+    sheetState.calc=Core.calcFrom(sheetState.amount, sheetCalcDec());
     sheetState.ocrChoices=null;
     sheetState.ocrNote="金額を入れました。内容を確かめて「記録する」を押してください";
     renderSheet(); return; }
@@ -4075,7 +4083,7 @@ function handleAct(a,e){
     /* 打ち込み欄は主単位の字。最小単位から戻してから入れる
        （ここを取り違えると、$12.34 が $1,234.00 になる）。 */
     sheetState.amount=Core.minorToMajorText(minor, sheetDec());
-    sheetState.calc=Core.calcFrom(sheetState.amount, sheetDec());
+    sheetState.calc=Core.calcFrom(sheetState.amount, sheetCalcDec());
     renderSheet(); return;
   }
   if(a==="save-settings") return saveSettings();

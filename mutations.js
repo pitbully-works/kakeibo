@@ -328,7 +328,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: "const CACHE = \"kakeibo-v52\";",
+    file: "sw.js", from: "const CACHE = \"kakeibo-v53\";",
     to: "const CACHE = \"kakeibo-v20\";" },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "  if(!save()) state.settings = before;        // 失敗したら元のまま",
@@ -958,7 +958,7 @@ const MUTATIONS = [
      いまは5か国とも 0 / . / 00 で固定。国ごとの分岐そのものが無い。 */
   { name: "電卓の並びを国で分ける", guards: "キーの並びは5か国とも同じ",
     file: "index.html", from: '    ${k("0","0")}${k(".",".","zero")}${k("00","00","zero")}',
-    to: '    ${calc.dec ? `${k("0","0")}${k(".",".","zero")}${k("00","00","zero")}` : `${k("0","0")}${k("00","00","zero")}${k("000","000","zero")}`}' },
+    to: '    ${sheetDec() ? `${k("0","0")}${k(".",".","zero")}${k("00","00","zero")}` : `${k("0","0")}${k("00","00","zero")}${k("000","000","zero")}`}' },
   { name: "小数点キーを出さない", guards: "5か国とも小数点キーがある",
     file: "index.html", from: '${k("0","0")}${k(".",".","zero")}${k("00","00","zero")}',
     to: '${k("0","0")}${k("00","00","zero")}${k("000","000","zero")}' },
