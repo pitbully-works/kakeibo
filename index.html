@@ -726,7 +726,30 @@ function errText(o){
   if(o.errorKey) return Core.t(o.errorKey, state.settings);
   return o.error||"";
 }
-function ageRangeLabel(from, to){ return L(`${from}歳 〜 ${to}歳`, `age ${from} to ${to}`); }
+function ageParts(age){
+  const n=Number(age)||0;
+  const total=Math.max(0,Math.round(n*12));
+  return { years:Math.floor(total/12), months:total%12 };
+}
+function ageValueFromFields(yearId, monthId){
+  const yEl=$(yearId), mEl=$(monthId);
+  const y=Math.max(0,Math.floor(Number(yEl&&yEl.value)||0));
+  const m=Math.max(0,Math.floor(Number(mEl&&mEl.value)||0));
+  return (y*12+m)/12;
+}
+function ageValueLabel(age){
+  const a=ageParts(age);
+  return L(`${a.years}歳${a.months?` ${a.months}ヶ月`:``}`, `age ${a.years}${a.months?`y ${a.months}m`:``}`);
+}
+function ageRangeLabel(from, to){ return L(`${ageValueLabel(from)} 〜 ${ageValueLabel(to)}`, `${ageValueLabel(from)} to ${ageValueLabel(to)}`); }
+function ageInputHtml(id,label,age,phYear){
+  const a=ageParts(age);
+  const has=age!=="" && age!=null && Number(age)!==0;
+  return `<label>${label}<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+    <span style="display:flex;align-items:center;gap:5px"><input class="mono" id="${id}" inputmode="numeric" value="${has?a.years:""}" placeholder="${phYear||"0"}"><span>${L("歳","yr")}</span></span>
+    <span style="display:flex;align-items:center;gap:5px"><input class="mono" id="${id}-month" inputmode="numeric" min="0" max="11" value="${has?a.months:""}" placeholder="0"><span>${L("ヶ月","mo")}</span></span>
+  </div></label>`;
+}
 function wd(dow){ return Core.weekdayShort(dow, state.settings); }
 /* 金額。日本のときは今までと1文字も変わらない「¥1,234」。USは「$1,234.56」。
    -----------------------------------------------------------------------
@@ -3477,6 +3500,17 @@ function renderLp(){
 /* NISA積立の内訳。
    つみたて枠・成長投資枠それぞれの「年齢区間ごとの月額」と「銘柄別の内訳」。
    月額を打てる場所はここだけ。せっていの欄は、ここから自動計算した表示になる。 */
+function nisaHeadHtml(s){
+  if(!s.birth) return L("せってい","Settings")+L("で<b>生年月日</b>を入れると、いまの年齢からこの月額を自動で計算します。","：enter your <b>date of birth</b> and this monthly amount is worked out from your current age.");
+  const from=Core.cycleRange(curYM(),s.cycleStart).from;
+  const now=Core.nisaPlannedOn(s,from);
+  const next=Core.nisaUpcoming(s,from);
+  return L(`いま <b>${escapeHtml(ageLabel(s.birth))}</b>。今月の先取りは <b>${yen(now)}</b> です。`,
+           `You are <b>${escapeHtml(ageLabel(s.birth))}</b>. This month you set aside <b>${yen(now)}</b>.`)
+    +(next?L(`<br>${escapeHtml(mdLabel(next.startDate))}（${escapeHtml(ageValueLabel(next.fromAge))}）から 月${yen(next.monthly)} になります。`,
+             `<br>From ${escapeHtml(mdLabel(next.startDate))}, ${escapeHtml(ageValueLabel(next.fromAge))}, it becomes ${yen(next.monthly)} a month.`):"");
+}
+
 function lpNisaHtml(a){
   const s = state.settings;
   /* 区間ひとつぶん。月額は銘柄の合計なので、打つのは銘柄名と金額だけ。 */
@@ -3492,8 +3526,8 @@ function lpNisaHtml(a){
       <div class="lpseg-h"><b data-liveage="${key}-${i}">${ageRangeLabel(r.fromAge||0, r.toAge||0)}</b>
         <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="${key}">${L("🗑 区間ごと","🗑 Whole range")}</button></div>
       <div class="lpgrid">
-        <label>${L("開始年齢","Start age")}<input class="mono" id="${id}-from-${i}" inputmode="decimal" value="${r.fromAge||""}" placeholder="57.75"></label>
-        <label>${L("終了年齢","End age")}<input class="mono" id="${id}-to-${i}" inputmode="decimal" value="${r.toAge||""}" placeholder="65"></label>
+        ${ageInputHtml(`${id}-from-${i}`,L("開始年齢","Start age"),r.fromAge,"57")}
+        ${ageInputHtml(`${id}-to-${i}`,L("終了年齢","End age"),r.toAge,"65")}
       </div>
       <div class="lptotal" style="margin:8px 0 4px">${L("この区間の月額","Monthly total for this range")} <b class="mono" data-live="${key}-${i}">${yen(sum)}</b></div>
       ${funds || `<div class="fhelp" style="margin-bottom:6px">${L("銘柄を足すと、その合計が月額になります","Add funds and their total becomes the monthly amount")}</div>`}
@@ -3508,23 +3542,13 @@ function lpNisaHtml(a){
     </div>`;
 
   const lumps = a.lumpSums.map((l,i)=>`<div class="lpgrid" style="margin-bottom:8px">
-      <label>${L("何歳のとき","At what age")}<input class="mono" id="lp-lm-age-${i}" inputmode="decimal" value="${l.age||""}" placeholder="59"></label>
+      ${ageInputHtml(`lp-lm-age-${i}`,L("何歳のとき","At what age"),l.age,"59")}
       <label>${L("金額（円）","Amount")}<div style="display:flex;gap:6px">
         <input class="mono" id="lp-lm-amt-${i}" inputmode="${moneyInputMode()}" value="${l.amount||""}" placeholder="0">
         <button class="lpdel" data-act="lp-del" data-i="${i}" data-key="lumpSums">🗑</button></div></label>
     </div>`).join("");
 
-  const from = Core.cycleRange(curYM(), s.cycleStart).from;
-  const now = Core.nisaPlannedOn(s, from);
-  const next = Core.nisaUpcoming(s, from);
-  const head = !s.birth
-    ? `<div class="calcnote" style="margin:0 0 10px">${L("せってい","Settings")}${L("で<b>生年月日</b>を入れると、いまの年齢からこの月額を自動で計算します。","：enter your <b>date of birth</b> and this monthly amount is worked out from your current age.")}</div>`
-    : `<div class="calcnote" style="margin:0 0 10px">
-        ${L(`いま <b>${escapeHtml(ageLabel(s.birth))}</b>。今月の先取りは <b>${yen(now)}</b> です。`,
-             `You are <b>${escapeHtml(ageLabel(s.birth))}</b>. This month you set aside <b>${yen(now)}</b>.`)}
-        ${next?L(`<br>${escapeHtml(mdLabel(next.startDate))}（${next.fromAge}歳）から 月${yen(next.monthly)} になります。`,
-                  `<br>From ${escapeHtml(mdLabel(next.startDate))}, age ${next.fromAge}, it becomes ${yen(next.monthly)} a month.`):""}
-      </div>`;
+  const head = `<div class="calcnote" data-live="nisa-head" style="margin:0 0 10px">${nisaHeadHtml(s)}</div>`;
 
   return `${head}
     ${box(L("つみたて投資枠（積立）","Regular contributions"),"tsumitateSchedule","lp-ts",a.tsumitateSchedule)}
@@ -3551,9 +3575,9 @@ function lpIdecoHtml(d){
       ${f("lp-id-monthly",L("毎月の掛金（円）","Monthly contribution"),d.monthlyContribution,"0")}
       ${f("lp-id-value",L("いまの評価額（円）","Current balance"),d.currentValue,"0")}
       ${f("lp-id-principal",L("これまでの掛金合計（円）","Total contributed so far"),d.principalTotal,"0")}
-      ${f("lp-id-start",L("掛金 開始年齢","Contributions start at age"),d.startAge,"50","decimal")}
-      ${f("lp-id-end",L("掛金 終了年齢（その誕生日まで）","Contributions end at age — up to that birthday"),d.endAge,"65","decimal")}
-      ${f("lp-id-pstart",L("受取 開始年齢","Payouts start at age"),d.payoutStartAge,"65","decimal")}
+      ${ageInputHtml("lp-id-start",L("掛金 開始年齢","Contributions start at age"),d.startAge,"50")}
+      ${ageInputHtml("lp-id-end",L("掛金 終了年齢（その誕生日まで）","Contributions end at age — up to that birthday"),d.endAge,"65")}
+      ${ageInputHtml("lp-id-pstart",L("受取 開始年齢","Payouts start at age"),d.payoutStartAge,"65")}
       ${f("lp-id-pyears",L("受取 年数","Payout years"),d.payoutYears,"20","decimal")}
     </div>
     <button class="btn-main" style="margin-top:10px" data-act="lp-save-ideco">${L("この内容で保存する","Save these details")}</button>
@@ -3568,9 +3592,9 @@ function lpInsuranceHtml(list){
     <div class="lpgrid">
       <label>${L("保険の名前","Policy name")}<input id="lp-in-name-${i}" value="${escapeAttr(p.name)}" placeholder="${L("○○生命","Life insurance")}"></label>
       <label>${L("毎月の保険料（円）","Monthly premium")}<input class="mono" id="lp-in-prem-${i}" inputmode="${moneyInputMode()}" value="${p.monthlyPremium||""}" placeholder="0"></label>
-      <label>${L("払い始め年齢","Premiums start at age")}<input class="mono" id="lp-in-from-${i}" inputmode="decimal" value="${p.premiumFromAge||""}" placeholder="46"></label>
-      <label>${L("払い終わり年齢（その誕生日まで）","Premiums end at age — up to that birthday")}<input class="mono" id="lp-in-to-${i}" inputmode="decimal" value="${p.premiumToAge||""}" placeholder="65"></label>
-      <label style="grid-column:1/-1">${L("保障が続く年齢","Cover lasts until age")}<input class="mono" id="lp-in-cov-${i}" inputmode="decimal" value="${p.coverageUntilAge||""}" placeholder="82"></label>
+      ${ageInputHtml(`lp-in-from-${i}`,L("払い始め年齢","Premiums start at age"),p.premiumFromAge,"46")}
+      ${ageInputHtml(`lp-in-to-${i}`,L("払い終わり年齢（その誕生日まで）","Premiums end at age — up to that birthday"),p.premiumToAge,"65")}
+      <div style="grid-column:1/-1">${ageInputHtml(`lp-in-cov-${i}`,L("保障が続く年齢","Cover lasts until age"),p.coverageUntilAge,"82")}</div>
     </div></div>`).join("");
   return `<div class="barlist">
     <div class="fhelp" style="margin-bottom:8px">${L("保険料は<b>毎月固定の支出</b>として数えます。","Premiums are counted as <b>recurring spending</b>.")}
@@ -3640,10 +3664,10 @@ function lpPensionHtml(list){
     <div class="lpgrid">
       <label>${L("年金の名前","Plan name")}<input id="lp-p-name-${i}" value="${escapeAttr(p.name)}" placeholder="${L("○○年金共済","Annuity plan")}"></label>
       <label>${L("毎月の掛金（円）","Monthly contribution")}<input class="mono" id="lp-p-mon-${i}" inputmode="${moneyInputMode()}" value="${p.monthlyContribution||""}" placeholder="0"></label>
-      <label>${L("掛ける 開始年齢","Contributions start at age")}<input class="mono" id="lp-p-cf-${i}" inputmode="decimal" value="${p.contribFromAge||""}" placeholder="35"></label>
-      <label>${L("掛ける 終了年齢（その誕生日まで）","Contributions end at age — up to that birthday")}<input class="mono" id="lp-p-ct-${i}" inputmode="decimal" value="${p.contribToAge||""}" placeholder="60"></label>
-      <label>${L("もらう 開始年齢","Payouts start at age")}<input class="mono" id="lp-p-pf-${i}" inputmode="decimal" value="${p.payoutFromAge||""}" placeholder="60"></label>
-      <label>${L("もらう 終了年齢（その誕生日まで）","Payouts end at age — up to that birthday")}<input class="mono" id="lp-p-pt-${i}" inputmode="decimal" value="${p.payoutToAge||""}" placeholder="70"></label>
+      ${ageInputHtml(`lp-p-cf-${i}`,L("掛ける 開始年齢","Contributions start at age"),p.contribFromAge,"35")}
+      ${ageInputHtml(`lp-p-ct-${i}`,L("掛ける 終了年齢（その誕生日まで）","Contributions end at age — up to that birthday"),p.contribToAge,"60")}
+      ${ageInputHtml(`lp-p-pf-${i}`,L("もらう 開始年齢","Payouts start at age"),p.payoutFromAge,"60")}
+      ${ageInputHtml(`lp-p-pt-${i}`,L("もらう 終了年齢（その誕生日まで）","Payouts end at age — up to that birthday"),p.payoutToAge,"70")}
       <label>${L("毎月もらう額（円）","Monthly payout")}<input class="mono" id="lp-p-pay-${i}" inputmode="${moneyInputMode()}" value="${p.monthlyPayout||""}" placeholder="0"></label>
     </div></div>`).join("");
   return `<div class="barlist">
@@ -3683,8 +3707,8 @@ function lpSavePension(){
   const a = lpAssets();
   a.privatePensionPlans = a.privatePensionPlans.map((p,i)=>({
     name: lpVal(`lp-p-name-${i}`), monthlyContribution: lpVal(`lp-p-mon-${i}`),
-    contribFromAge: lpVal(`lp-p-cf-${i}`), contribToAge: lpVal(`lp-p-ct-${i}`),
-    payoutFromAge: lpVal(`lp-p-pf-${i}`), payoutToAge: lpVal(`lp-p-pt-${i}`),
+    contribFromAge: ageValueFromFields(`lp-p-cf-${i}`,`lp-p-cf-${i}-month`), contribToAge: ageValueFromFields(`lp-p-ct-${i}`,`lp-p-ct-${i}-month`),
+    payoutFromAge: ageValueFromFields(`lp-p-pf-${i}`,`lp-p-pf-${i}-month`), payoutToAge: ageValueFromFields(`lp-p-pt-${i}`,`lp-p-pt-${i}-month`),
     monthlyPayout: lpVal(`lp-p-pay-${i}`), id: p.id,
   }));
   if(lpSaveTidy(a)){ render(); toast(T("set.saved")); }
@@ -3696,13 +3720,13 @@ function lpReadNisa(){
   /* 行のしるし（id）は必ず持ち回る。落とすと保存のたびに新しい id が付き、
      ライフプラン側で別の行と見なされて同じものが増える。 */
   const sched = (id, rows) => rows.map((r,i)=>({
-    fromAge: lpVal(`${id}-from-${i}`), toAge: lpVal(`${id}-to-${i}`),
+    fromAge: ageValueFromFields(`${id}-from-${i}`,`${id}-from-${i}-month`), toAge: ageValueFromFields(`${id}-to-${i}`,`${id}-to-${i}-month`),
     funds: (r.funds||[]).map((_,n)=>({ name: lpVal(`${id}-fn-${i}-${n}`), amount: lpVal(`${id}-fa-${i}-${n}`) })),
     id: r.id,
   }));
   a.tsumitateSchedule = sched("lp-ts", a.tsumitateSchedule);
   a.growthSchedule = sched("lp-gs", a.growthSchedule);
-  a.lumpSums = a.lumpSums.map((r,i)=>({ age: lpVal(`lp-lm-age-${i}`), amount: lpVal(`lp-lm-amt-${i}`), id: r.id }));
+  a.lumpSums = a.lumpSums.map((r,i)=>({ age: ageValueFromFields(`lp-lm-age-${i}`,`lp-lm-age-${i}-month`), amount: lpVal(`lp-lm-amt-${i}`), id: r.id }));
   return a;
 }
 /* 区間の中に銘柄を1行足す／消す */
@@ -3730,8 +3754,8 @@ function lpReadIdeco(){
   a.ideco = {
     productName: lpVal("lp-id-name"), monthlyContribution: lpVal("lp-id-monthly"),
     currentValue: lpVal("lp-id-value"), principalTotal: lpVal("lp-id-principal"),
-    startAge: lpVal("lp-id-start"), endAge: lpVal("lp-id-end"),
-    payoutStartAge: lpVal("lp-id-pstart"), payoutYears: lpVal("lp-id-pyears"),
+    startAge: ageValueFromFields("lp-id-start","lp-id-start-month"), endAge: ageValueFromFields("lp-id-end","lp-id-end-month"),
+    payoutStartAge: ageValueFromFields("lp-id-pstart","lp-id-pstart-month"), payoutYears: lpVal("lp-id-pyears"),
   };
   return a;
 }
@@ -3742,8 +3766,8 @@ function lpReadInsurance(){
   const a = lpAssets();
   a.insurancePolicies = a.insurancePolicies.map((r,i)=>({
     name: lpVal(`lp-in-name-${i}`), monthlyPremium: lpVal(`lp-in-prem-${i}`),
-    premiumFromAge: lpVal(`lp-in-from-${i}`), premiumToAge: lpVal(`lp-in-to-${i}`),
-    coverageUntilAge: lpVal(`lp-in-cov-${i}`), id: r.id,
+    premiumFromAge: ageValueFromFields(`lp-in-from-${i}`,`lp-in-from-${i}-month`), premiumToAge: ageValueFromFields(`lp-in-to-${i}`,`lp-in-to-${i}-month`),
+    coverageUntilAge: ageValueFromFields(`lp-in-cov-${i}`,`lp-in-cov-${i}-month`), id: r.id,
   }));
   return a;
 }
@@ -3892,8 +3916,8 @@ function lpReadCurrent(){
     annualRatePct:lpVal(`lp-l-rate-${i}`), monthlyPayment:lpVal(`lp-l-pay-${i}`), id:l.id }));
   if(lpKind==="pension") a.privatePensionPlans=a.privatePensionPlans.map((p,i)=>({
     name:lpVal(`lp-p-name-${i}`), monthlyContribution:lpVal(`lp-p-mon-${i}`),
-    contribFromAge:lpVal(`lp-p-cf-${i}`), contribToAge:lpVal(`lp-p-ct-${i}`),
-    payoutFromAge:lpVal(`lp-p-pf-${i}`), payoutToAge:lpVal(`lp-p-pt-${i}`),
+    contribFromAge:ageValueFromFields(`lp-p-cf-${i}`,`lp-p-cf-${i}-month`), contribToAge:ageValueFromFields(`lp-p-ct-${i}`,`lp-p-ct-${i}-month`),
+    payoutFromAge:ageValueFromFields(`lp-p-pf-${i}`,`lp-p-pf-${i}-month`), payoutToAge:ageValueFromFields(`lp-p-pt-${i}`,`lp-p-pt-${i}-month`),
     monthlyPayout:lpVal(`lp-p-pay-${i}`), id:p.id }));
   return a;
 }
@@ -3913,6 +3937,8 @@ function lpRefreshTotals(){
   put('[data-live="sum-banks"]',     yen(Core.lpBanksTotal(a.banks)));
   put('[data-live="sum-loans"]',     yen(Core.lpLoansTotal(a.loans)));
   put('[data-live="sum-pension"]',   yen(Core.lpPensionMonthly(a.privatePensionPlans)));
+  const nh=document.querySelector('[data-live="nisa-head"]');
+  if(nh) nh.innerHTML=nisaHeadHtml(state.settings);
 }
 
 /* せっていで、いま打った欄だけを保存する。
