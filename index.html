@@ -3948,6 +3948,25 @@ function lpExport(){
    保存は静かに行い、合計の表示だけをその場で書き換える。
    打つたびに端末へ書くと重いので、手が止まってから少しおいて保存する。 */
 let autoSaveT=null;
+let pendingAutoSaveId=null;
+
+/* 未保存の入力を、その場で端末へ確定する。
+   画面移動・タブ切替・アプリを閉じる直前に必ず呼ぶ。
+   これが無いと350msの待ち時間中に画面を離れた場合、入力が消える。 */
+function flushAutoSave(){
+  if(autoSaveT){ clearTimeout(autoSaveT); autoSaveT=null; }
+  if(!pendingAutoSaveId) return true;
+  const id=pendingAutoSaveId;
+  pendingAutoSaveId=null;
+  if(view==="settings"){ saveSettingField(id); return true; }
+  if(view==="lp"){
+    const ok=lpSave(lpReadCurrent());
+    if(ok) lpRefreshTotals();
+    return ok;
+  }
+  return true;
+}
+
 function lpReadCurrent(){
   if(lpKind==="nisa")      return lpReadNisa();
   if(lpKind==="insurance") return lpReadInsurance();
@@ -4025,6 +4044,8 @@ function saveSettingField(id){
 }
 
 function autoSave(id){
+  autoSaveT=null;
+  pendingAutoSaveId=null;
   if(view==="settings"){ saveSettingField(id); return; }
   if(view==="lp"){ lpSave(lpReadCurrent()); lpRefreshTotals(); }
 }
@@ -4032,7 +4053,9 @@ document.addEventListener("input",(e)=>{
   const el=e&&e.target; if(!el||!el.id) return;
   if(view!=="settings" && view!=="lp") return;
   const id=el.id;
-  clearTimeout(autoSaveT); autoSaveT=setTimeout(()=>autoSave(id),350);
+  pendingAutoSaveId=id;
+  clearTimeout(autoSaveT);
+  autoSaveT=setTimeout(()=>autoSave(id),350);
 });
 
 document.addEventListener("change",(e)=>{
@@ -4044,14 +4067,22 @@ document.addEventListener("change",(e)=>{
 });
 
 document.addEventListener("visibilitychange",()=>{
-  /* 画面を離れたら測定を中止する（カメラとライトを点けっぱなしにしない） */
-  if(document.hidden){ if(pRunning || pStream || pGen!==pStopGen){ pulseFail("画面を離れたので測定を中止しました。"); } return; }
+  /* iPhoneでアプリを閉じる・別アプリへ移る直前にも、書きかけを確定する。 */
+  if(document.hidden){
+    flushAutoSave();
+    if(pRunning || pStream || pGen!==pStopGen){ pulseFail("画面を離れたので測定を中止しました。"); }
+    return;
+  }
   if(!calSyncToToday()) return;
   if(view==="calendar"||view==="home"||view==="summary") render();
 });
+/* Safari/PWAではvisibilitychangeだけで終わらない場合があるため、
+   pagehideでも最後の入力を同期保存する。 */
+if(window&&typeof window.addEventListener==="function") window.addEventListener("pagehide",()=>{ flushAutoSave(); });
+
 document.addEventListener("click",e=>{
-  const nav=e.target.closest("#nav button"); if(nav){ showSheet(false); view=nav.dataset.nav; render(); return; }
-  const go=e.target.closest("[data-go]"); if(go){ showSheet(false); view=go.dataset.go; render(); focusField(go.dataset.focus); return; }
+  const nav=e.target.closest("#nav button"); if(nav){ showSheet(false); flushAutoSave(); view=nav.dataset.nav; render(); return; }
+  const go=e.target.closest("[data-go]"); if(go){ showSheet(false); flushAutoSave(); view=go.dataset.go; render(); focusField(go.dataset.focus); return; }
   const pick=e.target.closest("[data-pick]");
   if(pick&&sheetState){ readSheetInputs();
     /* 候補は最小単位で持っている。打ち込み欄の字（主単位）へ戻す。 */
@@ -4125,11 +4156,13 @@ function handleAct(a,e){
   if(a==="reset-all") return resetAll();
   /* --- ライフプランへ渡す資産 --- */
   if(a==="lp-open"){ const el=e&&e.target&&e.target.closest("[data-kind]");
+    flushAutoSave();
     saveSettingsQuiet();                       // 書きかけの設定を取りこぼさない
     lpKind=(el&&el.dataset.kind)||"gold"; view="lp"; render(); return; }
   if(a==="lp-tab"){ const el=e&&e.target&&e.target.closest("[data-kind]");
+    flushAutoSave();                           // 今の内訳を保存してから別タブへ
     lpKind=(el&&el.dataset.kind)||"gold"; render(); return; }
-  if(a==="lp-back"){ view="settings"; render(); return; }
+  if(a==="lp-back"){ flushAutoSave(); view="settings"; render(); return; }
   if(a==="lp-add"){ const el=e&&e.target&&e.target.closest("[data-key]"); return lpAddRow(el&&el.dataset.key); }
   if(a==="lp-del"){ const el=e&&e.target&&e.target.closest("[data-i]"); if(el) lpDeleteRow(el.dataset.i, el.dataset.key); return; }
   if(a==="lp-save-nisa") return lpSaveNisa();
