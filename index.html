@@ -632,12 +632,20 @@ function cleanBridgeSchedule(rows){
       amount:Math.max(0,Number(f&&f.amount)||0)
     })).filter(f=>f.name||f.amount>0);
     const fundsTotal=funds.reduce((sum,f)=>sum+f.amount,0);
+    const legacyMonthly=Math.max(0,Number(r&&r.monthlyYen)||0);
+    /* ライフプラン側の年齢区間は monthlyYen だけを持つことがある。
+       家計簿のNISA編集画面は「銘柄の合計」を唯一の正としているため、
+       内訳が無い月額だけの行は、連携用の1銘柄に変換して表示・保存を一致させる。 */
+    const normalizedFunds=funds.length?funds:(legacyMonthly>0?[{
+      name:L("ライフプラン連携","Life plan linked"),
+      amount:legacyMonthly
+    }]:[]);
+    const normalizedTotal=normalizedFunds.reduce((sum,f)=>sum+f.amount,0);
     return {
       fromAge:Number(r&&r.fromAge)||0,
       toAge:Number(r&&r.toAge)||0,
-      funds,
-      /* NISA編集画面も銘柄の合計を使うため、橋渡し時に内訳を落とさない。 */
-      monthlyYen:funds.length?fundsTotal:Math.max(0,Number(r&&r.monthlyYen)||0)
+      funds:normalizedFunds,
+      monthlyYen:normalizedTotal
     };
   }).filter(r=>r.toAge>=r.fromAge && r.monthlyYen>0);
 }
