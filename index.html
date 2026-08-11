@@ -2011,7 +2011,8 @@ function recordCalcHistoryHtml(){
   return hs.map(h=>{
     const expr=String(h.expr||"").replace(/\s+/g,"").replace(/＝$/g,"");
     const result=String(h.result||"").replace(/(\.\d*?[1-9])0+$/,"$1").replace(/\.0+$/,"");
-    return `<div class="rechistrow"><div class="rechistexpr mono">${recordCalcCatEmoji(h.type,h.cat)} ${escapeHtml(expr)}=${escapeHtml(result)}</div><div class="rechistacts"><button data-act="record-hist-edit" data-id="${escapeAttr(h.id)}">${L("編集","Edit")}</button><button data-act="record-hist-del" data-id="${escapeAttr(h.id)}">${L("削除","Delete")}</button></div></div>`;
+    const text=expr===result ? expr : `${expr}=${result}`;
+    return `<div class="rechistrow"><div class="rechistexpr mono">${recordCalcCatEmoji(h.type,h.cat)} ${escapeHtml(text)}</div><div class="rechistacts"><button data-act="record-hist-del" data-id="${escapeAttr(h.id)}">${L("削除","Delete")}</button></div></div>`;
   }).join("");
 }
 
@@ -2445,10 +2446,15 @@ async function saveTx(){
   /* ＝ を押さずに「記録する」を押しても、待っている計算を済ませてから記録する。
      calcValue は最小単位を返すので、打ち込み欄の字（主単位）へ戻して持たせる。 */
   if(st.calc && st.calc.op){ st.calc=Core.calcPress(st.calc,"="); st.amount=Core.calcDisplay(st.calc); }
-  const calcHistCandidate = st.calc && st.calc.done && st.calc.expr ? {
-    id:uid(), txId:"", expr:st.calc.expr, result:Core.calcDisplay(st.calc), cat:st.cat, type:st.type,
+  /* 記録ページの履歴は、計算した金額だけでなく数字を直接入れて記録した場合も残す。
+     どちらも txId で実際の家計簿記録と結び、履歴の「削除」でまとめ側の記録も同時に消せるようにする。 */
+  const hasCalcHistory = !!(st.calc && st.calc.done && st.calc.expr);
+  const calcHistCandidate = {
+    id:uid(), txId:"", expr:hasCalcHistory ? st.calc.expr : String(st.amount||""),
+    result:hasCalcHistory ? Core.calcDisplay(st.calc) : "", cat:st.cat, type:st.type,
     country:curCountry(), date:st.date
-  } : null;
+  };
+  if(!hasCalcHistory) calcHistCandidate.result=calcHistCandidate.expr;
   /* 直すときは、その記録がもともと持っていた国で換算する。
      新しく作るときは、いま選んでいる国。 */
   const editIdx = st.mode==="edit" ? state.tx.findIndex(x=>x.id===st.id) : -1;
@@ -4070,20 +4076,26 @@ document.addEventListener("click",e=>{
 function handleAct(a,e){
   if(a==="open-record") return openRecord(null);
   if(a==="close-sheet") return showSheet(false);
-  if(a==="record-hist-edit"){
+  if(a==="record-hist-del"){
     const el=e&&e.target&&e.target.closest("[data-id]"); const id=el&&el.dataset.id;
     const h=(state.recordCalcHistory||[]).find(x=>x.id===id);
     if(!h) return;
-    const tx=state.tx.find(x=>x.id===h.txId);
-    if(tx){ openRecord(tx.id); return; }
-    toast(L("元の記録が見つかりません","The original record could not be found")); return;
-  }
-  if(a==="record-hist-del"){
-    const el=e&&e.target&&e.target.closest("[data-id]"); const id=el&&el.dataset.id;
-    const before=(state.recordCalcHistory||[]).slice();
-    state.recordCalcHistory=before.filter(x=>x.id!==id);
-    if(!save()){ state.recordCalcHistory=before; toast(L("削除できませんでした","Could not delete it")); }
-    renderSheet(); return;
+    /* 履歴の削除は、その計算で作った家計簿記録も同時に削除する。
+       同じ txId を指す履歴が複数ある場合は、記録だけ消えて履歴が孤立しないよう全部消す。 */
+    const beforeHistory=JSON.parse(JSON.stringify(state.recordCalcHistory||[]));
+    const beforeTx=JSON.parse(JSON.stringify(state.tx||[]));
+    const txId=String(h.txId||"");
+    state.recordCalcHistory=beforeHistory.filter(x=>x.id!==id && (!txId || x.txId!==txId));
+    if(txId) state.tx=beforeTx.filter(x=>x.id!==txId);
+    if(!save()){
+      state.recordCalcHistory=beforeHistory;
+      state.tx=beforeTx;
+      toast(L("削除できませんでした","Could not delete it"));
+      renderSheet(); return;
+    }
+    renderSheet();
+    toast(L("計算履歴と記録を削除しました","Deleted the calculation and record"));
+    return;
   }
   if(a==="save-tx") return saveTx();
   if(a==="del-tx") return delTx();

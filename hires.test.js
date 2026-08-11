@@ -210,7 +210,7 @@ test("保存に成功したら、高解像度画像が解放される", async ()
 
 test("容量超過で写真を外した再保存でも、成功したら解放される", async () => {
   // 写真つきだと入りきらず、写真を外せば入る大きさに設定する
-  const app = bootApp({ maxBytes: 400 });
+  const app = bootApp({ maxBytes: 650 });
   await app.record(1234, PHOTO, PHOTO_HI);
   assert.equal(app.run("state.tx.length"), 1, "記録が残っていない");
   assert.equal(app.run("state.tx[0].photo"), null, "写真が外されていない");
