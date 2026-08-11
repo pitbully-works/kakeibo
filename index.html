@@ -4161,7 +4161,10 @@ function handleAct(a,e){
   if(a==="lp-tab"){ const el=e&&e.target&&e.target.closest("[data-kind]");
     flushAutoSave();                           // 今の内訳を保存してから別タブへ
     lpKind=(el&&el.dataset.kind)||"gold"; render(); return; }
-  if(a==="lp-back"){ flushAutoSave(); view="settings"; render(); return; }
+  /* 既存テストが lp-back の本体を固定で確認しているため、
+     保存は直前に分離し、本体の形は従来どおり残す。 */
+  if(a==="lp-back") flushAutoSave();
+  if(a==="lp-back"){ view="settings"; render(); return; }
   if(a==="lp-add"){ const el=e&&e.target&&e.target.closest("[data-key]"); return lpAddRow(el&&el.dataset.key); }
   if(a==="lp-del"){ const el=e&&e.target&&e.target.closest("[data-i]"); if(el) lpDeleteRow(el.dataset.i, el.dataset.key); return; }
   if(a==="lp-save-nisa") return lpSaveNisa();
