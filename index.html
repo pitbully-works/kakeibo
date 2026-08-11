@@ -3594,7 +3594,13 @@ function renderLp(){
    つみたて枠・成長投資枠それぞれの「年齢区間ごとの月額」と「銘柄別の内訳」。
    月額を打てる場所はここだけ。せっていの欄は、ここから自動計算した表示になる。 */
 function nisaHeadHtml(s){
-  if(!s.birth) return L("せってい","Settings")+L("で<b>生年月日</b>を入れると、いまの年齢からこの月額を自動で計算します。","：enter your <b>date of birth</b> and this monthly amount is worked out from your current age.");
+  if(!s.birth){
+    const now=Core.nisaPlannedOn(s,Core.cycleRange(curYM(),s.cycleStart).from);
+    const a=Core.normalizeLifePlanAssets(s.lp);
+    const multi=(a.tsumitateSchedule.length>1 || a.growthSchedule.length>1);
+    return L(`生年月日は未設定です。入力した現在のNISA月額は <b>${yen(now)}</b> です。<br>年齢で金額を切り替える複数区間を使う場合だけ、生年月日を設定してください。${multi?"<br><b>複数区間があるため、現在は各枠の最初の区間だけを計算しています。</b>":""}`,
+             `Date of birth is not set. Your current NISA monthly amount is <b>${yen(now)}</b>.<br>Set your date of birth only if you use multiple age ranges to change the amount by age.${multi?"<br><b>Multiple ranges exist, so only the first range in each allowance is currently counted.</b>":""}`);
+  }
   const from=Core.cycleRange(curYM(),s.cycleStart).from;
   const now=Core.nisaPlannedOn(s,from);
   const next=Core.nisaUpcoming(s,from);
@@ -3662,7 +3668,8 @@ function lpIdecoHtml(d){
     <div class="fhelp" style="margin-bottom:8px">${L("毎月の掛金は、金や民間年金と同じ<b>先取り</b>として引きます。","The monthly contribution is treated as money <b>set aside</b>, like gold or a private pension.")}
       ${L("こちらに入れた分は、<b>記録から入れないでください</b>（二重になります）。","Do <b>not</b> also enter it as a record — it would be counted twice.")}<br>
       ${L("給与から天引きされていて、記録する給与が天引き後の手取りなら、掛金は0のままにしてください。","If it is deducted from your pay and the pay you record is already net of it, leave the contribution at 0.")}<br>
-      ${L("評価額や受取年齢は、ライフプランへ渡すためだけの欄です。","The balance and payout ages are only passed on to the life plan.")}</div>
+      ${L("評価額や受取年齢は、ライフプランへ渡すためだけの欄です。","The balance and payout ages are only passed on to the life plan.")}<br>
+      ${L("生年月日が未設定でも毎月の掛金はそのまま先取りに入ります。開始・終了年齢で自動判定するときだけ生年月日を使います。","Even without a date of birth, the monthly contribution is still set aside. Your date of birth is used only to apply the start/end ages automatically.")}</div>
     <div class="lpgrid">
       <label>${L("運用商品名","Fund name")}<input id="lp-id-name" value="${escapeAttr(d.productName)}" placeholder="${L("全世界株式","Global equity index")}"></label>
       ${f("lp-id-monthly",L("毎月の掛金（円）","Monthly contribution"),d.monthlyContribution,"0")}
@@ -3881,6 +3888,13 @@ function lpAddRow(key){
   if(lpKind==="nisa"){
     const a0 = lpReadNisa();
     if(a0[key].length >= Core.LP_MAX_ROWS){ toast(L(`${Core.LP_MAX_ROWS}件までです`, `Up to ${Core.LP_MAX_ROWS} items`)); return; }
+    /* 生年月日なしでも、各枠の最初の1区間は「現在の月額」として使える。
+       2区間目からは、どの区間が現在有効かを年齢で判定する必要がある。 */
+    if((key==="tsumitateSchedule" || key==="growthSchedule") && a0[key].length>=1 && !state.settings.birth){
+      toast(L("2つ目以降の年齢区間を使うには、せっていで生年月日を入力してください",
+              "Enter your date of birth in Settings before adding a second age range"));
+      return;
+    }
     a0[key] = a0[key].concat([key==="lumpSums" ? {} : { funds: [] }]);
     const i = a0[key].length - 1;
     const id = key==="tsumitateSchedule" ? `lp-ts-from-${i}`
@@ -4082,11 +4096,13 @@ function syncBirthParts(){
 }
 
 function clearBirth(){
-  const msg=L("生年月日を未設定にしますか？\nNISAの年齢区間による自動計算は、生年月日を再入力するまで停止します。",
-              "Clear your date of birth?\nAge-based NISA automatic calculation will stop until you enter it again.");
+  const msg=L("生年月日を未設定にしますか？\n現在のNISA月額はそのまま保持し、年齢区間による自動計算だけを停止します。",
+              "Clear your date of birth?\nThe current NISA monthly amount will be kept, while age-based automatic calculation will stop.");
   if(!confirm(msg)) return;
   const before=JSON.parse(JSON.stringify(state.settings));
-  const s=Object.assign({},state.settings,{birth:""});
+  const from=Core.cycleRange(curYM(),state.settings.cycleStart).from;
+  const currentNisa=Core.nisaPlannedOn(state.settings,from);
+  const s=Object.assign({},state.settings,{birth:"",nisaMonthly:currentNisa});
   state.settings=Core.normalizeSettings(s);
   if(!save()){ state.settings=before; toast(T("set.saveFailed")); return; }
   toast(L("生年月日を消しました","Date of birth cleared"));

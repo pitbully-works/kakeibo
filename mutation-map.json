@@ -146,8 +146,8 @@
   "agebound_test.js",
   "lifeplan_test.js"
  ],
- "旧データのNISA月額を使い続ける": [
-  "lifeplan_test.js"
+ "生年月日なしで入力内訳ではなく旧NISA月額へ戻す": [
+  "nisa_birth_mode_test.js"
  ],
  "書き出しでコピーを試さない": [
   "lpbridge_test.js"

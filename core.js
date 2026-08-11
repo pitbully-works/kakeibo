@@ -1271,13 +1271,35 @@
     return !!normalizeBirth(s.birth) && hasSchedule;
   }
 
+  /* 生年月日が無いときの「いまのNISA月額」。
+     年齢区間の自動判定はできないため、つみたて枠・成長投資枠それぞれの
+     最初の区間を「現在入力している月額」として使う。
+     これなら家計簿だけを使う人は、生年月日なしでも各枠の金額を入れるだけでよい。
+     2つ目以降の区間は生年月日を設定してから使う（UI側で追加を止める）。
+     古い保存データに区間が無い場合だけ旧 nisaMonthly を互換用に使う。 */
+  function nisaManualMonthly(settings) {
+    const s = settings || {};
+    const lp = s.lp || {};
+    const firstMonthly = function (schedule) {
+      const rows = normalizeLpSchedule(schedule);
+      return rows.length ? (Number(rows[0].monthlyYen) || 0) : 0;
+    };
+    const tsumitate = firstMonthly(lp.tsumitateSchedule);
+    const growth = firstMonthly(lp.growthSchedule);
+    const hasRows = normalizeLpSchedule(lp.tsumitateSchedule).length > 0 ||
+      normalizeLpSchedule(lp.growthSchedule).length > 0;
+    return hasRows ? Math.round(tsumitate + growth) : num(s.nisaMonthly);
+  }
+
   /* 今月ぶんの NISA先取り額。
+     ・生年月日あり＋区間あり → 現在年齢に該当する区間を合算
+     ・生年月日なし           → 各枠の最初の区間を現在額として合算
      基準日はその区切りの初日にする（「いま」に依らず、いつ計算しても同じ答えになる）。 */
   function nisaPlannedOn(settings, onDate) {
     const s = settings || {};
-    if (!nisaAuto(s)) return num(s.nisaMonthly);
+    if (!nisaAuto(s)) return nisaManualMonthly(s);
     const age = ageFromBirth(s.birth, onDate);
-    if (age === null) return num(s.nisaMonthly);
+    if (age === null) return nisaManualMonthly(s);
     const lp = s.lp || {};
     return Math.round(scheduledMonthly(lp.tsumitateSchedule, age) + scheduledMonthly(lp.growthSchedule, age));
   }
@@ -4555,6 +4577,7 @@
     lpMonthlyTotal: lpMonthlyTotal,
     scheduledMonthly: scheduledMonthly,
     nisaAuto: nisaAuto,
+    nisaManualMonthly: nisaManualMonthly,
     nisaPlannedOn: nisaPlannedOn,
     nisaUpcoming: nisaUpcoming,
     lpHasAny: lpHasAny,
