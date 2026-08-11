@@ -159,7 +159,7 @@ const MUTATIONS = [
     to: "  shareText(`kakeibo-backup-${todayISO()}.json`," },
 
   { name: "打っても自動で保存しない", guards: "保存ボタンを押さなくても消えない",
-    file: "index.html", from: "  clearTimeout(autoSaveT); autoSaveT=setTimeout(()=>autoSave(id),350);",
+    file: "index.html", from: "  clearTimeout(autoSaveT);\n  autoSaveT=setTimeout(()=>autoSave(id),350);",
     to: "  clearTimeout(autoSaveT);" },
   { name: "内訳の自動保存だけやめる", guards: "内訳もその場で保存される",
     file: "index.html", from: '  if(view==="lp"){ lpSave(lpReadCurrent()); lpRefreshTotals(); }',

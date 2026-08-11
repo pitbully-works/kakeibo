@@ -14,7 +14,8 @@ test("PWAを閉じる時にもflushする",()=>{
   assert.match(html,/visibilitychange[\s\S]*document\.hidden[\s\S]*flushAutoSave\(\)/);
   assert.match(html,/pagehide[\s\S]*flushAutoSave\(\)/);
 });
-test("350ms待機中の入力IDを保持する",()=>{
+test("入力後350msで必ず自動保存を予約する",()=>{
   assert.match(html,/pendingAutoSaveId=id/);
+  assert.match(html,/clearTimeout\(autoSaveT\);\s*autoSaveT=setTimeout\(\(\)=>autoSave\(id\),350\);/);
   assert.match(html,/function flushAutoSave\(\)/);
 });
