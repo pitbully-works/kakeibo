@@ -1889,6 +1889,27 @@ function ageLabel(birth){
   return L(m>0 ? `${y}歳${m}ヶ月` : `${y}歳`, m>0 ? `${y}y ${m}m` : `${y} years old`);
 }
 
+function birthSelectHtml(birth){
+  const v=Core.normalizeBirth(birth||"");
+  const parts=v ? v.split("-") : ["","",""];
+  const by=parts[0]||"", bm=parts[1]||"", bd=parts[2]||"";
+  const nowY=new Date().getFullYear();
+  const minY=nowY-120;
+  let years=`<option value="">${L("年","Year")}</option>`;
+  for(let y=nowY;y>=minY;y--) years+=`<option value="${y}"${String(y)===by?" selected":""}>${y}</option>`;
+  let months=`<option value="">${L("月","Month")}</option>`;
+  for(let m=1;m<=12;m++){ const mm=String(m).padStart(2,"0"); months+=`<option value="${mm}"${mm===bm?" selected":""}>${m}</option>`; }
+  const maxDay = by&&bm ? new Date(Number(by),Number(bm),0).getDate() : 31;
+  let days=`<option value="">${L("日","Day")}</option>`;
+  for(let d=1;d<=maxDay;d++){ const dd=String(d).padStart(2,"0"); days+=`<option value="${dd}"${dd===bd?" selected":""}>${d}</option>`; }
+  return `<input id="f-birth" type="hidden" value="${escapeAttr(v)}">
+    <div class="row3" style="grid-template-columns:1.25fr .85fr .85fr;gap:8px">
+      <select id="f-birth-y" aria-label="${escapeAttr(L("生まれた年","Birth year"))}">${years}</select>
+      <select id="f-birth-m" aria-label="${escapeAttr(L("生まれた月","Birth month"))}">${months}</select>
+      <select id="f-birth-d" aria-label="${escapeAttr(L("生まれた日","Birth day"))}">${days}</select>
+    </div>`;
+}
+
 function renderSettings(){
   const s=state.settings;
   const u=Core.storageUsage(state);
@@ -1906,10 +1927,12 @@ function renderSettings(){
       ${T("set.birthWhy")}
     </div>
     <div class="field"><label>${T("set.birth")}</label>
-      <input id="f-birth" type="date" value="${escapeAttr(s.birth||"")}">
-      <div class="fhelp">${s.birth
+      ${birthSelectHtml(s.birth)}
+      <div class="fhelp" id="f-birth-help">${s.birth
         ? T("set.birthNow",{age:escapeHtml(ageLabel(s.birth))})
-        : T("set.birthHelp")}</div></div>
+        : T("set.birthHelp")}</div>
+      ${s.birth ? `<button type="button" onclick="clearBirth()" style="margin-top:12px;width:100%;min-height:48px;border:1.5px solid #e6a48d;border-radius:14px;background:#fff;color:#b95736;font-weight:800;font-size:15px">${L("生年月日を消す","Clear date of birth")}</button>` : ""}
+    </div>
 
     <div class="stitle">${T("set.cycle")}</div>
     <div class="calcnote" style="margin:0 0 10px">
@@ -4035,6 +4058,41 @@ function roundUnit(){ return decOf()>0 ? L("1セント","cent") : L("1円","yen"
 /* 国は「押す」ではなく「選ぶ」操作なので change で受ける。
    選んだその場で保存し、ことば・通貨・日付の出し方を入れ替えるため画面を作り直す。
    （打つたびの自動保存に任せると、ことばが古いままになる） */
+function syncBirthParts(){
+  const y=$("f-birth-y"), m=$("f-birth-m"), d=$("f-birth-d"), hidden=$("f-birth");
+  if(!y||!m||!d||!hidden) return false;
+  /* 年・月が決まったら、その月に存在する日だけを出す。iPhone標準の日付ピッカーを
+     使わないので、OS側の「リセット」は表示されない。 */
+  if(y.value && m.value){
+    const max=new Date(Number(y.value),Number(m.value),0).getDate();
+    const keep=Number(d.value||0);
+    let html=`<option value="">${L("日","Day")}</option>`;
+    for(let n=1;n<=max;n++){ const dd=String(n).padStart(2,"0"); html+=`<option value="${dd}"${n===Math.min(keep,max)?" selected":""}>${n}</option>`; }
+    d.innerHTML=html;
+    if(keep>max) d.value=String(max).padStart(2,"0");
+  }
+  const v=(y.value&&m.value&&d.value) ? `${y.value}-${m.value}-${d.value}` : "";
+  hidden.value=Core.normalizeBirth(v);
+  /* 3項目が揃っていない途中操作では、既存の生年月日を空にしない。 */
+  if(v && !hidden.value) return true;
+  if(v) saveSettingField("f-birth");
+  const help=$("f-birth-help");
+  if(help && hidden.value) help.innerHTML=T("set.birthNow",{age:escapeHtml(ageLabel(hidden.value))});
+  return true;
+}
+
+function clearBirth(){
+  const msg=L("生年月日を未設定にしますか？\nNISAの年齢区間による自動計算は、生年月日を再入力するまで停止します。",
+              "Clear your date of birth?\nAge-based NISA automatic calculation will stop until you enter it again.");
+  if(!confirm(msg)) return;
+  const before=JSON.parse(JSON.stringify(state.settings));
+  const s=Object.assign({},state.settings,{birth:""});
+  state.settings=Core.normalizeSettings(s);
+  if(!save()){ state.settings=before; toast(T("set.saveFailed")); return; }
+  toast(L("生年月日を消しました","Date of birth cleared"));
+  render();
+}
+
 function onCountryPicked(el){
   if(!el || el.id !== "f-country") return false;
   if(!switchMoneyCountry(el.value)){ toast(T("set.saveFailed")); render(); return true; }
@@ -4064,6 +4122,7 @@ document.addEventListener("input",(e)=>{
 
 document.addEventListener("change",(e)=>{
   const el = e && e.target;
+  if(el && (el.id==="f-birth-y" || el.id==="f-birth-m" || el.id==="f-birth-d")){ syncBirthParts(); return; }
   if(el && el.id === "d-date") pickDiaryDate(el.value);
   /* 国は、ことば・通貨・日付の出し方がまとめて変わる。
      打ちかけの他の欄も取りこぼさないよう、いったん全部保存してから描き直す。 */
