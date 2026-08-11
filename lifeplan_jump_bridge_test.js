@@ -23,12 +23,16 @@ test('ライフプランから開くとNISAだけ更新し日記・予定を保�
   const payload = {
     source:'lifeplan', schemaVersion:1, birth:'1968-11-13', country:'JP', currency:'JPY',
     nisa:{
-      tsumitateSchedule:[{fromAge:57,toAge:65,monthlyYen:80000}],
-      growthSchedule:[{fromAge:57,toAge:65,monthlyYen:30000}]
+      tsumitateSchedule:[{fromAge:57,toAge:65,monthlyYen:999999,funds:[{name:'全世界',amount:80000}]}],
+      growthSchedule:[{fromAge:57,toAge:65,monthlyYen:999999,funds:[{name:'トヨタ',amount:30000}]}]
     }
   };
   const app = bootApp({ state: oldState, hash: hashFor(payload) });
   assert.equal(app.run('Core.nisaPlannedOn(state.settings,"2026-08-11")'), 110000);
+  assert.equal(app.run('state.settings.lp.tsumitateSchedule[0].funds[0].name'), '全世界');
+  assert.equal(app.run('state.settings.lp.tsumitateSchedule[0].funds[0].amount'), 80000);
+  assert.equal(app.run('state.settings.lp.tsumitateSchedule[0].monthlyYen'), 80000, '銘柄合計と月額が食い違う');
+  assert.equal(app.run('state.settings.lp.growthSchedule[0].funds[0].name'), 'トヨタ');
   assert.equal(app.run('state.diary["2026-08-09"].text'), '残す日記');
   assert.equal(app.run('state.plans["2026-08-12"][0].text'), '残す予定');
   assert.equal(app.run('state.health["2026-08-09"].weight'), 63.5);

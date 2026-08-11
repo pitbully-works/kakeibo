@@ -626,11 +626,20 @@ function readLifePlanBridge(){
 }
 function cleanBridgeSchedule(rows){
   if(!Array.isArray(rows)) return [];
-  return rows.map(r=>({
-    fromAge:Number(r&&r.fromAge)||0,
-    toAge:Number(r&&r.toAge)||0,
-    monthlyYen:Math.max(0,Number(r&&r.monthlyYen)||0)
-  })).filter(r=>r.toAge>=r.fromAge && r.monthlyYen>0);
+  return rows.map(r=>{
+    const funds=(Array.isArray(r&&r.funds)?r.funds:[]).map(f=>({
+      name:String(f&&f.name||"").slice(0,80),
+      amount:Math.max(0,Number(f&&f.amount)||0)
+    })).filter(f=>f.name||f.amount>0);
+    const fundsTotal=funds.reduce((sum,f)=>sum+f.amount,0);
+    return {
+      fromAge:Number(r&&r.fromAge)||0,
+      toAge:Number(r&&r.toAge)||0,
+      funds,
+      /* NISA編集画面も銘柄の合計を使うため、橋渡し時に内訳を落とさない。 */
+      monthlyYen:funds.length?fundsTotal:Math.max(0,Number(r&&r.monthlyYen)||0)
+    };
+  }).filter(r=>r.toAge>=r.fromAge && r.monthlyYen>0);
 }
 function applyLifePlanBridge(current,payload){
   if(!current || !payload) return current;
