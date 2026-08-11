@@ -4068,9 +4068,8 @@ document.addEventListener("change",(e)=>{
 
 document.addEventListener("visibilitychange",()=>{
   /* iPhoneでアプリを閉じる・別アプリへ移る直前にも、書きかけを確定する。 */
-  if(document.hidden){
+  if(document.hidden){ if(pRunning || pStream || pGen!==pStopGen){ pulseFail("画面を離れたので測定を中止しました。"); }
     flushAutoSave();
-    if(pRunning || pStream || pGen!==pStopGen){ pulseFail("画面を離れたので測定を中止しました。"); }
     return;
   }
   if(!calSyncToToday()) return;
