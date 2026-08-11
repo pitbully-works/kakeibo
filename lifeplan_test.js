@@ -462,14 +462,14 @@ test("前から使っている人の金額が、ある日いきなり0になら�
 test("「いつから いくら」が分かる", () => {
   const next = Core.nisaUpcoming(autoSettings(), "2026-08-08");
   assert.equal(next.fromAge, 57.75);
-  assert.equal(next.monthly, 90000);
-  /* 開始日は「その年齢に達する最初の日」。判定に使う ageFromBirth とそろえる。
-     2026-08-13 は 57.7479歳でまだ 57.75 に届かず、積立は始まらない。
-     以前はここだけ経過日数の近似で出していたため、1日前を出していた。 */
+  /* 将来案内は、その日から有効な「つみたて＋成長投資枠」の合計を出す。 */
+  assert.equal(next.monthly, 100000);
+  /* 開始日は「その年齢に達する最初の日」。判定に使う ageFromBirth とそろえる。 */
   assert.equal(next.startDate, "2026-08-14");
   const before = Core.nisaPlannedOn(autoSettings(), "2026-08-13");
   const on = Core.nisaPlannedOn(autoSettings(), next.startDate);
-  assert.equal(on - before, next.monthly, "出した開始日に、その区間ぶんが増えていない");
+  assert.equal(before, 10000, "開始前に継続中の成長投資枠が抜けている");
+  assert.equal(on, next.monthly, "案内した月額と開始日のNISA合計が一致しない");
   /* すべて始まっていれば、これから始まるものは無い */
   assert.equal(Core.nisaUpcoming(autoSettings(), "2026-09-08"), null);
   assert.equal(Core.nisaUpcoming(Core.normalizeSettings({ nisaMonthly: 1 }), "2026-08-08"), null);

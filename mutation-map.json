@@ -165,15 +165,16 @@
   "lpbridge_test.js"
  ],
  "打っても自動で保存しない": [
-  "autosave_lifecycle_test.js"
+  "lpbridge_test.js",
+  "autosave_immediate_test.js"
  ],
  "内訳の自動保存だけやめる": [
-  "autosave_lifecycle_test.js",
-  "lpbridge_test.js"
+  "lpbridge_test.js",
+  "autosave_immediate_test.js"
  ],
  "せっていの自動保存だけやめる": [
-  "autosave_lifecycle_test.js",
-  "lpbridge_test.js"
+  "lpbridge_test.js",
+  "autosave_immediate_test.js"
  ],
  "自動保存で全部の欄を読み直す（生年月日が消える）": [
   "lpbridge_test.js"

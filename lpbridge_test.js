@@ -568,8 +568,8 @@ test("自動保存が、打つ操作につながっている", () => {
   const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
   const appSrc = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].pop()[1];
   assert.match(appSrc, /addEventListener\("input"/, "打つ操作を受けていない");
-  assert.match(appSrc, /autoSaveT\s*=\s*setTimeout\(\(\)=>autoSave\(id\),\s*\d+\)/, "手が止まってからの保存を仕掛けていない");
-  assert.match(appSrc, /clearTimeout\(autoSaveT\)/, "打つたびに端末へ書いてしまう");
+  assert.match(appSrc, /autoSave\(el\.id\);/, "入力したその場で保存していない");
+  assert.doesNotMatch(appSrc, /setTimeout\(\(\)=>autoSave/, "保存待ちが残っている");
   /* 対象はせっていと内訳の2画面だけ（ほかの画面で無駄に保存しない） */
   assert.match(appSrc, /if\(view!=="settings" && view!=="lp"\) return;/, "対象の画面をしぼっていない");
 });

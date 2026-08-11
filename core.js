@@ -30,7 +30,7 @@
 
   /* 画面の「アプリ情報」に出す版数。上げるときはここだけを書き換える。
      （service worker のキャッシュ名 kakeibo-vNN とは別のもの） */
-  const APP_VERSION = "1.12.6";
+  const APP_VERSION = "1.12.8";
 
   /* ---------- 分類の定義 ---------- */
 
@@ -1294,11 +1294,11 @@
       .sort(function (a, b) { return a.fromAge - b.fromAge; });
     if (!future.length) return null;
     const fromAge = future[0].fromAge;
-    const monthly = rows.reduce(function (sum, r) {
-      return r.fromAge === fromAge ? sum + r.monthlyYen : sum;
-    }, 0);
-    /* その年齢になる日。判定に使う ageFromBirth と同じ暦の数え方で出す。
-       ここだけ経過日数の近似で出していたため、1日前の日付を出していた。 */
+    /* 「その日からいくら」は、その日に新しく始まる区間だけではなく、
+       その時点ですでに継続中のつみたて＋成長投資枠も含めたNISA全体を出す。 */
+    const monthly = scheduledMonthly(lp.tsumitateSchedule, fromAge) +
+      scheduledMonthly(lp.growthSchedule, fromAge);
+    /* その年齢になる日。判定に使う ageFromBirth と同じ暦の数え方で出す。 */
     return { fromAge: fromAge, monthly: Math.round(monthly), startDate: dateAtAge(s.birth, fromAge) };
   }
 
