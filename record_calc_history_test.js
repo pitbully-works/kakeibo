@@ -29,3 +29,10 @@ test("計算履歴がある状態で再起動しても家計簿記録を失わ�
   assert.equal(loaded.history.length,1);
   assert.equal(loaded.history[0].txId,"tx1");
 });
+
+test("まとめページの各記録に削除ボタンがあり、関連する計算履歴も同時に削除する",()=>{
+  assert.match(src,/data-act="summary-tx-del"/);
+  assert.match(src,/function deleteTxWithLinkedHistory\(txId\)/);
+  assert.match(src,/state\.tx=beforeTx\.filter\(t=>t\.id!==id\)/);
+  assert.match(src,/state\.recordCalcHistory=beforeHistory\.filter\(h=>String\(h\.txId\|\|""\)!==id\)/);
+});

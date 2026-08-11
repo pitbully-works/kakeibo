@@ -108,6 +108,7 @@
   .tx .amt{font-size:15px;font-weight:800;white-space:nowrap}
   .tx .amt.exp{color:var(--ink)}
   .tx .amt.inc{color:var(--green-d)}
+  .txdel{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 9px;font-size:11px;font-weight:800;color:var(--sub);flex:0 0 auto}
 
   .empty{text-align:center;color:var(--sub);font-size:13.5px;padding:34px 16px;background:var(--card);border:1px dashed var(--line);border-radius:16px}
   .empty .e{font-size:30px;display:block;margin-bottom:8px}
@@ -1158,7 +1159,8 @@ function renderSummary(){
         return `<div class="tx" data-edit="${t.id}"><div class="ic">${t.type==="income"?"💴":cat.e}</div>
           <div class="mid"><div class="t1">${escapeHtml(t.memo|| cn)}</div>
           <div class="t2">${t.type==="income"?T("sum.incomeTag"):""}${escapeHtml(cn)}${t.photo?" ・📷":""}${t.recurring?`<span class="tag fx">${T("sum.recurring")}</span>`:""}</div></div>
-          <div class="amt ${t.type}">${t.type==="income"?"+":""}${yen(t.amount)}</div></div>`;
+          <div class="amt ${t.type}">${t.type==="income"?"+":""}${yen(t.amount)}</div>
+          <button class="txdel" data-act="summary-tx-del" data-id="${escapeAttr(t.id)}">${L("削除","Delete")}</button></div>`;
       }).join("");
       return `<div class="daygroup"><div class="dayhd"><span>${md}</span><span>${T("sum.dayTotal",{amount:yen(dayTotal)})}</span></div>
         <div class="txcard">${rows}</div></div>`;
@@ -2553,16 +2555,28 @@ async function saveTx(){
   toast(msg);
 }
 
+function deleteTxWithLinkedHistory(txId){
+  const id=String(txId||"");
+  if(!id) return false;
+  const beforeTx=JSON.parse(JSON.stringify(state.tx||[]));
+  const beforeHistory=JSON.parse(JSON.stringify(state.recordCalcHistory||[]));
+  state.tx=beforeTx.filter(t=>t.id!==id);
+  state.recordCalcHistory=beforeHistory.filter(h=>String(h.txId||"")!==id);
+  if(!save()){
+    state.tx=beforeTx;
+    state.recordCalcHistory=beforeHistory;
+    return false;
+  }
+  return true;
+}
+
 function delTx(){
   if(!sheetState||sheetState.mode!=="edit") return;
-  const before = JSON.parse(JSON.stringify(state.tx));   // 失敗したら戻せるように退避
-  state.tx = state.tx.filter(t=>t.id!==sheetState.id);
-  if(!save()){
-    state.tx = before;            // 消えたように見えて復活する、を防ぐ
+  if(!deleteTxWithLinkedHistory(sheetState.id)){
     toast(L("削除できませんでした","Could not delete it"));
-    return;                       // 編集シートは閉じない
+    return;
   }
-  showSheet(false); render(); toast(L("削除しました","Deleted"));
+  showSheet(false); render(); toast(L("記録と関連する計算履歴を削除しました","Deleted the record and linked calculation history"));
 }
 
 /* 予定を1件足す。保存に失敗したら、足す前に完全に戻す。 */
@@ -4076,6 +4090,17 @@ document.addEventListener("click",e=>{
 function handleAct(a,e){
   if(a==="open-record") return openRecord(null);
   if(a==="close-sheet") return showSheet(false);
+  if(a==="summary-tx-del"){
+    const el=e&&e.target&&e.target.closest("[data-id]"); const id=el&&el.dataset.id;
+    if(!id) return;
+    if(!deleteTxWithLinkedHistory(id)){
+      toast(L("削除できませんでした","Could not delete it"));
+      return;
+    }
+    render();
+    toast(L("記録と関連する計算履歴を削除しました","Deleted the record and linked calculation history"));
+    return;
+  }
   if(a==="record-hist-del"){
     const el=e&&e.target&&e.target.closest("[data-id]"); const id=el&&el.dataset.id;
     const h=(state.recordCalcHistory||[]).find(x=>x.id===id);
