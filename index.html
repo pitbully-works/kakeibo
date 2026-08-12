@@ -4363,6 +4363,11 @@ function autoSave(id){
 document.addEventListener("input",(e)=>{
   const el=e&&e.target; if(!el||!el.id) return;
   if(view!=="settings" && view!=="lp") return;
+  /* select は iPhone/Safari で change より先に input が発火することがある。
+     国だけは input 側で settings.country を直接書き換えると、change 側が
+     「すでに切替済み」と誤認して旧国の金額を新国へ保存してしまう。
+     国変更は onCountryPicked -> switchMoneyCountry の1経路だけに限定する。 */
+  if(el.id==="f-country") return;
   /* 入力したその場で同期保存する。
      保存待ちを作らないので、入力直後にホームへ戻る・アプリを閉じる場合も値が残る。 */
   autoSave(el.id);

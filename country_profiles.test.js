@@ -126,3 +126,4 @@ test("USのライフプラン連携にはUSプロファイルの金額だけを�
   assert.equal(out.amount_unit,"major","単位を明示していない");
   assert.equal(out.minor_unit_scale,100);
 });
+
