@@ -646,6 +646,53 @@ function loadPersonalProfile(country){
 
 let state = load();
 
+/* 2026-08 国別完全分離の仕上げ。
+   旧版でJPの内容が海外プロファイルへ複製された端末だけを一度整理する。
+   JP本体には一切触れない。海外側は「まだ独自データを作っていない」場合に限り空にする。 */
+function isPersonalSame(a,b){
+  try{return JSON.stringify(normalizePersonalData(a))===JSON.stringify(normalizePersonalData(b));}catch(e){return false;}
+}
+function moneyComparable(v){
+  const s=Core.normalizeSettings(v||{});
+  const x=JSON.parse(JSON.stringify(s));
+  delete x.country; delete x.currency;
+  return x;
+}
+function isMoneySame(a,b){
+  try{return JSON.stringify(moneyComparable(a))===JSON.stringify(moneyComparable(b));}catch(e){return false;}
+}
+function hasPersonalData(v){
+  const d=normalizePersonalData(v);
+  return Object.keys(d.health).length>0 || Object.keys(d.diary).length>0 || Object.keys(d.plans).length>0 || d.pulse.length>0;
+}
+function hasMoneyData(v){
+  const x=moneyComparable(v);
+  if(Number(x.nisaMonthly)||Number(x.goalTarget)||Number(x.goalCurrent)) return true;
+  const lp=x.lp||{};
+  return Object.keys(lp).some(k=>{ const z=lp[k]; return Array.isArray(z)?z.length>0:(z&&typeof z==="object"?Object.keys(z).length>0:!!z); });
+}
+function cleanupLegacyCountryCopies(){
+  if(state.countrySeparationFix===1) return false;
+  const rawMoney=(state.moneyProfiles && typeof state.moneyProfiles==="object")?state.moneyProfiles:null;
+  const rawPersonal=(state.personalProfiles && typeof state.personalProfiles==="object")?state.personalProfiles:null;
+  if(!rawMoney && !rawPersonal) return false;
+  const jpMoney=rawMoney&&rawMoney.JP?Core.normalizeSettings(rawMoney.JP):null;
+  const jpPersonal=rawPersonal&&rawPersonal.JP?normalizePersonalData(rawPersonal.JP):emptyPersonalData();
+  let changed=false;
+  Core.SUPPORTED_COUNTRIES.forEach(c=>{
+    if(c==="JP") return;
+    if(jpMoney && hasMoneyData(jpMoney) && rawMoney[c] && isMoneySame(rawMoney[c],jpMoney)){
+      state.moneyProfiles[c]=Core.settingsForCountry({},c,jpMoney.birth); changed=true;
+    }
+    if(hasPersonalData(jpPersonal) && rawPersonal[c] && isPersonalSame(rawPersonal[c],jpPersonal)){
+      state.personalProfiles[c]=emptyPersonalData(); changed=true;
+    }
+  });
+  if(changed) state.countrySeparationFix=1;
+  return changed;
+}
+const countryCopiesCleaned = cleanupLegacyCountryCopies();
+
 /* ライフプランから ?country=US のように来た場合は、同じ国の家計簿を開く。
    既存の国別金額は混ぜず、現在国のプロファイルを保存してから切り替える。 */
 function countryFromLaunchUrl(){
@@ -705,7 +752,7 @@ const launchCountryChanged = applyLaunchCountry();
 /* 移行できたときは、その場で書き込んで印を確定させる。
    ここで書けなかったら印も付かないので、次に開いたときにやり直す
    （＝金額だけ移行されて印が無い、という状態にはならない）。 */
-if((migrationDone || launchCountryChanged) && !save()) {
+if((migrationDone || launchCountryChanged || countryCopiesCleaned) && !save()) {
   if(migrationDone) migrationDone=null;
 }
 let view = "home";
@@ -764,6 +811,7 @@ function load(){
     if(!s.personalProfiles || typeof s.personalProfiles!=="object") personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});
     const activePersonal=personalProfiles[active.country] ? normalizePersonalData(personalProfiles[active.country]) : emptyPersonalData();
     const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:activePersonal.health, diary:activePersonal.diary, plans:activePersonal.plans, pulse:activePersonal.pulse, personalProfiles, calcHistory:Core.normalizeSciHistory(s.calcHistory), recordCalcHistory };
+    if(s.countrySeparationFix===1) out.countrySeparationFix=1;
     if(profiles) out.moneyProfiles=profiles;
     /* 移行を見送ったときは印を付けない。次に開いたとき、もう一度やり直す。 */
     if(!migrationBlocked) out.dataVersion=Core.DATA_VERSION;
