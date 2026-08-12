@@ -651,7 +651,7 @@ let state = load();
    この版を最初に開いた1回だけ「海外側」だけを空の国別領域へ作り直す。
    JPプロファイル・JPの記録・JPの個人データには一切触れない。
    以後は version=2 を保存するため、海外で新しく入力したデータは消さない。 */
-const COUNTRY_STORAGE_SPLIT_VERSION = 2;
+const COUNTRY_STORAGE_SPLIT_VERSION = 3;
 function numericFingerprint(v){
   if(Array.isArray(v)) return v.map(numericFingerprint);
   if(v && typeof v==="object"){
@@ -698,6 +698,31 @@ function finishCountryStorageSplit(){
 
   const active=Core.normalizeCountry(state.settings && state.settings.country);
   const sharedBirth=state.settings && state.settings.birth;
+
+  /* v2をすでに通った端末は、旧修正版が「処理済み」の印だけ残して
+     海外側の混入が残る場合がある。v3ではその端末に限り、海外側だけを
+     一度空にして確実に切り離す。JP側は一切消さない。 */
+  if(done===2){
+    state.moneyProfiles=Core.normalizeMoneyProfiles(state.moneyProfiles, active==="JP" ? state.settings : null);
+    if(active==="JP") state.moneyProfiles.JP=Core.normalizeSettings(Object.assign({},state.settings,{country:"JP"}));
+    state.personalProfiles=normalizePersonalProfiles(state.personalProfiles);
+    if(active==="JP") state.personalProfiles.JP=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});
+    Core.SUPPORTED_COUNTRIES.forEach(c=>{
+      if(c==="JP") return;
+      state.moneyProfiles[c]=Core.settingsForCountry({},c,sharedBirth);
+      state.personalProfiles[c]=emptyPersonalData();
+    });
+    state.tx=Core.normalizeTxList(state.tx).filter(t=>Core.normalizeCountry(t.country)==="JP");
+    state.recordCalcHistory=(Array.isArray(state.recordCalcHistory)?state.recordCalcHistory:[])
+      .filter(h=>Core.normalizeCountry(h&&h.country)==="JP");
+    if(active!=="JP"){
+      state.settings=Core.settingsForCountry(state.moneyProfiles,active,sharedBirth);
+      loadPersonalProfile(active);
+    }
+    state.countryStorageSplitVersion=COUNTRY_STORAGE_SPLIT_VERSION;
+    return true;
+  }
+
   const rawMoney=(state.moneyProfiles && typeof state.moneyProfiles==="object") ? state.moneyProfiles : {};
   const rawPersonal=(state.personalProfiles && typeof state.personalProfiles==="object") ? state.personalProfiles : {};
   const jpMoney=rawMoney.JP ? Core.normalizeSettings(rawMoney.JP) : (active==="JP" ? Core.normalizeSettings(state.settings) : null);
@@ -791,6 +816,19 @@ function applyLaunchCountry(){
   return true;
 }
 const launchCountryChanged = applyLaunchCountry();
+/* ライフプランの ?country=XX は今回の起動だけに使う。
+   URLに残すと再読込のたびにその国へ戻り、設定で国を変えられないように見えるため、
+   一度読み取ったら country パラメータだけ外す。 */
+function consumeLaunchCountryParam(){
+  try{
+    if(!countryFromLaunchUrl() || !window.history || !window.history.replaceState) return;
+    const u=new URL(window.location.href);
+    u.searchParams.delete("country");
+    const q=u.searchParams.toString();
+    window.history.replaceState(null,"",u.pathname+(q?"?"+q:"")+u.hash);
+  }catch(e){ /* URL更新失敗は無視 */ }
+}
+consumeLaunchCountryParam();
 /* 移行できたときは、その場で書き込んで印を確定させる。
    ここで書けなかったら印も付かないので、次に開いたときにやり直す
    （＝金額だけ移行されて印が無い、という状態にはならない）。 */
