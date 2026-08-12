@@ -620,10 +620,35 @@ function backupBeforeMigration(raw){
 }
 
 let state = load();
+
+/* ライフプランから ?country=US のように来た場合は、同じ国の家計簿を開く。
+   既存の国別金額は混ぜず、現在国のプロファイルを保存してから切り替える。 */
+function countryFromLaunchUrl(){
+  try{
+    const search = String(window.location && window.location.search || "");
+    const m = search.match(/(?:^|[?&])country=([^&]*)/i);
+    const raw = m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : null;
+    return Core.isSupportedCountry(raw) ? Core.normalizeCountry(raw) : null;
+  }catch(e){ return null; }
+}
+function applyLaunchCountry(){
+  const next = countryFromLaunchUrl();
+  if(!next || next === Core.normalizeCountry(state.settings && state.settings.country)) return false;
+  const current = Core.normalizeCountry(state.settings && state.settings.country);
+  const birth = state.settings && state.settings.birth;
+  state.moneyProfiles = Core.normalizeMoneyProfiles(state.moneyProfiles, current === "JP" ? state.settings : null);
+  state.moneyProfiles[current] = Core.normalizeSettings(Object.assign({}, state.settings, { country: current }));
+  state.settings = Core.settingsForCountry(state.moneyProfiles, next, birth);
+  state.moneyProfiles[next] = Core.normalizeSettings(state.settings);
+  return true;
+}
+const launchCountryChanged = applyLaunchCountry();
 /* 移行できたときは、その場で書き込んで印を確定させる。
    ここで書けなかったら印も付かないので、次に開いたときにやり直す
    （＝金額だけ移行されて印が無い、という状態にはならない）。 */
-if(migrationDone && !save()) migrationDone=null;
+if((migrationDone || launchCountryChanged) && !save()) {
+  if(migrationDone) migrationDone=null;
+}
 let view = "home";
 let sumTab = "month";   // まとめ画面のタブ： "month"（今月）／"analysis"（分析）
 
