@@ -596,7 +596,6 @@ let lastSaveError=null;
 const MIGRATION_BACKUP_KEY = "kakeibo:v1:backup-before-minor-units";
 let migrationBlocked = false;      // 控えが取れず、移行を見送った
 let migrationDone = null;          // 移行できたときの件数（画面で知らせる）
-let personalProfileCleanupDone = false; // 旧版で海外側へ複製されたJP個人記録を一度だけ整理
 
 /* 控えを取る。書けたら必ず読み戻して、1文字も違わないことまで確かめる。
    「書けたつもり」で移行を始めるのが、いちばん危ないため。 */
@@ -632,29 +631,44 @@ function normalizePersonalProfiles(v){
   if(v && typeof v==="object") Core.SUPPORTED_COUNTRIES.forEach(c=>{ if(v[c] && typeof v[c]==="object") out[c]=normalizePersonalData(v[c]); });
   return out;
 }
-const PERSONAL_PROFILES_VERSION = 2;
-function samePersonalPart(a,b){
-  try{ return JSON.stringify(a)===JSON.stringify(b); }catch(e){ return false; }
+
+/* 緊急復旧: 旧版の国別化でJP個人記録が見えなくなった端末を救う。
+   データは削除せず、JPが空の項目だけバックアップ/他国コピーから戻す。 */
+function personalPartEmpty(k,v){
+  return k==="pulse" ? !Array.isArray(v)||v.length===0 : !v||typeof v!=="object"||Object.keys(v).length===0;
 }
-/* 旧版では国切替の途中で、JPの予定・日記・健康・心拍が海外プロファイルへ
-   そのまま複製される場合があった。JPと完全一致する部分だけを海外側から外す。
-   海外側で独自に入力された部分は一致しないので残る。 */
-function cleanupLeakedPersonalProfiles(profiles, version){
+function recoverJapanesePersonal(raw, profiles){
   const out=normalizePersonalProfiles(profiles);
-  if(Number(version)>=PERSONAL_PROFILES_VERSION || !out.JP) return out;
-  const jp=normalizePersonalData(out.JP);
-  const parts=["health","diary","plans","pulse"];
-  Core.SUPPORTED_COUNTRIES.forEach(c=>{
-    if(c==="JP" || !out[c]) return;
-    const foreign=normalizePersonalData(out[c]);
-    parts.forEach(k=>{
-      if(samePersonalPart(foreign[k],jp[k]) && samePersonalPart(foreign[k],emptyPersonalData()[k])===false){
-        foreign[k]=emptyPersonalData()[k];
-      }
-    });
-    out[c]=foreign;
+  let jp=out.JP ? normalizePersonalData(out.JP) : emptyPersonalData();
+  const candidates=[];
+  const addRaw=(x)=>{
+    if(!x||typeof x!=="object") return;
+    if(x.personalProfiles&&x.personalProfiles.JP) candidates.push(normalizePersonalData(x.personalProfiles.JP));
+    if(x.health||x.diary||x.plans||x.pulse) candidates.push(normalizePersonalData(x));
+  };
+  addRaw(raw);
+  try{ const b=localStorage.getItem(MIGRATION_BACKUP_KEY); if(b) addRaw(JSON.parse(b)); }catch(e){}
+  Core.SUPPORTED_COUNTRIES.forEach(c=>{ if(c!=="JP"&&out[c]) candidates.push(normalizePersonalData(out[c])); });
+  ["health","diary","plans","pulse"].forEach(k=>{
+    if(!personalPartEmpty(k,jp[k])) return;
+    for(const c of candidates){ if(!personalPartEmpty(k,c[k])){ jp[k]=c[k]; break; } }
   });
+  out.JP=jp;
   return out;
+}
+
+/* 旧版でJP設定がそのまま海外へ複製されたケースだけを空プロファイルへ戻す。
+   birth/country/currency以外が完全一致する場合に限定し、海外固有データは触らない。 */
+function repairClonedMoneyProfiles(profiles, birth){
+  const p=Core.normalizeMoneyProfiles(profiles,null);
+  if(!p.JP) return p;
+  const strip=x=>{ const y=JSON.parse(JSON.stringify(Core.normalizeSettings(x||{}))); delete y.country; delete y.currency; delete y.birth; return y; };
+  const jp=JSON.stringify(strip(p.JP));
+  Core.SUPPORTED_COUNTRIES.forEach(c=>{
+    if(c==="JP"||!p[c]) return;
+    if(JSON.stringify(strip(p[c]))===jp){ p[c]=Core.settingsForCountry({},c,birth||p.JP.birth||""); }
+  });
+  return p;
 }
 function syncPersonalProfile(){
   if(!state || !state.settings) return;
@@ -698,7 +712,7 @@ const launchCountryChanged = applyLaunchCountry();
 /* 移行できたときは、その場で書き込んで印を確定させる。
    ここで書けなかったら印も付かないので、次に開いたときにやり直す
    （＝金額だけ移行されて印が無い、という状態にはならない）。 */
-if((migrationDone || launchCountryChanged || personalProfileCleanupDone) && !save()) {
+if((migrationDone || launchCountryChanged) && !save()) {
   if(migrationDone) migrationDone=null;
 }
 let view = "home";
@@ -735,7 +749,7 @@ function load(){
        旧US版（プロファイル無し）は、共有されていた金額をJPへ退避してUSは空から始める。 */
     let profiles=null, active=legacy;
     if(s.moneyProfiles && typeof s.moneyProfiles==="object"){
-      profiles=Core.normalizeMoneyProfiles(s.moneyProfiles, s.settings||{});
+      profiles=repairClonedMoneyProfiles(Core.normalizeMoneyProfiles(s.moneyProfiles, s.settings||{}), legacy.birth);
       active=Core.settingsForCountry(profiles, legacy.country, legacy.birth);
       profiles[active.country]=Core.normalizeSettings(active);
     }else if(legacy.country!=="JP"){
@@ -755,13 +769,9 @@ function load(){
     // personalProfiles導入前の個人記録は、日本で入力された既存データとしてJPへ移す。
     let personalProfiles=normalizePersonalProfiles(s.personalProfiles);
     if(!s.personalProfiles || typeof s.personalProfiles!=="object") personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});
-    if(Number(s.personalProfilesVersion)!==PERSONAL_PROFILES_VERSION){
-      const beforeCleanup=JSON.stringify(personalProfiles);
-      personalProfiles=cleanupLeakedPersonalProfiles(personalProfiles,s.personalProfilesVersion);
-      personalProfileCleanupDone = beforeCleanup!==JSON.stringify(personalProfiles) || Number(s.personalProfilesVersion)!==PERSONAL_PROFILES_VERSION;
-    }
+    personalProfiles=recoverJapanesePersonal(s, personalProfiles);
     const activePersonal=personalProfiles[active.country] ? normalizePersonalData(personalProfiles[active.country]) : emptyPersonalData();
-    const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:activePersonal.health, diary:activePersonal.diary, plans:activePersonal.plans, pulse:activePersonal.pulse, personalProfiles, personalProfilesVersion:PERSONAL_PROFILES_VERSION, calcHistory:Core.normalizeSciHistory(s.calcHistory), recordCalcHistory };
+    const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:activePersonal.health, diary:activePersonal.diary, plans:activePersonal.plans, pulse:activePersonal.pulse, personalProfiles, calcHistory:Core.normalizeSciHistory(s.calcHistory), recordCalcHistory };
     if(profiles) out.moneyProfiles=profiles;
     /* 移行を見送ったときは印を付けない。次に開いたとき、もう一度やり直す。 */
     if(!migrationBlocked) out.dataVersion=Core.DATA_VERSION;
