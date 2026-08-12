@@ -328,7 +328,7 @@ const MUTATIONS = [
   { name: "写真を外した再保存の成功で解放しない", guards: "再保存成功時にも解放",
     file: "index.html", from: "      releaseOcrImage(st);          // 写真は諦めたが記録は確定した", to: "" },
   { name: "キャッシュの版数を上げ忘れる", guards: "更新が端末に届く",
-    file: "sw.js", from: "const CACHE = \"kakeibo-v64\";",
+    file: "sw.js", from: "const CACHE = \"kakeibo-v65\";",
     to: "const CACHE = \"kakeibo-v20\";" },
   { name: "設定の保存失敗を巻き戻さない", guards: "設定保存の巻き戻し",
     file: "index.html", from: "  if(!save()) state.settings = before;        // 失敗したら元のまま",
