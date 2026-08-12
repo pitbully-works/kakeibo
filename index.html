@@ -585,6 +585,8 @@ const defaultState = ()=>{
     diary:{},  // { 'YYYY-MM-DD': '本文' } 1日1件・編集可
     plans:{},  // { 'YYYY-MM-DD': [{id,time,text,done}] } 予定。1日に何件でも
     pulse:[],  // 心拍数（カメラ測定）の履歴。1日に何件でも。数値だけで映像は持たない
+    // 予定・日記・健康・心拍数は国ごとに完全分離する。
+    personalProfiles:{},
     calcHistory:[],  // 関数電卓の履歴 [{expr,value}]。式そのものは持ち歩かない
     recordCalcHistory:[], // 記録画面の電卓履歴 [{id,txId,expr,result,cat,type,country,date}]
     dataVersion: Core.DATA_VERSION  // 新しく入れた端末は最初から最小単位。移行を通らない
@@ -619,6 +621,29 @@ function backupBeforeMigration(raw){
   }catch(e){ return false; }
 }
 
+function emptyPersonalData(){ return { health:{}, diary:{}, plans:{}, pulse:[] }; }
+function normalizePersonalData(v){
+  const src=(v && typeof v==="object")?v:{};
+  return { health:Core.normalizeHealth(src.health), diary:Core.normalizeDiary(src.diary), plans:Core.normalizePlans(src.plans), pulse:Core.normalizePulseList(src.pulse) };
+}
+function normalizePersonalProfiles(v){
+  const out={};
+  if(v && typeof v==="object") Core.SUPPORTED_COUNTRIES.forEach(c=>{ if(v[c] && typeof v[c]==="object") out[c]=normalizePersonalData(v[c]); });
+  return out;
+}
+function syncPersonalProfile(){
+  if(!state || !state.settings) return;
+  const c=Core.normalizeCountry(state.settings.country);
+  state.personalProfiles=normalizePersonalProfiles(state.personalProfiles);
+  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});
+}
+function loadPersonalProfile(country){
+  const c=Core.normalizeCountry(country);
+  state.personalProfiles=normalizePersonalProfiles(state.personalProfiles);
+  const d=state.personalProfiles[c] ? normalizePersonalData(state.personalProfiles[c]) : emptyPersonalData();
+  state.health=d.health; state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;
+}
+
 let state = load();
 
 /* ライフプランから ?country=US のように来た場合は、同じ国の家計簿を開く。
@@ -638,8 +663,10 @@ function applyLaunchCountry(){
   const birth = state.settings && state.settings.birth;
   state.moneyProfiles = Core.normalizeMoneyProfiles(state.moneyProfiles, current === "JP" ? state.settings : null);
   state.moneyProfiles[current] = Core.normalizeSettings(Object.assign({}, state.settings, { country: current }));
+  syncPersonalProfile();
   state.settings = Core.settingsForCountry(state.moneyProfiles, next, birth);
   state.moneyProfiles[next] = Core.normalizeSettings(state.settings);
+  loadPersonalProfile(next);
   return true;
 }
 const launchCountryChanged = applyLaunchCountry();
@@ -700,7 +727,11 @@ function load(){
       type:h.type==="income"?"income":"expense", country:Core.normalizeCountry(h.country),
       date:Core.validateDateString(h.date)?h.date:todayISO()
     })).filter(h=>h.expr&&h.result) : [];
-    const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:Core.normalizeHealth(s.health), diary:Core.normalizeDiary(s.diary), plans:Core.normalizePlans(s.plans), pulse:Core.normalizePulseList(s.pulse), calcHistory:Core.normalizeSciHistory(s.calcHistory), recordCalcHistory };
+    // personalProfiles導入前の個人記録は、日本で入力された既存データとしてJPへ移す。
+    let personalProfiles=normalizePersonalProfiles(s.personalProfiles);
+    if(!s.personalProfiles || typeof s.personalProfiles!=="object") personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});
+    const activePersonal=personalProfiles[active.country] ? normalizePersonalData(personalProfiles[active.country]) : emptyPersonalData();
+    const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:activePersonal.health, diary:activePersonal.diary, plans:activePersonal.plans, pulse:activePersonal.pulse, personalProfiles, calcHistory:Core.normalizeSciHistory(s.calcHistory), recordCalcHistory };
     if(profiles) out.moneyProfiles=profiles;
     /* 移行を見送ったときは印を付けない。次に開いたとき、もう一度やり直す。 */
     if(!migrationBlocked) out.dataVersion=Core.DATA_VERSION;
@@ -720,7 +751,7 @@ function save(){
   /* 移行を見送っている間は書き込まない。古い単位のまま上書きすると、
      次に開いたときに移行済みかどうかを判断できなくなる。 */
   if(migrationBlocked){ lastSaveError = new Error("QuotaExceededError"); lastSaveError.name="QuotaExceededError"; return false; }
-  try{ syncMoneyProfile(); localStorage.setItem(STORE_KEY, JSON.stringify(state)); lastSaveError=null; return true; }
+  try{ syncMoneyProfile(); syncPersonalProfile(); localStorage.setItem(STORE_KEY, JSON.stringify(state)); lastSaveError=null; return true; }
   catch(e){ lastSaveError=e; return false; }
 }
 function isQuotaError(e){
@@ -2686,8 +2717,10 @@ function switchMoneyCountry(next){
      国の select を変えた瞬間に他の欄を読み直して0で潰さない。 */
   state.moneyProfiles=Core.normalizeMoneyProfiles(state.moneyProfiles, old==="JP"?state.settings:null);
   state.moneyProfiles[old]=Core.normalizeSettings(Object.assign({},state.settings,{country:old}));
+  syncPersonalProfile();
   const sharedBirth=state.settings.birth;
   state.settings=Core.settingsForCountry(state.moneyProfiles,next,sharedBirth);
+  loadPersonalProfile(next);
   if(!save()){ state=before; return false; }
   return true;
 }
@@ -2771,10 +2804,16 @@ function onBackupPicked(file){
     state.moneyProfiles = restored.moneyProfiles || Core.normalizeMoneyProfiles(null, restored.settings);
     state.settings = Core.settingsForCountry(state.moneyProfiles, restored.settings.country, restoredBirth);
     state.tx = restored.tx;
+    // 旧テスト／旧復元仕様との互換。直後に国別領域から正しい国の値へ読み直す。
     state.health = restored.health || {};
     state.diary = restored.diary || {};
     state.plans = restored.plans || {};   // 予定も復元する（入れ忘れると古い予定が残る）
-    state.pulse = restored.pulse || [];   // 心拍数の履歴も復元する
+    state.pulse = restored.pulse || [];
+    state.personalProfiles = normalizePersonalProfiles(restored.personalProfiles);
+    if(!restored.personalProfiles || typeof restored.personalProfiles!=="object") {
+      state.personalProfiles.JP = normalizePersonalData({health:restored.health,diary:restored.diary,plans:restored.plans,pulse:restored.pulse});
+    }
+    loadPersonalProfile(state.settings.country);
     if(!save()){
       state = before;                               // 保存できないなら元のまま
       toast(L("バックアップを復元できませんでした","Could not restore the backup"));
