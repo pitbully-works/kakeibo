@@ -631,45 +631,6 @@ function normalizePersonalProfiles(v){
   if(v && typeof v==="object") Core.SUPPORTED_COUNTRIES.forEach(c=>{ if(v[c] && typeof v[c]==="object") out[c]=normalizePersonalData(v[c]); });
   return out;
 }
-
-/* 緊急復旧: 旧版の国別化でJP個人記録が見えなくなった端末を救う。
-   データは削除せず、JPが空の項目だけバックアップ/他国コピーから戻す。 */
-function personalPartEmpty(k,v){
-  return k==="pulse" ? !Array.isArray(v)||v.length===0 : !v||typeof v!=="object"||Object.keys(v).length===0;
-}
-function recoverJapanesePersonal(raw, profiles){
-  const out=normalizePersonalProfiles(profiles);
-  let jp=out.JP ? normalizePersonalData(out.JP) : emptyPersonalData();
-  const candidates=[];
-  const addRaw=(x)=>{
-    if(!x||typeof x!=="object") return;
-    if(x.personalProfiles&&x.personalProfiles.JP) candidates.push(normalizePersonalData(x.personalProfiles.JP));
-    if(x.health||x.diary||x.plans||x.pulse) candidates.push(normalizePersonalData(x));
-  };
-  addRaw(raw);
-  try{ const b=localStorage.getItem(MIGRATION_BACKUP_KEY); if(b) addRaw(JSON.parse(b)); }catch(e){}
-  Core.SUPPORTED_COUNTRIES.forEach(c=>{ if(c!=="JP"&&out[c]) candidates.push(normalizePersonalData(out[c])); });
-  ["health","diary","plans","pulse"].forEach(k=>{
-    if(!personalPartEmpty(k,jp[k])) return;
-    for(const c of candidates){ if(!personalPartEmpty(k,c[k])){ jp[k]=c[k]; break; } }
-  });
-  out.JP=jp;
-  return out;
-}
-
-/* 旧版でJP設定がそのまま海外へ複製されたケースだけを空プロファイルへ戻す。
-   birth/country/currency以外が完全一致する場合に限定し、海外固有データは触らない。 */
-function repairClonedMoneyProfiles(profiles, birth){
-  const p=Core.normalizeMoneyProfiles(profiles,null);
-  if(!p.JP) return p;
-  const strip=x=>{ const y=JSON.parse(JSON.stringify(Core.normalizeSettings(x||{}))); delete y.country; delete y.currency; delete y.birth; return y; };
-  const jp=JSON.stringify(strip(p.JP));
-  Core.SUPPORTED_COUNTRIES.forEach(c=>{
-    if(c==="JP"||!p[c]) return;
-    if(JSON.stringify(strip(p[c]))===jp){ p[c]=Core.settingsForCountry({},c,birth||p.JP.birth||""); }
-  });
-  return p;
-}
 function syncPersonalProfile(){
   if(!state || !state.settings) return;
   const c=Core.normalizeCountry(state.settings.country);
@@ -695,8 +656,17 @@ function countryFromLaunchUrl(){
     return Core.isSupportedCountry(raw) ? Core.normalizeCountry(raw) : null;
   }catch(e){ return null; }
 }
+function openedAsStandaloneApp(){
+  try{
+    return window.navigator && window.navigator.standalone === true;
+  }catch(e){ return false; }
+}
 function applyLaunchCountry(){
-  const next = countryFromLaunchUrl();
+  /* ライフプランから country が渡されたときはその国を開く。
+     iPhoneのホーム画面から家計簿を直接起動した場合だけJPへ戻す。
+     通常ブラウザの再読み込みでは、従来どおり選択中の国を維持する。 */
+  const fromUrl = countryFromLaunchUrl();
+  const next = fromUrl || (openedAsStandaloneApp() ? "JP" : null);
   if(!next || next === Core.normalizeCountry(state.settings && state.settings.country)) return false;
   const current = Core.normalizeCountry(state.settings && state.settings.country);
   const birth = state.settings && state.settings.birth;
@@ -749,7 +719,7 @@ function load(){
        旧US版（プロファイル無し）は、共有されていた金額をJPへ退避してUSは空から始める。 */
     let profiles=null, active=legacy;
     if(s.moneyProfiles && typeof s.moneyProfiles==="object"){
-      profiles=repairClonedMoneyProfiles(Core.normalizeMoneyProfiles(s.moneyProfiles, s.settings||{}), legacy.birth);
+      profiles=Core.normalizeMoneyProfiles(s.moneyProfiles, s.settings||{});
       active=Core.settingsForCountry(profiles, legacy.country, legacy.birth);
       profiles[active.country]=Core.normalizeSettings(active);
     }else if(legacy.country!=="JP"){
@@ -769,7 +739,6 @@ function load(){
     // personalProfiles導入前の個人記録は、日本で入力された既存データとしてJPへ移す。
     let personalProfiles=normalizePersonalProfiles(s.personalProfiles);
     if(!s.personalProfiles || typeof s.personalProfiles!=="object") personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});
-    personalProfiles=recoverJapanesePersonal(s, personalProfiles);
     const activePersonal=personalProfiles[active.country] ? normalizePersonalData(personalProfiles[active.country]) : emptyPersonalData();
     const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:activePersonal.health, diary:activePersonal.diary, plans:activePersonal.plans, pulse:activePersonal.pulse, personalProfiles, calcHistory:Core.normalizeSciHistory(s.calcHistory), recordCalcHistory };
     if(profiles) out.moneyProfiles=profiles;
@@ -2802,7 +2771,12 @@ function purgePhotos(){
   render(); toast(L(`写真${n}枚を消しました（記録は残っています）`, `Deleted ${n} photos — the records are still there`));
 }
 function exportBackup(){
-  saveFile(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(Core.buildBackup(state), null, 2),
+  /* 国別の個人記録もバックアップへ含める。
+     旧形式との互換のため、active country の health/diary/plans/pulse も
+     Core.buildBackup がこれまで通り書き出す。 */
+  const backup=Core.buildBackup(state);
+  backup.personalProfiles=normalizePersonalProfiles(state.personalProfiles);
+  saveFile(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(backup, null, 2),
     "application/json", L("バックアップを書き出しました","Backup exported"));
 }
 
@@ -2816,10 +2790,10 @@ function onBackupPicked(file){
   const reader=new FileReader();
   reader.onerror=()=>{ toast(L("ファイルを読み込めませんでした","Could not read that file")); clear(); };
   reader.onload=()=>{
-    let restored;
+    let restored, rawBackup;
     try{
-      const raw = Core.parseBackupJson(reader.result);
-      restored = Core.normalizeBackup(raw);         // ここで壊れた値を安全な形に整える
+      rawBackup = Core.parseBackupJson(reader.result);
+      restored = Core.normalizeBackup(rawBackup);   // ここで壊れた値を安全な形に整える
     }catch(e){
       toast(L(`読み込めません：${(e&&e.message)||"形式が違います"}`, `Could not load it: ${(e&&e.message)||"the format is wrong"}`));
       clear(); return;                              // 現在のデータは一切変更しない
@@ -2849,8 +2823,11 @@ function onBackupPicked(file){
     state.diary = restored.diary || {};
     state.plans = restored.plans || {};   // 予定も復元する（入れ忘れると古い予定が残る）
     state.pulse = restored.pulse || [];
-    state.personalProfiles = normalizePersonalProfiles(restored.personalProfiles);
-    if(!restored.personalProfiles || typeof restored.personalProfiles!=="object") {
+    /* 新しいバックアップなら全5か国の個人記録をそのまま復元する。
+       旧バックアップは health/diary/plans/pulse を日本の記録として復元する。
+       ここで他国データを推測・コピー・削除しない。 */
+    state.personalProfiles = normalizePersonalProfiles(rawBackup && rawBackup.personalProfiles);
+    if(!rawBackup || !rawBackup.personalProfiles || typeof rawBackup.personalProfiles!=="object") {
       state.personalProfiles.JP = normalizePersonalData({health:restored.health,diary:restored.diary,plans:restored.plans,pulse:restored.pulse});
     }
     loadPersonalProfile(state.settings.country);
