@@ -656,17 +656,40 @@ function countryFromLaunchUrl(){
     return Core.isSupportedCountry(raw) ? Core.normalizeCountry(raw) : null;
   }catch(e){ return null; }
 }
-function openedAsStandaloneApp(){
+function detectInitialCountry(){
+  /* 初回アクセス時だけ、端末のタイムゾーンとブラウザ言語から5か国の初期表示を推定する。
+     GPSや外部APIは使わないため、位置情報の許可ダイアログは出さない。 */
   try{
-    return window.navigator && window.navigator.standalone === true;
-  }catch(e){ return false; }
+    const nav = window.navigator || {};
+    const languages = Array.isArray(nav.languages) && nav.languages.length
+      ? nav.languages : [nav.language].filter(Boolean);
+    const tz = (typeof Intl!=="undefined" && Intl.DateTimeFormat)
+      ? String(Intl.DateTimeFormat().resolvedOptions().timeZone || "") : "";
+    if(tz==="Asia/Tokyo") return "JP";
+    if(tz==="Europe/London") return "GB";
+    if(tz.startsWith("Australia/")) return "AU";
+    const ca=new Set(["America/Toronto","America/Vancouver","America/Edmonton","America/Winnipeg","America/Halifax","America/St_Johns","America/Regina","America/Moncton","America/Whitehorse","America/Yellowknife","America/Iqaluit"]);
+    if(ca.has(tz)) return "CA";
+    const us=new Set(["America/New_York","America/Detroit","America/Chicago","America/Denver","America/Phoenix","America/Los_Angeles","America/Anchorage","Pacific/Honolulu"]);
+    if(us.has(tz)||tz.startsWith("America/Indiana/")||tz.startsWith("America/Kentucky/")||tz.startsWith("America/North_Dakota/")) return "US";
+    for(const value of languages){
+      const parts=String(value||"").replace("_","-").split("-");
+      const region=parts.find((part,index)=>index>0 && /^[A-Za-z]{2}$/.test(part));
+      if(region){ const code=region.toUpperCase(); if(Core.isSupportedCountry(code)) return Core.normalizeCountry(code); }
+    }
+  }catch(e){ /* 判定不能ならJP */ }
+  return "JP";
+}
+function hasSavedKakeiboState(){
+  try{ return !!localStorage.getItem(STORE_KEY); }catch(e){ return true; }
 }
 function applyLaunchCountry(){
-  /* ライフプランから country が渡されたときはその国を開く。
-     iPhoneのホーム画面から家計簿を直接起動した場合だけJPへ戻す。
-     通常ブラウザの再読み込みでは、従来どおり選択中の国を維持する。 */
+  /* 優先順位:
+     1) ライフプランから ?country=XX が渡されたら、その国を開いて選択国として保存する。
+     2) 保存データが無い本当の初回だけ、端末の地域情報から初期国を推定する。
+     3) 2回目以降の直接起動は、最後に選んだ国をそのまま復元する。 */
   const fromUrl = countryFromLaunchUrl();
-  const next = fromUrl || (openedAsStandaloneApp() ? "JP" : null);
+  const next = fromUrl || (!hasSavedKakeiboState() ? detectInitialCountry() : null);
   if(!next || next === Core.normalizeCountry(state.settings && state.settings.country)) return false;
   const current = Core.normalizeCountry(state.settings && state.settings.country);
   const birth = state.settings && state.settings.birth;
