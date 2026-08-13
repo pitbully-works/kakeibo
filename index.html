@@ -1130,10 +1130,14 @@ function isStandalonePWA(){
   }catch(e){ return false; }
 }
 function extTarget(){ return isStandalonePWA() ? "_blank" : "_self"; }
+function lifePlanUrl(){
+  const code = Core.normalizeCountry(state.settings && state.settings.country);
+  return `${LIFEPLAN_URL}?country=${encodeURIComponent(code)}`;
+}
 
 /* ホームのいちばん下に置く、ライフプランへの入口カード */
 function lifePlanCard(){
-  return `<a class="lpcard" href="${LIFEPLAN_URL}" target="${extTarget()}" rel="noopener noreferrer">
+  return `<a class="lpcard" href="${lifePlanUrl()}" target="${extTarget()}" rel="noopener noreferrer">
     <span class="lpi">📊</span>
     <span class="lpt"><b>${T("ext.title")}</b><i>${T("ext.sub")}</i></span>
     <span class="lpar">›</span>
@@ -1148,7 +1152,7 @@ function aboutCard(){
     <hr class="aline">
     <div class="ac mono">© 2026 Kunihiko Hioki<br>Developed by Kunihiko Hioki</div>
     <div><a class="alink" href="mailto:${CONTACT_MAIL}">📧 ${CONTACT_MAIL}</a></div>
-    <div><a class="alink" href="${LIFEPLAN_URL}" target="${extTarget()}" rel="noopener noreferrer">🌐 ${SITE_LABEL}</a></div>
+    <div><a class="alink" href="${lifePlanUrl()}" target="${extTarget()}" rel="noopener noreferrer">🌐 ${SITE_LABEL}</a></div>
   </div>`;
 }
 

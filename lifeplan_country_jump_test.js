@@ -14,3 +14,11 @@ test("起動国を切り替えるとき既存の国別金額を混ぜない", ()
   assert.match(src, /state\.settings = Core\.settingsForCountry\(state\.moneyProfiles, next, birth\)/);
   assert.match(src, /state\.moneyProfiles\[next\] = Core\.normalizeSettings\(state\.settings\)/);
 });
+
+
+test("家計簿からライフプランへ現在の国コードをURLで渡す", () => {
+  assert.match(src, /function lifePlanUrl\(\)/);
+  assert.match(src, /Core\.normalizeCountry\(state\.settings && state\.settings\.country\)/);
+  assert.match(src, /\?country=\$\{encodeURIComponent\(code\)\}/);
+  assert.match(src, /href="\$\{lifePlanUrl\(\)\}"/);
+});
