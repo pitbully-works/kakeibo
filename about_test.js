@@ -35,7 +35,7 @@ function screen(view, opts) {
 
 test("ホームに、資産形成 総合ライフプランへの入口がある", () => {
   const h = screen("home");
-  assert.match(h, /href="https:\/\/pitbully-works\.jp\/"/, "ライフプランへのリンクが無い");
+  assert.match(h, /href="https:\/\/pitbully-works\.jp\/\?country=JP"/, "ライフプランへのリンクに現在国が付いていない");
   assert.match(h, /資産形成 総合ライフプラン/, "どこへ行くのか書かれていない");
   assert.match(h, /class="lpcard"/, "入口カードが描かれていない");
 });
@@ -98,7 +98,7 @@ test("メールアドレスはタップでメールアプリが開く（mailto�
 test("サイトのアドレスも載っていて、ジャンプ先と同じドメインになっている", () => {
   const h = screen("settings");
   assert.match(h, /🌐 pitbully-works\.jp/, "サイトのアドレスが出ていない");
-  assert.match(h, /href="https:\/\/pitbully-works\.jp\/"[^>]*>🌐/, "表示と行き先が食い違っている");
+  assert.match(h, /href="https:\/\/pitbully-works\.jp\/\?country=JP"[^>]*>🌐/, "表示と行き先が食い違っている");
   assert.equal(h.includes("vercel.app"), false, "古いアドレスが残っている");
 });
 
