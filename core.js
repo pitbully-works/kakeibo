@@ -391,7 +391,20 @@
     ideco: "Retirement contribution", loans: "Loan repayment", insurance: "Insurance premium",
     nisa: "Tax-free investing", lump: "Lump-sum investment",
   });
+  const LP_NATIVE_LABELS = Object.freeze({
+    JP: { nisa: "NISA", ideco: "iDeCo", banks: "銀行貯金" },
+    US: { nisa: "Roth IRA", ideco: "401(k) / Traditional IRA", banks: "Cash savings" },
+    GB: { nisa: "Stocks & Shares ISA", ideco: "SIPP / Workplace Pension", banks: "Cash savings" },
+    CA: { nisa: "TFSA", ideco: "RRSP", banks: "Cash savings" },
+    AU: { nisa: "Investment account", ideco: "Superannuation", banks: "Cash savings" },
+  });
+  function lpNativeLabel(key, settingsOrCountry) {
+    const code = normalizeSettings(settingsOrCountry).country;
+    const row = LP_NATIVE_LABELS[code] || LP_NATIVE_LABELS.JP;
+    return row[key] || key;
+  }
   function lpRowName(key, fallback, settingsOrCountry) {
+    if (key === "nisa" || key === "ideco" || key === "banks") return lpNativeLabel(key, settingsOrCountry);
     if (countryLang(settingsOrCountry) !== "en") return fallback || key;
     return LP_ROW_EN[key] || fallback || key;
   }
@@ -1535,6 +1548,30 @@
     const filled = function (o) {
       return Object.keys(o).some(function (k) { return Number(o[k]) > 0 || (typeof o[k] === "string" && o[k]); });
     };
+    const country = normalizeSettings(s).country;
+    /* 既存の連携項目も残す。古いライフプランとの互換・銀行/保険/一括投資の受け渡し用。
+       海外の税制優遇口座は、この汎用入力に加えて国別 account structure を優先して渡す。 */
+    const legacyInputs = only({
+        gold: filled(a.gold) ? a.gold : {}, ideco: filled(a.ideco) ? a.ideco : {}, banks: a.banks, loans: a.loans,
+        privatePensionPlans: a.privatePensionPlans,
+        tsumitateSchedule: a.tsumitateSchedule.map(strip),
+        growthSchedule: a.growthSchedule.map(strip),
+        tsumitateAllocation: lpAllocationAt(a.tsumitateSchedule, age), growthAllocation: lpAllocationAt(a.growthSchedule, age),
+        lumpSums: a.lumpSums,
+        insurancePolicies: a.insurancePolicies,
+      });
+    let bridgeInputs = legacyInputs;
+    if (country !== "JP") {
+      const monthlyInvest = nisaPlannedOn(major, on);
+      const monthlyRetire = lpActiveSum([a.ideco], "startAge", "endAge", "monthlyContribution", age);
+      const monthlyBank = lpActiveSum(a.banks, "startAge", "endAge", "monthlyYen", age);
+      const annual = (v) => Math.max(0, Number(v) || 0) * 12;
+      if (country === "US") bridgeInputs = Object.assign({}, legacyInputs, { usInvestment: { rothIra: { annualContribution: annual(monthlyInvest) }, k401: { annualContribution: annual(monthlyRetire) } } });
+      else if (country === "GB") bridgeInputs = Object.assign({}, legacyInputs, { gbInvestment: { stocksSharesIsa: { annualContribution: annual(monthlyInvest) }, sipp: { annualContribution: annual(monthlyRetire) }, cashSavings: { annualContribution: annual(monthlyBank) } } });
+      else if (country === "CA") bridgeInputs = Object.assign({}, legacyInputs, { caInvestment: { tfsa: { annualContribution: annual(monthlyInvest) }, rrsp: { annualContribution: annual(monthlyRetire) }, cashSavings: { annualContribution: annual(monthlyBank) } } });
+      else if (country === "AU") bridgeInputs = Object.assign({}, legacyInputs, { auInvestment: { investmentAccount: { annualContribution: annual(monthlyInvest) }, superannuation: { annualContribution: annual(monthlyRetire) }, cashSavings: { annualContribution: annual(monthlyBank) } } });
+    }
+
     return {
       /* 家計簿から来たデータだと分かるようにする。
          通常のバックアップ復元と同じ扱いにさせないための目印。 */
@@ -1552,21 +1589,7 @@
       /* 生年月日。ライフプラン側は書き換えず、食い違っていたら知らせるだけに使う。
          これを渡していなかったため、その知らせが実際には出ていなかった。 */
       birth: normalizeBirth(s.birth),
-      inputs: only({
-        gold: filled(a.gold) ? a.gold : {},
-        ideco: filled(a.ideco) ? a.ideco : {},
-        banks: a.banks,
-        loans: a.loans,
-        privatePensionPlans: a.privatePensionPlans,
-        /* ライフプランは「区間＋月額」と「いまの銘柄の内訳」を別々に持つので、
-           こちらの区間（銘柄つき）から作って渡す。 */
-        tsumitateSchedule: a.tsumitateSchedule.map(strip),
-        growthSchedule: a.growthSchedule.map(strip),
-        tsumitateAllocation: lpAllocationAt(a.tsumitateSchedule, age),
-        growthAllocation: lpAllocationAt(a.growthSchedule, age),
-        lumpSums: a.lumpSums,
-        insurancePolicies: a.insurancePolicies,
-      }),
+      inputs: bridgeInputs,
     };
   }
 
@@ -4433,13 +4456,13 @@
     }, 0);
     if (bankPlanned > 0) {
       accounts.push({
-        type: "CASH_SAVINGS", local: "貯金",
+        type: "CASH_SAVINGS", local: lpNativeLabel("banks", c.settings),
         basis: "planned", planned_contribution: M(bankPlanned),
       });
     }
     if (c.nisaPlanned > 0) {
       accounts.push({
-        type: "TAX_FREE_INVEST", local: "NISA",
+        type: "TAX_FREE_INVEST", local: lpNativeLabel("nisa", c.settings),
         basis: "planned", planned_contribution: M(c.nisaPlanned),
       });
     }
@@ -4546,6 +4569,7 @@
     catName: catName,
     catDisplay: catDisplay,
     lpRowName: lpRowName,
+    lpNativeLabel: lpNativeLabel,
     UI_TEXT: UI_TEXT,
     t: t,
     txCountry: txCountry,

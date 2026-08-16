@@ -1220,7 +1220,7 @@ function renderHome(){
     ? `<button class="ds goal" data-go="settings" data-focus="f-gcur"><div class="di">🎯</div><div class="dk">${escapeHtml(s.goalName||T("home.goal"))}</div><div class="dv mono">${T("home.goalLeft",{n:100-c.goalPct})}</div><div class="track"><i style="width:${c.goalPct}%"></i></div><div class="tapin">${T("home.goalTap")}</div></button>`
     : `<button class="ds goal" data-go="settings" data-focus="f-gname"><div class="di">🎯</div><div class="dk">${T("home.goal")}</div><div class="dv" style="font-size:11px;color:#9aa6a3">${T("home.goalUnset")}</div><div class="tapin">${T("home.goalTap")}</div></button>`;
   /* NISAは内訳（年齢の区間と銘柄）が唯一の入力口。設定の古い欄ではなくそこへ飛ばす。 */
-  const nisaTile = `<button class="ds" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">${T("lp.nisa")}</div><div class="dv mono">${yen(c.nisaPlanned)}${T("home.perMonth")}</div><div class="tapin">${T("home.tapin")}</div></button>`;
+  const nisaTile = `<button class="ds" data-act="lp-open" data-kind="nisa"><div class="di">📈</div><div class="dk">${Core.lpNativeLabel("nisa", state.settings)}</div><div class="dv mono">${yen(c.nisaPlanned)}${T("home.perMonth")}</div><div class="tapin">${T("home.tapin")}</div></button>`;
   /* ライフプランへ渡す項目も、ホームからそのまま入れに行けるようにする。
      出す数字は「毎月いくら」。残高を出していたため、毎月の積立額を入れても
      ここが動かず「反映されない」ように見えていた。残高は内訳の画面で見る。 */
@@ -1341,7 +1341,7 @@ function lpMonthlyCard(c){
   if(setAside.length || c.nisaPlanned){
     html += `<div class="stitle">${T("sum.setAsideTitle")}</div>
       <div class="barlist">${note}
-        ${c.nisaPlanned?line("NISA積立", c.nisaPlanned, "nisa"):""}
+        ${c.nisaPlanned?line(Core.lpNativeLabel("nisa", state.settings), c.nisaPlanned, "nisa"):""}
         ${setAside.map(r=>line(r.name, r.amount, r.key)).join("")}
         <div class="krow" style="border-top:1px solid var(--line2);margin-top:6px;padding-top:8px">
           <span><b>${T("sum.total")}</b></span><b class="mono">${yen(c.setAside)}</b></div>
@@ -3425,8 +3425,8 @@ function pulseTick(){
     if(bar.style) bar.style.width=Math.max(0,Math.min(100,(el/C.TOTAL_SEC)*100)).toFixed(1)+"%";
     if(bar.className!==undefined) bar.className=prep?"prep":"";
   }
-  pulseSetText("pulse-phase", prep?"信号を確認中":"測定中");
-  pulseSetText("pulse-hold","指を動かさないでください");
+  pulseSetText("pulse-phase", prep?L("信号を確認中","Checking signal"):L("測定中","Measuring"));
+  pulseSetText("pulse-hold",L("指を動かさないでください","Keep your finger still"));
 
   /* 直近3秒の様子 */
   const recent=pSamples.filter(s=>s.t>(el-3)*1000);
@@ -3443,11 +3443,11 @@ function pulseTick(){
   if(!prep && recent.length>10){
     if(okRate<0.4){
       pulseFail(bright<C.minBright
-        ? "暗すぎます。ライトが指で隠れているかご確認のうえ、もう一度測ってください。"
-        : "指が外れているようです。レンズを指の腹でふさいで、もう一度測ってください。");
+        ? L("暗すぎます。ライトが指で隠れているかご確認のうえ、もう一度測ってください。","Too dark. Make sure your finger covers the light, then try again.")
+        : L("指が外れているようです。レンズを指の腹でふさいで、もう一度測ってください。","Your finger appears to have moved off the lens. Cover the lens with your fingertip and try again."));
       return;
     }
-    if(fps<C.minFps){ pulseFail("コマ数が足りません（"+fps.toFixed(0)+"fps）。ほかのアプリを閉じて、もう一度測ってください。"); return; }
+    if(fps<C.minFps){ pulseFail(L("コマ数が足りません（"+fps.toFixed(0)+"fps）。ほかのアプリを閉じて、もう一度測ってください。","Frame rate is insufficient: "+fps.toFixed(0)+" fps. Close other apps and try again.")); return; }
   }
   if(el>=C.TOTAL_SEC) pulseFinish();
 }
@@ -3792,11 +3792,11 @@ function lpSummaryHtml(){
   const cnt = (n) => L(`${n}件`, `${n} ${n===1?"item":"items"}`);
   return `<div class="stitle">${L("ライフプランへ渡すデータ","Data sent to the life plan")}</div>
   <div class="barlist">
-    ${row("nisa","📈",T("lp.nisa"), yen(Core.nisaPlannedOn(state.settings, on))+T("home.perMonth"), nisaNote(state.settings, on))}
+    ${row("nisa","📈",Core.lpNativeLabel("nisa", state.settings), yen(Core.nisaPlannedOn(state.settings, on))+T("home.perMonth"), nisaNote(state.settings, on))}
     ${row("gold","🪙",T("lp.gold"), mon("gold"), L(`いま ${a.gold.currentGrams||0}g・評価 ${yen(Core.lpGoldValue(a.gold))}`, `${a.gold.currentGrams||0}g held · worth ${yen(Core.lpGoldValue(a.gold))}`))}
     ${row("banks","🏦",T("lp.banks"), mon("banks"), L(`${a.banks.length}件・残高 ${yen(Core.lpBanksTotal(a.banks))}`, `${cnt(a.banks.length)} · balance ${yen(Core.lpBanksTotal(a.banks))}`))}
     ${row("loans","💳",T("lp.loans"), mon("loans"), L(`${a.loans.length}件・残り ${yen(Core.lpLoansTotal(a.loans))}`, `${cnt(a.loans.length)} · ${yen(Core.lpLoansTotal(a.loans))} remaining`))}
-    ${row("ideco","🏛",T("lp.ideco"), mon("ideco"), a.ideco.productName||L("毎月の掛金は先取り","Monthly contribution is set aside"))}
+    ${row("ideco","🏛",Core.lpNativeLabel("ideco", state.settings), mon("ideco"), a.ideco.productName||L("毎月の掛金は先取り","Monthly contribution is set aside"))}
     ${row("insurance","🛟",T("lp.insurance"), mon("insurance"), cnt(a.insurancePolicies.length))}
     ${row("pension","📜",T("lp.pension"), mon("pension"), cnt(a.privatePensionPlans.length))}
     <button class="btn-ghost" data-act="lp-export" style="margin-top:10px">${L("📤 ライフプランへ渡す","📤 Send to the life plan")}</button>

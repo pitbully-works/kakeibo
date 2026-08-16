@@ -87,7 +87,7 @@ const MUTATIONS = [
   { name: "渡す形の入れものを変える", guards: "ライフプランが受け取れる { inputs: ... } の形",
     file: "core.js", from: '      source: "kakeibo",', to: '      source: "other",' },
   { name: "ライフプランの入力まで上書きする", guards: "渡すのは4つだけ",
-    file: "core.js", from: "        insurancePolicies: a.insurancePolicies,\n      }),", to: "        insurancePolicies: a.insurancePolicies,\n        banksExtra: [{ x: 1 }],\n      })," },
+    file: "core.js", from: "        insurancePolicies: a.insurancePolicies,\n      });", to: "        insurancePolicies: a.insurancePolicies,\n        banksExtra: [{ x: 1 }],\n      });" },
   { name: "件数の上限を外す", guards: "1種類あたりの行数に上限がある",
     file: "core.js", from: "  const LP_MAX_ROWS = 20;", to: "  const LP_MAX_ROWS = 100000;" },
   { name: "マイナスの金額を受け入れる", guards: "読み取れない値・マイナスは0にする",
