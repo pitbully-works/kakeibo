@@ -45,11 +45,11 @@ test('GB records are separate from JP and US',()=>{
 
 test('GB profile is independent and starts empty',()=>{
   const profiles=Core.normalizeMoneyProfiles({JP:{country:'JP',nisaMonthly:110500},US:{country:'US',nisaMonthly:369}},null);
-  const gb=Core.settingsForCountry(profiles,'GB','1968-11-13');
+  const gb=Core.settingsForCountry(profiles,'GB');
   assert.equal(gb.country,'GB');
   assert.equal(gb.currency,'GBP');
   assert.equal(gb.nisaMonthly,0);
-  assert.equal(gb.birth,'1968-11-13');
+  assert.equal(gb.birth,'');
 });
 
 test('settings shows United Kingdom GBP',()=>{

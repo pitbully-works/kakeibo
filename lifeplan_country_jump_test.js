@@ -11,7 +11,7 @@ test("ライフプランから渡されたcountryを5カ国だけ受け入れる
 
 test("起動国を切り替えるとき既存の国別金額を混ぜない", () => {
   assert.match(src, /state\.moneyProfiles\[current\] = Core\.normalizeSettings/);
-  assert.match(src, /state\.settings = Core\.settingsForCountry\(state\.moneyProfiles, next, birth\)/);
+  assert.match(src, /state\.settings = Core\.settingsForCountry\(state\.moneyProfiles, next\)/);
   assert.match(src, /state\.moneyProfiles\[next\] = Core\.normalizeSettings\(state\.settings\)/);
 });
 

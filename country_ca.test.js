@@ -47,11 +47,11 @@ test('CA records are separate from JP US and GB',()=>{
 
 test('CA profile is independent and starts empty',()=>{
   const profiles=Core.normalizeMoneyProfiles({JP:{country:'JP',nisaMonthly:110500},US:{country:'US',nisaMonthly:369},GB:{country:'GB',nisaMonthly:99}},null);
-  const ca=Core.settingsForCountry(profiles,'CA','1968-11-13');
+  const ca=Core.settingsForCountry(profiles,'CA');
   assert.equal(ca.country,'CA');
   assert.equal(ca.currency,'CAD');
   assert.equal(ca.nisaMonthly,0);
-  assert.equal(ca.birth,'1968-11-13');
+  assert.equal(ca.birth,'');
 });
 
 test('settings shows Canada CAD',()=>{
@@ -89,8 +89,8 @@ test('CA settings survive CA to JP to CA profile round-trip',()=>{
     JP:{country:'JP',nisaMonthly:110500},
     CA:{country:'CA',nisaMonthly:425,goalTarget:8000}
   },null);
-  const jp=Core.settingsForCountry(profiles,'JP','1968-11-13');
-  const ca=Core.settingsForCountry(profiles,'CA','1968-11-13');
+  const jp=Core.settingsForCountry(profiles,'JP');
+  const ca=Core.settingsForCountry(profiles,'CA');
   assert.equal(jp.nisaMonthly,110500);
   assert.equal(ca.nisaMonthly,425);
   assert.equal(ca.goalTarget,8000);

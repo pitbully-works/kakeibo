@@ -49,11 +49,11 @@ test('AU records are separate from JP US GB and CA',()=>{
 
 test('AU profile is independent and starts empty',()=>{
   const profiles=Core.normalizeMoneyProfiles({JP:{country:'JP',nisaMonthly:110500},US:{country:'US',nisaMonthly:369},GB:{country:'GB',nisaMonthly:99},CA:{country:'CA',nisaMonthly:425}},null);
-  const au=Core.settingsForCountry(profiles,'AU','1968-11-13');
+  const au=Core.settingsForCountry(profiles,'AU');
   assert.equal(au.country,'AU');
   assert.equal(au.currency,'AUD');
   assert.equal(au.nisaMonthly,0);
-  assert.equal(au.birth,'1968-11-13');
+  assert.equal(au.birth,'');
 });
 
 test('settings shows Australia AUD',()=>{
@@ -93,8 +93,8 @@ test('AU settings survive AU to JP to AU profile round-trip',()=>{
     JP:{country:'JP',nisaMonthly:110500},
     AU:{country:'AU',nisaMonthly:510,goalTarget:9000}
   },null);
-  const jp=Core.settingsForCountry(profiles,'JP','1968-11-13');
-  const au=Core.settingsForCountry(profiles,'AU','1968-11-13');
+  const jp=Core.settingsForCountry(profiles,'JP');
+  const au=Core.settingsForCountry(profiles,'AU');
   assert.equal(jp.nisaMonthly,110500);
   assert.equal(au.nisaMonthly,510);
   assert.equal(au.goalTarget,9000);

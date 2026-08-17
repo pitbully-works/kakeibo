@@ -25,19 +25,19 @@ test("旧データのお金設定はJPプロファイルへ退避され、USへ�
   assert.equal(p.JP.goalTarget,3000000);
   assert.equal(p.JP.lp.banks[0].balance,20000);
   assert.equal(p.US,undefined);
-  const us=Core.settingsForCountry(p,"US","1968-11-13");
+  const us=Core.settingsForCountry(p,"US");
   assert.equal(us.country,"US");
   assert.equal(us.currency,"USD");
   assert.equal(us.goalTarget,0);
   assert.equal(us.lp,undefined);
-  assert.equal(us.birth,"1968-11-13");
+  assert.equal(us.birth,"");
 });
 
 test("JPとUSのお金設定は別々に保持できる", () => {
   const p=Core.normalizeMoneyProfiles(null,jpLegacy());
   p.US=Core.normalizeSettings({country:"US",goalTarget:5000,lp:{banks:[{name:"US bank",balance:1200}]}});
-  const jp=Core.settingsForCountry(p,"JP","1968-11-13");
-  const us=Core.settingsForCountry(p,"US","1968-11-13");
+  const jp=Core.settingsForCountry(p,"JP");
+  const us=Core.settingsForCountry(p,"US");
   assert.equal(jp.goalTarget,3000000);
   assert.equal(jp.lp.banks[0].balance,20000);
   assert.equal(us.goalTarget,5000);
@@ -54,7 +54,7 @@ test("実際の画面切替でも、初回USはJPの金額を引き継がない"
   assert.equal(st.settings.lp,undefined);
   assert.equal(st.moneyProfiles.JP.goalTarget,3000000);
   assert.equal(st.moneyProfiles.JP.lp.banks[0].balance,20000);
-  assert.equal(st.settings.birth,"1968-11-13");
+  assert.equal(st.settings.birth,"");
   // 個人記録は国別。USへ切り替えたら日本の健康記録は見えず、JP側に保持される。
   assert.deepEqual(st.health,{});
   assert.equal(st.personalProfiles.JP.health["2026-08-10"].weight,62.5);
@@ -93,19 +93,20 @@ test("USで保存したお金設定は、USのまま再起動しても残る", (
   assert.equal(again.run('state.settings.lp.banks[0].balance'),2400);
 });
 
-test("生年月日は国を切り替えても本人共通のまま", () => {
+test("生年月日は国ごとに別々に保持する", () => {
   const p={
     JP:Core.normalizeSettings({country:"JP",birth:"1960-01-01",goalTarget:100}),
     US:Core.normalizeSettings({country:"US",birth:"1970-02-02",goalTarget:200})
   };
-  assert.equal(Core.settingsForCountry(p,"JP","1968-11-13").birth,"1968-11-13");
-  assert.equal(Core.settingsForCountry(p,"US","1968-11-13").birth,"1968-11-13");
+  assert.equal(Core.settingsForCountry(p,"JP").birth,"1960-01-01");
+  assert.equal(Core.settingsForCountry(p,"US").birth,"1970-02-02");
+  assert.equal(Core.settingsForCountry(p,"GB").birth,"");
 });
 
 test("バックアップ→復元でもJP/US両プロファイルを保持する", () => {
   const profiles=Core.normalizeMoneyProfiles(null,jpLegacy());
   profiles.US=Core.normalizeSettings({country:"US",goalTarget:5000,lp:{banks:[{name:"US",balance:1200}]}});
-  const state={settings:Core.settingsForCountry(profiles,"US","1968-11-13"),moneyProfiles:profiles,tx:[],health:{},diary:{},plans:{},pulse:[]};
+  const state={settings:Core.settingsForCountry(profiles,"US"),moneyProfiles:profiles,tx:[],health:{},diary:{},plans:{},pulse:[]};
   const b=Core.buildBackup(state);
   const r=Core.normalizeBackup(b);
   assert.equal(r.moneyProfiles.JP.goalTarget,3000000);
@@ -118,7 +119,7 @@ test("USのライフプラン連携にはUSプロファイルの金額だけを�
   /* 内部は最小単位（セント）。$1,200.00 は 120000。
      ライフプランへ渡すときは主単位へ戻すので、向こうへは 1200 が届く。 */
   profiles.US=Core.normalizeSettings({country:"US",lp:{banks:[{name:"US",balance:120000}]}});
-  const us=Core.settingsForCountry(profiles,"US","1968-11-13");
+  const us=Core.settingsForCountry(profiles,"US");
   const out=Core.buildLifePlanInputs(us,"2026-08-10");
   assert.equal(out.countryCode,"US");
   assert.equal(out.baseCurrency,"USD");

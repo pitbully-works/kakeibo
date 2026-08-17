@@ -869,11 +869,10 @@
      収入・支出記録は各記録の country で分ける。
      ここでは NISA・保険・借入・銀行など「設定として持つ金額」を国別に分離する。
      旧保存データには moneyProfiles が無いので、既存 settings は必ず JP として移行する。
-     生年月日は本人共通情報なので、プロファイルを切り替えるときに現在値を上書きして共通利用する。 */
-  function profileSettings(raw, country, birth) {
+     生年月日も国別プロファイルに保存し、国を切り替えても他国へコピーしない。 */
+  function profileSettings(raw, country) {
     const c = normalizeCountry(country);
     const src = Object.assign({}, raw || {}, { country: c, currency: countryRule(c).currency });
-    if (birth !== undefined) src.birth = birth;
     return normalizeSettings(src);
   }
 
@@ -892,10 +891,10 @@
     return out;
   }
 
-  function settingsForCountry(profiles, country, sharedBirth) {
+  function settingsForCountry(profiles, country) {
     const c = normalizeCountry(country);
     const p = profiles && profiles[c] ? profiles[c] : {};
-    return profileSettings(p, c, sharedBirth);
+    return profileSettings(p, c);
   }
 
   /* =======================================================================

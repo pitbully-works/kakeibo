@@ -772,7 +772,7 @@ const MUTATIONS = [
     file: "core.js", from: '    const p = profiles && profiles[c] ? profiles[c] : {};',
     to: '    const p = profiles && profiles[c] ? profiles[c] : (profiles && profiles.JP ? profiles.JP : {});' },
   { name: "国切替で現在の金額を次の国へ持ち込む", guards: "JPの円金額を同じ数字のドルにしない",
-    file: "index.html", from: '  state.settings=Core.settingsForCountry(state.moneyProfiles,next,sharedBirth);',
+    file: "index.html", from: '  state.settings=Core.settingsForCountry(state.moneyProfiles,next);',
     to: '  state.settings=Core.normalizeSettings(Object.assign({},state.settings,{country:next}));' },
   { name: "USのお金設定をプロファイルへ保存しない", guards: "US→JP→USでUS設定が戻る",
     file: "index.html", from: '  state.moneyProfiles[c]=Core.normalizeSettings(Object.assign({},state.settings,{country:c}));',

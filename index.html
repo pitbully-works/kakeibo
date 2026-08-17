@@ -651,7 +651,7 @@ let state = load();
    この版を最初に開いた1回だけ「海外側」だけを空の国別領域へ作り直す。
    JPプロファイル・JPの記録・JPの個人データには一切触れない。
    以後は version=2 を保存するため、海外で新しく入力したデータは消さない。 */
-const COUNTRY_STORAGE_SPLIT_VERSION = 3;
+const COUNTRY_STORAGE_SPLIT_VERSION = 4;
 function numericFingerprint(v){
   if(Array.isArray(v)) return v.map(numericFingerprint);
   if(v && typeof v==="object"){
@@ -697,7 +697,25 @@ function finishCountryStorageSplit(){
   if(done>=COUNTRY_STORAGE_SPLIT_VERSION) return false;
 
   const active=Core.normalizeCountry(state.settings && state.settings.country);
-  const sharedBirth=state.settings && state.settings.birth;
+
+  /* v3までは生年月日だけ5カ国で共有していた。v4では生年月日も国別に完全分離する。
+     現在開いている国の生年月日は保持し、他国に同じ値がコピーされていた場合だけ空にする。 */
+  if(done===3){
+    state.moneyProfiles=Core.normalizeMoneyProfiles(state.moneyProfiles, active==="JP" ? state.settings : null);
+    state.moneyProfiles[active]=Core.normalizeSettings(Object.assign({},state.settings,{country:active}));
+    const activeBirth=Core.normalizeBirth(state.settings && state.settings.birth);
+    Core.SUPPORTED_COUNTRIES.forEach(c=>{
+      if(c===active || !state.moneyProfiles[c]) return;
+      const other=Core.normalizeSettings(state.moneyProfiles[c]);
+      if(activeBirth && Core.normalizeBirth(other.birth)===activeBirth){
+        other.birth="";
+        state.moneyProfiles[c]=Core.normalizeSettings(other);
+      }
+    });
+    state.settings=Core.settingsForCountry(state.moneyProfiles,active);
+    state.countryStorageSplitVersion=COUNTRY_STORAGE_SPLIT_VERSION;
+    return true;
+  }
 
   /* v2をすでに通った端末は、旧修正版が「処理済み」の印だけ残して
      海外側の混入が残る場合がある。v3ではその端末に限り、海外側だけを
@@ -709,14 +727,14 @@ function finishCountryStorageSplit(){
     if(active==="JP") state.personalProfiles.JP=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});
     Core.SUPPORTED_COUNTRIES.forEach(c=>{
       if(c==="JP") return;
-      state.moneyProfiles[c]=Core.settingsForCountry({},c,sharedBirth);
+      state.moneyProfiles[c]=Core.settingsForCountry({},c);
       state.personalProfiles[c]=emptyPersonalData();
     });
     state.tx=Core.normalizeTxList(state.tx).filter(t=>Core.normalizeCountry(t.country)==="JP");
     state.recordCalcHistory=(Array.isArray(state.recordCalcHistory)?state.recordCalcHistory:[])
       .filter(h=>Core.normalizeCountry(h&&h.country)==="JP");
     if(active!=="JP"){
-      state.settings=Core.settingsForCountry(state.moneyProfiles,active,sharedBirth);
+      state.settings=Core.settingsForCountry(state.moneyProfiles,active);
       loadPersonalProfile(active);
     }
     state.countryStorageSplitVersion=COUNTRY_STORAGE_SPLIT_VERSION;
@@ -739,7 +757,7 @@ function finishCountryStorageSplit(){
     /* 旧版の混入は「円の内部数値をそのままセント/ペンスとして読んだ」形なので、
        表示通貨が違っても内部の金額・年齢区間がJPと一致する。そこだけを消す。 */
     if(jpMoney && moneyHasValue(jpMoney) && rawMoney[c] && moneyFingerprint(rawMoney[c])===jpMoneyFp){
-      nextMoney[c]=Core.settingsForCountry({},c,sharedBirth);
+      nextMoney[c]=Core.settingsForCountry({},c);
       changed=true;
     }
     if(personalHasValue(jpPersonal) && rawPersonal[c] && personalSame(rawPersonal[c],jpPersonal)){
@@ -753,7 +771,7 @@ function finishCountryStorageSplit(){
   state.personalProfiles=nextPersonal;
   /* 現在表示中の国も整理後のプロファイルから読み直す。
      JPならJPをそのまま、海外なら空にした海外プロファイルを表示する。 */
-  state.settings=Core.settingsForCountry(state.moneyProfiles,active,sharedBirth);
+  state.settings=Core.settingsForCountry(state.moneyProfiles,active);
   loadPersonalProfile(active);
   state.countryStorageSplitVersion=COUNTRY_STORAGE_SPLIT_VERSION;
   return true;
@@ -806,11 +824,10 @@ function applyLaunchCountry(){
   const next = fromUrl || (!hasSavedKakeiboState() ? detectInitialCountry() : null);
   if(!next || next === Core.normalizeCountry(state.settings && state.settings.country)) return false;
   const current = Core.normalizeCountry(state.settings && state.settings.country);
-  const birth = state.settings && state.settings.birth;
   state.moneyProfiles = Core.normalizeMoneyProfiles(state.moneyProfiles, current === "JP" ? state.settings : null);
   state.moneyProfiles[current] = Core.normalizeSettings(Object.assign({}, state.settings, { country: current }));
   syncPersonalProfile();
-  state.settings = Core.settingsForCountry(state.moneyProfiles, next, birth);
+  state.settings = Core.settingsForCountry(state.moneyProfiles, next);
   state.moneyProfiles[next] = Core.normalizeSettings(state.settings);
   loadPersonalProfile(next);
   return true;
@@ -870,11 +887,11 @@ function load(){
     let profiles=null, active=legacy;
     if(s.moneyProfiles && typeof s.moneyProfiles==="object"){
       profiles=Core.normalizeMoneyProfiles(s.moneyProfiles, s.settings||{});
-      active=Core.settingsForCountry(profiles, legacy.country, legacy.birth);
+      active=Core.settingsForCountry(profiles, legacy.country);
       profiles[active.country]=Core.normalizeSettings(active);
     }else if(legacy.country!=="JP"){
       profiles=Core.normalizeMoneyProfiles(null, s.settings||{});
-      active=Core.settingsForCountry(profiles, legacy.country, legacy.birth);
+      active=Core.settingsForCountry(profiles, legacy.country);
       profiles[active.country]=Core.normalizeSettings(active);
     }
     /* 記録も health/diary/plans/pulse と同じように整えてから使う。
@@ -2882,8 +2899,7 @@ function switchMoneyCountry(next){
   state.moneyProfiles=Core.normalizeMoneyProfiles(state.moneyProfiles, old==="JP"?state.settings:null);
   state.moneyProfiles[old]=Core.normalizeSettings(Object.assign({},state.settings,{country:old}));
   syncPersonalProfile();
-  const sharedBirth=state.settings.birth;
-  state.settings=Core.settingsForCountry(state.moneyProfiles,next,sharedBirth);
+  state.settings=Core.settingsForCountry(state.moneyProfiles,next);
   loadPersonalProfile(next);
   if(!save()){ state=before; return false; }
   return true;
@@ -2971,7 +2987,7 @@ function onBackupPicked(file){
       ? restored.settings.birth
       : ((state.settings && Core.validateDateString(state.settings.birth)) ? state.settings.birth : "");
     state.moneyProfiles = restored.moneyProfiles || Core.normalizeMoneyProfiles(null, restored.settings);
-    state.settings = Core.settingsForCountry(state.moneyProfiles, restored.settings.country, restoredBirth);
+    state.settings = Core.settingsForCountry(state.moneyProfiles, restored.settings.country);
     state.tx = restored.tx;
     // 旧テスト／旧復元仕様との互換。直後に国別領域から正しい国の値へ読み直す。
     state.health = restored.health || {};
