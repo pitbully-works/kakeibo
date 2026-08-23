@@ -13,7 +13,7 @@ function block(name,next){
 test('国切替前の個人記録同期は現在国を正規化して保存する',()=>{
   const b=block('syncPersonalProfile','loadPersonalProfile');
   assert.match(b,/const c=Core\.normalizeCountry\(state\.settings\.country\)/);
-  assert.match(b,/state\.personalProfiles\[c\]=normalizePersonalData\(/);
+  assert.match(b,/state\.personalProfiles\[c\]=normalizePersonalData\(\{health:state\.health,diary:state\.diary,plans:state\.plans,pulse:state\.pulse\}\)/);
 });
 
 test('国切替後の個人記録読込は指定国を正規化してから選ぶ',()=>{
