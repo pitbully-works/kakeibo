@@ -1149,5 +1149,11 @@
   ],
   "レシート枠合わせ案内を日本語固定に戻す": [
     "ocr_note_i18n_test.js"
+  ],
+  "毎月固定の入力済み判定をカテゴリ1個の真偽値に戻す": [
+    "recurring_duplicate_category_test.js"
+  ],
+  "毎月固定の入力済み件数を消費しない": [
+    "recurring_duplicate_category_test.js"
   ]
 }

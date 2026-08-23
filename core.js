@@ -4307,16 +4307,23 @@
     const prev = all.filter(function (t) {
       return isRecurring(t) && cycleOf(t.date, startDay) === prevYm;
     });
-    /* すでに今月に入っている🔁のカテゴリ */
+    /* すでに今月に入っている🔁をカテゴリごとの「件数」で数える。
+       true/falseだけだと、先月に同じカテゴリが2件あり今月に1件だけ入っている場合、
+       残り1件まで入力済み扱いになって欠ける。金額を変更した場合でも同じ契約として
+       扱える従来仕様は保ちつつ、1件ずつ対応させる。 */
     const done = {};
     all.forEach(function (t) {
-      if (isRecurring(t) && cycleOf(t.date, startDay) === ym) done[t.cat] = true;
+      if (isRecurring(t) && cycleOf(t.date, startDay) === ym) {
+        done[t.cat] = (done[t.cat] || 0) + 1;
+      }
     });
 
     const items = prev.map(function (t) {
       const cat = catOf("expense", t.cat);
       /* 「毎月◯日」をそろえる。無い日は月末へ丸め、区切りからはみ出す日は端へ寄せる。 */
       const date = dateInCycle(ym, startDay, Number(String(t.date).slice(8, 10)));
+      const already = (done[t.cat] || 0) > 0;
+      if (already) done[t.cat] -= 1;
       return {
         cat: t.cat,
         name: catName("expense", t.cat, settingsOrCountry),
@@ -4324,7 +4331,7 @@
         amount: num(t.amount),
         memo: String(t.memo || "").slice(0, MEMO_MAX),
         date: date,
-        already: done[t.cat] === true,
+        already: already,
       };
     }).sort(function (a, b) { return b.amount - a.amount; });
 

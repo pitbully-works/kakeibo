@@ -504,7 +504,7 @@ const MUTATIONS = [
     file: "index.html", from: 'sumTab==="analysis" ? renderAnalysis() : renderSummary();', to: "renderSummary();" },
   /* ---- 先月の🔁をまとめて入れる ---- */
   { name: "今月にすでにあっても、もう一度入れる", guards: "二重計上を防ぐ",
-    file: "core.js", from: "        already: done[t.cat] === true,", to: "        already: false," },
+    file: "core.js", from: "      const already = (done[t.cat] || 0) > 0;", to: "      const already = false;" },
   { name: "先月ではなく当月を写す", guards: "写すのは先月の記録",
     file: "core.js", from: "      return isRecurring(t) && cycleOf(t.date, startDay) === prevYm;",
     to: "      return isRecurring(t) && cycleOf(t.date, startDay) === ym;" },
@@ -1127,6 +1127,16 @@ const MUTATIONS = [
     file: "index.html",
     from: 'sheetState.ocrNote=L("枠を合計に合わせて、読み取りボタンを押してください","Move the box over the total, then tap Read");',
     to: 'sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";' },
+
+  /* ---- 毎月固定：同カテゴリ複数件の繰越 ---- */
+  { name: "毎月固定の入力済み判定をカテゴリ1個の真偽値に戻す", guards: "同カテゴリ複数件も1件ずつ繰越",
+    file: "core.js",
+    from: "        done[t.cat] = (done[t.cat] || 0) + 1;",
+    to: "        done[t.cat] = 1;" },
+  { name: "毎月固定の入力済み件数を消費しない", guards: "同カテゴリの残り件数を繰越",
+    file: "core.js",
+    from: "      if (already) done[t.cat] -= 1;",
+    to: "" },
 
 ];
 
