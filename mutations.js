@@ -1094,6 +1094,16 @@ const MUTATIONS = [
     from: "        do { id = lpId(gen()); } while (!id || seen[id]);",
     to: "        id = lpId(gen());" },
 
+  /* ---- 海外ライフプラン連携：銀行積立 ---- */
+  { name: "海外銀行積立でmonthlyDepositを見ない", guards: "GB/CA/AUのcash savingsへ正しい年額を渡す",
+    file: "core.js",
+    from: '      const monthlyBank = a.banks.reduce(function (sum, b) { return sum + (Number(b.monthlyDeposit) || 0); }, 0);',
+    to: '      const monthlyBank = 0;' },
+  { name: "海外銀行積立を1件目だけで計算する", guards: "複数銀行の月額を合算する",
+    file: "core.js",
+    from: '      const monthlyBank = a.banks.reduce(function (sum, b) { return sum + (Number(b.monthlyDeposit) || 0); }, 0);',
+    to: '      const monthlyBank = a.banks.length ? (Number(a.banks[0].monthlyDeposit) || 0) : 0;' },
+
 ];
 
 module.exports = MUTATIONS;

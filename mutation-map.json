@@ -1130,5 +1130,11 @@
   ],
   "新しい連携IDの衝突を確認しない": [
     "lp_id_integrity_test.js"
+  ],
+  "海外銀行積立でmonthlyDepositを見ない": [
+    "lpbridge_test.js"
+  ],
+  "海外銀行積立を1件目だけで計算する": [
+    "lpbridge_test.js"
   ]
 }

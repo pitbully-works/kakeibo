@@ -1570,7 +1570,9 @@
     if (country !== "JP") {
       const monthlyInvest = nisaPlannedOn(major, on);
       const monthlyRetire = lpActiveSum([a.ideco], "startAge", "endAge", "monthlyContribution", age);
-      const monthlyBank = lpActiveSum(a.banks, "startAge", "endAge", "monthlyYen", age);
+      /* 銀行は normalizeLpBanks では monthlyDeposit を持ち、年齢区間は持たない。
+         存在しない monthlyYen/startAge/endAge を見ると海外連携の cash savings が常に0になる。 */
+      const monthlyBank = a.banks.reduce(function (sum, b) { return sum + (Number(b.monthlyDeposit) || 0); }, 0);
       const annual = (v) => Math.max(0, Number(v) || 0) * 12;
       if (country === "US") bridgeInputs = Object.assign({}, legacyInputs, { usInvestment: { rothIra: { annualContribution: annual(monthlyInvest) }, k401: { annualContribution: annual(monthlyRetire) } } });
       else if (country === "GB") bridgeInputs = Object.assign({}, legacyInputs, { gbInvestment: { stocksSharesIsa: { annualContribution: annual(monthlyInvest) }, sipp: { annualContribution: annual(monthlyRetire) }, cashSavings: { annualContribution: annual(monthlyBank) } } });

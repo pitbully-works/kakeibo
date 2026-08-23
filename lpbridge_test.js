@@ -652,3 +652,22 @@ test("NISAのタイルの色は、ほかの先取りのタイルとそろえる"
   assert.equal(out.includes('class="ds blue"'), false, "NISAだけ色がくすんでいる");
   assert.match(out, /class="ds" data-act="lp-open" data-kind="nisa"/, "NISAのタイルが無い");
 });
+
+
+test("GB/CA/AUの銀行積立はmonthlyDepositを年額へ変換して渡す", () => {
+  const baseLp = { banks:[
+    { name:"A", monthlyDeposit:10000 },
+    { name:"B", monthlyDeposit:5000 },
+  ] };
+  const gb = Core.buildLifePlanInputs(settingsWith(baseLp,{country:"GB"}), "2026-08-08").inputs;
+  const ca = Core.buildLifePlanInputs(settingsWith(baseLp,{country:"CA"}), "2026-08-08").inputs;
+  const au = Core.buildLifePlanInputs(settingsWith(baseLp,{country:"AU"}), "2026-08-08").inputs;
+  assert.strictEqual(gb.gbInvestment.cashSavings.annualContribution, 1800);
+  assert.strictEqual(ca.caInvestment.cashSavings.annualContribution, 1800);
+  assert.strictEqual(au.auInvestment.cashSavings.annualContribution, 1800);
+});
+
+test("海外銀行積立が0ならcashSavings年額も0", () => {
+  const out = Core.buildLifePlanInputs(settingsWith({banks:[{name:"A",monthlyDeposit:0}]},{country:"GB"}), "2026-08-08").inputs;
+  assert.strictEqual(out.gbInvestment.cashSavings.annualContribution, 0);
+});
