@@ -90,10 +90,19 @@ jobs:
       # 変更が出てよいのは、レポートと（作り直したときの）対応表だけ。
       - name: ソースが元に戻っているか確認
         run: |
-          git diff --exit-code -- . ':(exclude)MUTATION-REPORT.md' ':(exclude)mutation-map.json' \
-            || (echo "::error::mutation test がソースを戻せていません" && exit 1)
+          if [ "${{ inputs.update_map }}" = "true" ]; then
+            git diff --exit-code -- . ':(exclude)MUTATION-REPORT.md' ':(exclude)mutation-map.json' \
+              || (echo "::error::mutation test がソースを戻せていません" && exit 1)
+          else
+            git diff --exit-code -- . ':(exclude)MUTATION-REPORT.md' \
+              || (echo "::error::mutation test がソースを戻せていません" && exit 1)
+          fi
 
       # --- 4. 対応表の更新（指示したときだけ） -------------------------------
+      - name: 自動生成した対応表を再検証
+        if: inputs.update_map && success()
+        run: node --test --test-reporter=spec ci_test.js
+
       - name: 対応表を commit する
         if: inputs.update_map && success()
         run: |
