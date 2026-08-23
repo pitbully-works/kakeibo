@@ -1110,6 +1110,12 @@ const MUTATIONS = [
     from: '    const ok = confirm(L(',
     to: '    const ok = confirm((' },
 
+  /* ---- OCR進行表示の多言語化 ---- */
+  { name: "OCR画像調整中を日本語固定に戻す", guards: "海外OCR進行表示に日本語を残さない",
+    file: "index.html",
+    from: '  setStatus(L("画像を調整しています…","Adjusting the image…"));',
+    to: '  setStatus("画像を調整しています…");' },
+
 ];
 
 module.exports = MUTATIONS;

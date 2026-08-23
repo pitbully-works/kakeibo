@@ -1139,5 +1139,9 @@
   ],
   "海外でもバックアップ復元確認を日本語固定にする": [
     "backup_i18n_test.js"
+  ],
+  "OCR画像調整中を日本語固定に戻す": [
+    "ocr_status_i18n_test.js",
+    "scoring_test.js"
   ]
 }

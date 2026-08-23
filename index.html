@@ -2452,7 +2452,7 @@ function releaseOcrImage(st){
 async function readCrop(){
   const st=sheetState; if(!st||!st.photo) return;
   st.ocrChoices=null;
-  setStatus("画像を調整しています…");
+  setStatus(L("画像を調整しています…","Adjusting the image…"));
   renderSheet();
   try{
     const crop = st.crop||Core.CROP_DEFAULT;

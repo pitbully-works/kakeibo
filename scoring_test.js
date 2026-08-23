@@ -191,7 +191,7 @@ test("候補が出ても「手入力する」に移れる", () => {
 });
 
 test("段階ごとに、いま何をしているかを表示する", () => {
-  assert.match(appSrc, /setStatus\("画像を調整しています…"\)/, "調整中の表示が無い");
+  assert.match(appSrc, /setStatus\(L\("画像を調整しています…","Adjusting the image…"\)\)/, "調整中の表示が無い");
   assert.match(appSrc, /金額を確認しています…/, "確認中の表示が無い");
   assert.match(appSrc, /もう少し詳しく確認しています…/, "追加処理中の表示が無い");
 });
