@@ -170,7 +170,9 @@ function preflight() {
        落ちたテストは全テストにも入っているので判定は変わらない。
        これは検査を甘くする短縮ではなく、同じ答えに早く着くための短縮。 */
     quickFilesFor: (m) => {
-      if (FAST) return null;
+      /* --write-map は対応表の再測定なので、早期検出で打ち切らず
+         全テストを最後まで走らせて「今どのテストが捕まえるか」を取り直す。 */
+      if (FAST || has("--write-map")) return null;
       const files = map[m.name];
       return Array.isArray(files) && files.length ? files : null;
     },

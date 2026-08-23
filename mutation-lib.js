@@ -79,16 +79,32 @@ function makeWorkspace() {
 /* テストを1回走らせる。
    合否は **終了コード** だけで決める（0＝全部PASS、非0＝どれか落ちた）。
    表示形式は Node の版で変わるので、合否の判断には使わない。 */
-function runTests(dir, testFiles) {
+function runTests(dir, testFiles, options) {
+  const o = options || {};
+  /* 変異で無限ループ等を作ってしまっても CI を何時間も占有しない。
+     既定90秒。必要なら timeoutMs で明示的に変えられる。 */
+  const timeoutMs = Math.max(1000, Number(o.timeoutMs) || 90000);
   return new Promise((resolve) => {
     const args = ["--test", "--test-reporter=tap"];
     if (Array.isArray(testFiles) && testFiles.length) args.push(...testFiles);
     const p = spawn("node", args, { cwd: dir, env: { ...process.env, FORCE_COLOR: "0" } });
     let out = "";
     let settled = false;
+    let timedOut = false;
+    let hardKillTimer = null;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      try { p.kill("SIGTERM"); } catch (e) {}
+      /* SIGTERMを無視する子でも残さない。 */
+      hardKillTimer = setTimeout(() => { try { p.kill("SIGKILL"); } catch (e) {} }, 2000);
+      if (hardKillTimer.unref) hardKillTimer.unref();
+    }, timeoutMs);
+    if (timeout.unref) timeout.unref();
     const finish = (value) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timeout);
+      if (hardKillTimer) clearTimeout(hardKillTimer);
       resolve(value);
     };
     p.stdout.on("data", (d) => { out += d; });
@@ -99,6 +115,11 @@ function runTests(dir, testFiles) {
         executionError: `テスト実行を開始できません: ${e.message}` });
     });
     p.on("close", (code, signal) => {
+      if (timedOut) {
+        finish({ ok: false, failedCount: null, detectedBy: [],
+          executionError: `テスト実行が ${timeoutMs}ms を超えたため停止しました` });
+        return;
+      }
       if (signal) {
         finish({ ok: false, failedCount: null, detectedBy: [],
           executionError: `テスト実行がシグナル ${signal} で終了しました` });

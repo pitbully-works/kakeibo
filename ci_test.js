@@ -336,6 +336,23 @@ test("完全検査で自動生成した対応表は、commit 前に ci_test.js �
   assert.ok(commit > validate, "対応表を検証する前に commit している");
 });
 
+
+test("mutation のテスト実行にはタイムアウトがあり、無限待ちを検出扱いにしない", () => {
+  const libSrc = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");
+  assert.match(libSrc, /const timeoutMs = Math\.max\(1000, Number\(o\.timeoutMs\) \|\| 90000\)/,
+    "テスト子プロセスのタイムアウトが無い");
+  assert.match(libSrc, /p\.kill\("SIGTERM"\)/, "タイムアウト時に子プロセスを停止していない");
+  assert.match(libSrc, /p\.kill\("SIGKILL"\)/, "SIGTERMを無視した子を強制停止できない");
+  assert.ok(libSrc.includes('executionError: `テスト実行が ${timeoutMs}ms を超えたため停止しました`'),
+    "タイムアウトをmutation検出ではなく実行エラーとして返していない");
+});
+
+test("対応表を作り直す回は早期検出で打ち切らず、全テストで再測定する", () => {
+  const runner = fs.readFileSync(path.join(__dirname, "run-mutations.js"), "utf8");
+  assert.match(runner, /if \(FAST \|\| has\("--write-map"\)\) return null;/,
+    "--write-map でも古い対応表の早期検出だけで打ち切っている");
+});
+
 /* ---------- ワークフロー ---------- */
 test("main への push と pull request で走る", () => {
   assert.match(wf, /on:\s*\n\s*push:\s*\n\s*branches: \[main\]/);
