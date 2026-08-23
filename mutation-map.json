@@ -1237,5 +1237,11 @@
   ],
   "存在しない記録への電卓履歴リンクを復元する": [
     "backup_history_link_safety_test.js"
+  ],
+  "国別個人記録の配列をプロファイルとして許す": [
+    "personal_profiles_shape_test.js"
+  ],
+  "各国個人記録の配列を許す": [
+    "personal_profiles_shape_test.js"
   ]
 }

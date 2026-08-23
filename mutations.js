@@ -1290,6 +1290,17 @@ const MUTATIONS = [
     from: "    if(!linked || Core.normalizeCountry(h.country)!==linked.country) return null;",
     to: "    if(false && (!linked || Core.normalizeCountry(h.country)!==linked.country)) return null;" },
 
+
+  { name: "国別個人記録の配列をプロファイルとして許す", guards: "personalProfiles形検証",
+    file: "index.html",
+    from: "  if(v && typeof v===\"object\" && !Array.isArray(v)){",
+    to: "  if(v && typeof v===\"object\"){" },
+
+  { name: "各国個人記録の配列を許す", guards: "各国personal profile形検証",
+    file: "index.html",
+    from: "      if(v[c] && typeof v[c]===\"object\" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);",
+    to: "      if(v[c] && typeof v[c]===\"object\") out[c]=normalizePersonalData(v[c]);" },
+
 ];
 
 module.exports = MUTATIONS;
