@@ -1176,6 +1176,12 @@ const MUTATIONS = [
     from: "    if(tx) historyCountry=txCountryOf(tx);",
     to: "" },
 
+
+  { name: "編集した電卓履歴を現在国へ混ぜる", guards: "編集履歴の保存先も記録自身の国",
+    file: "index.html",
+    from: "  calcHistCandidate.country=recCountry;",
+    to: "" },
+
 ];
 
 module.exports = MUTATIONS;

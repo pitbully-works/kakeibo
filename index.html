@@ -2745,6 +2745,8 @@ async function saveTx(){
      新しく作るときは、いま選んでいる国。 */
   const editIdx = st.mode==="edit" ? state.tx.findIndex(x=>x.id===st.id) : -1;
   const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();
+  /* 履歴の国も記録本体と必ず同じにする。 */
+  calcHistCandidate.country=recCountry;
   /* ここが「打ち込み → 内部」の境目。以降はすべて最小単位で扱う。
      小数点を含む字（"12.34"）も、字のまま桁を組んで整数にするので誤差が出ない。 */
   const typed=Core.majorTextToMinorRound(st.amount, decOf(recCountry));

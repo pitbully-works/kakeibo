@@ -1176,5 +1176,8 @@
   ],
   "編集時の電卓履歴を現在国で表示する": [
     "record_calc_country_test.js"
+  ],
+  "編集した電卓履歴を現在国へ混ぜる": [
+    "record_calc_country_test.js"
   ]
 }
