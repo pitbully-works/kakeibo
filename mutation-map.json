@@ -1112,5 +1112,11 @@
  ],
  "打てる小数の桁を通貨まかせにする": [
   "decimal_input_test.js"
+ ],
+ "予定IDの長さ制限を外す": [
+  "plan_id_integrity_test.js"
+ ],
+ "重複した予定IDをそのまま残す": [
+  "plan_id_integrity_test.js"
  ]
 }

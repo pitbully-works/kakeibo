@@ -3844,8 +3844,12 @@
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const text = String(raw.text == null ? "" : raw.text).slice(0, PLAN_TEXT_MAX);
     if (text.trim() === "") return null;
+    /* IDは画面操作（完了/削除）の対象を決めるキー。
+       バックアップ由来の異常に長いIDをそのまま残さず、他の記録IDと同じ64文字に制限する。 */
+    let id = raw.id == null ? "" : String(raw.id).slice(0, 64);
+    if (!id) id = "p" + i + "-" + Math.random().toString(36).slice(2, 8);
     return {
-      id: String(raw.id || ("p" + i + "-" + Math.random().toString(36).slice(2, 8))),
+      id: id,
       time: normalizeTimeString(raw.time),
       text: text,
       done: raw.done === true,
@@ -3866,10 +3870,20 @@
     if (!plans || typeof plans !== "object" || Array.isArray(plans)) return out;
     Object.keys(plans).forEach(function (date) {
       if (!validateDateString(date)) return;
+      const seen = {};
       const list = (Array.isArray(plans[date]) ? plans[date] : [])
         .slice(0, PLAN_PER_DAY_MAX)
         .map(normalizePlanEntry)
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(function (p, i) {
+          /* 同じ日の予定IDが重複すると、1回の完了/削除操作で複数件が同時に変わる。
+             復元時に重複だけ新しいIDへ振り直し、必ず1操作=1予定にする。 */
+          if (!seen[p.id]) { seen[p.id] = true; return p; }
+          let id;
+          do { id = "p" + i + "-" + Math.random().toString(36).slice(2, 8); } while (seen[id]);
+          seen[id] = true;
+          return Object.assign({}, p, { id: id });
+        });
       if (list.length) out[date] = sortPlans(list);
     });
     return out;
