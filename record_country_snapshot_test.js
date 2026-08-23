@@ -27,8 +27,8 @@ test("カメラ退避と復帰でも記録開始国を保持する",()=>{
 test("カメラ復帰時に編集元が消えていたら復元しない",()=>{
   const e=src.slice(src.indexOf("function ensureSheetForPhoto()"),src.indexOf("/* ---------- 写真＋OCR"));
   assert.match(e,/p && p\.mode==="edit" && !\(state\.tx\|\|\[\]\)\.some/);
-  assert.match(e,/return false/);
+  assert.match(e,/clearPending\(\);[\s\S]*?return false/);
   const r=src.slice(src.indexOf("function restorePending()"),src.indexOf("/* --- SW-REGISTRATION-START"));
   assert.match(r,/p\.mode==="edit" && !\(state\.tx\|\|\[\]\)\.some/);
-  assert.match(r,/pending edit was not restored/);
+  assert.match(r,/clearPending\(\);[\s\S]*?pending edit was not restored[\s\S]*?return;/);
 });
