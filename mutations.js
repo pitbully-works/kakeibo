@@ -1362,6 +1362,27 @@ const MUTATIONS = [
     from: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;",
     to: "  state.health=d.diary; state.diary=d.health; state.plans=d.plans; state.pulse=d.pulse;" },
 
+
+  { name: "国切替前の個人記録同期でhealthを保存しない", guards: "personal profile切替前4領域同期",
+    file: "index.html",
+    from: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});",
+    to: "  state.personalProfiles[c]=normalizePersonalData({diary:state.diary,plans:state.plans,pulse:state.pulse});" },
+
+  { name: "国切替前の個人記録同期でdiaryを保存しない", guards: "personal profile切替前4領域同期",
+    file: "index.html",
+    from: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});",
+    to: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,plans:state.plans,pulse:state.pulse});" },
+
+  { name: "国切替前の個人記録同期でplansを保存しない", guards: "personal profile切替前4領域同期",
+    file: "index.html",
+    from: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});",
+    to: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,pulse:state.pulse});" },
+
+  { name: "国切替前の個人記録同期でpulseを保存しない", guards: "personal profile切替前4領域同期",
+    file: "index.html",
+    from: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});",
+    to: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans});" },
+
 ];
 
 module.exports = MUTATIONS;
