@@ -11,6 +11,8 @@ test("バックアップ書き出し前に現在国の個人記録をpersonalPro
   const build=block.indexOf("Core.buildBackup(state)");
   const profiles=block.indexOf("backup.personalProfiles=");
   assert.ok(sync>=0,"同期がない");
+  assert.doesNotMatch(block,/syncPersonalProfile\s*=\s*function\(\)\{\}/,
+    "同期関数が無効化されている");
   assert.ok(build>sync,"同期より先にバックアップを作っている");
   assert.ok(profiles>build,"国別個人記録がバックアップに入っていない");
 });
