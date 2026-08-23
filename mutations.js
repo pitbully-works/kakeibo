@@ -1404,6 +1404,22 @@ const MUTATIONS = [
     from: "    if(!hasRestoredPersonalProfile) {",
     to: "    if(false && !hasRestoredPersonalProfile) {" },
 
+
+  { name: "生年月日の国別分離v4を実行しない", guards: "v3端末をv4へ一度だけ移行",
+    file: "index.html",
+    from: "const COUNTRY_STORAGE_SPLIT_VERSION = 4;",
+    to: "const COUNTRY_STORAGE_SPLIT_VERSION = 3;" },
+
+  { name: "v3移行で複製された生年月日を他国に残す", guards: "旧共有生年月日の複製だけ除去",
+    file: "index.html",
+    from: "      if(activeBirth && Core.normalizeBirth(other.birth)===activeBirth){",
+    to: "      if(false && activeBirth && Core.normalizeBirth(other.birth)===activeBirth){" },
+
+  { name: "v3移行で別入力の生年月日まで消す", guards: "同じ生年月日の複製だけを消す",
+    file: "index.html",
+    from: "      if(activeBirth && Core.normalizeBirth(other.birth)===activeBirth){",
+    to: "      if(activeBirth && Core.normalizeBirth(other.birth)!==activeBirth){" },
+
 ];
 
 module.exports = MUTATIONS;

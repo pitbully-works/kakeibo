@@ -1297,5 +1297,14 @@
  ],
  "復元時の空国キーを有効な個人記録と誤認する": [
   "personal_profile_legacy_rescue_test.js"
+ ],
+ "生年月日の国別分離v4を実行しない": [
+  "birth_country_split_migration_test.js"
+ ],
+ "v3移行で複製された生年月日を他国に残す": [
+  "birth_country_split_migration_test.js"
+ ],
+ "v3移行で別入力の生年月日まで消す": [
+  "birth_country_split_migration_test.js"
  ]
 }
