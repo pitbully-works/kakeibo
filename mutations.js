@@ -339,9 +339,9 @@ const MUTATIONS = [
   { name: "記録削除の失敗を巻き戻さない", guards: "記録削除の巻き戻し",
     file: "index.html", from: "    state.tx=beforeTx;\n    state.recordCalcHistory=beforeHistory;", to: "" },
   { name: "写真一括削除の失敗を巻き戻さない", guards: "写真削除の巻き戻し",
-    file: "index.html", from: "    state.tx = before;            // 写真をすべて元へ戻す", to: "" },
+    file: "index.html", from: "    state = before;               // 記録写真も日記写真も完全に元へ戻す", to: "" },
   { name: "写真0枚でも保存を試みる", guards: "写真0枚なら保存しない",
-    file: "index.html", from: "  if(!n){ toast(L(\"消せる写真はありません\",\"There are no photos to delete\")); return; }   // 保存処理そのものを行わない",
+    file: "index.html", from: "  if(!n){ toast(L(\"消せる写真はありません\",\"There are no photos to delete\")); return; }",
     to: '  if(!n){ }' },
   { name: "バックアップ復元の失敗を巻き戻さない", guards: "復元の巻き戻し",
     file: "index.html", from: "      state = before;                               // 保存できないなら元のまま", to: "" },
@@ -1136,6 +1136,16 @@ const MUTATIONS = [
   { name: "毎月固定の入力済み件数を消費しない", guards: "同カテゴリの残り件数を繰越",
     file: "core.js",
     from: "      if (already) done[t.cat] -= 1;",
+    to: "" },
+
+  /* ---- 写真容量管理：日記写真も含める ---- */
+  { name: "容量表示から日記写真を外す", guards: "写真容量に日記写真も含む",
+    file: "core.js",
+    from: "      SUPPORTED_COUNTRIES.forEach(function (c) {\n        const d = profiles[c] && profiles[c].diary;",
+    to: "" },
+  { name: "写真一括削除で日記写真を残す", guards: "写真をすべて消すは日記写真も対象",
+    file: "index.html",
+    from: "    Object.keys(d).forEach(date=>{ if(d[date]&&d[date].photo){ delete d[date].photo; n++; } });",
     to: "" },
 
 ];

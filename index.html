@@ -2932,14 +2932,24 @@ function saveSettings(){
 
 /* ---------- 連携：ライフプラン形式の月次スナップショット ---------- */
 function purgePhotos(){
-  const n=state.tx.filter(t=>t.photo).length;
-  if(!n){ toast(L("消せる写真はありません","There are no photos to delete")); return; }   // 保存処理そのものを行わない
-  const before = JSON.parse(JSON.stringify(state.tx)); // 失敗したら戻せるように退避
-  state.tx.forEach(t=>{ t.photo=null; });
+  /* 「すべて」は記録写真だけでなく日記写真も含む。
+     personalProfiles が5か国分の正本なので、全プロフィールから日記写真を外す。
+     top-level diary は現在国の鏡なので、そこも同時に外して画面と保存を一致させる。 */
+  const before = JSON.parse(JSON.stringify(state));
+  let n=0;
+  state.tx.forEach(t=>{ if(t&&t.photo){ t.photo=null; n++; } });
+  state.personalProfiles=normalizePersonalProfiles(state.personalProfiles);
+  Core.SUPPORTED_COUNTRIES.forEach(c=>{
+    const d=state.personalProfiles[c]&&state.personalProfiles[c].diary;
+    if(!d) return;
+    Object.keys(d).forEach(date=>{ if(d[date]&&d[date].photo){ delete d[date].photo; n++; } });
+  });
+  Object.keys(state.diary||{}).forEach(date=>{ if(state.diary[date]&&state.diary[date].photo) delete state.diary[date].photo; });
+  if(!n){ toast(L("消せる写真はありません","There are no photos to delete")); return; }
   if(!save()){
-    state.tx = before;            // 写真をすべて元へ戻す
+    state = before;               // 記録写真も日記写真も完全に元へ戻す
     toast(L("写真を消せませんでした","Could not delete the photos"));
-    return;                       // 再描画しない
+    return;
   }
   render(); toast(L(`写真${n}枚を消しました（記録は残っています）`, `Deleted ${n} photos — the records are still there`));
 }

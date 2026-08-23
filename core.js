@@ -1964,11 +1964,31 @@
 
   /* 保存データ全体の見積もりと、危険水域かどうか */
   function storageUsage(state) {
-    const tx = (state && Array.isArray(state.tx)) ? state.tx : [];
+    const st = state || {};
+    const tx = Array.isArray(st.tx) ? st.tx : [];
     let photos = 0, photoCount = 0;
-    tx.forEach(function (t) {
-      if (t && t.photo) { photos += approxBytes(t.photo); photoCount++; }
-    });
+    const addPhoto = function (v) {
+      if (isPhotoDataUrl(v)) { photos += approxBytes(v); photoCount++; }
+    };
+    tx.forEach(function (t) { if (t) addPhoto(t.photo); });
+
+    /* 日記写真も localStorage の容量を使う。「うち写真」から漏れると、
+       写真を消して空きを作る判断ができない。国別保存後は personalProfiles が
+       正本なので全5か国を数える。旧保存で profiles が無い場合だけ top-level diary を見る。 */
+    const profiles = st.personalProfiles && typeof st.personalProfiles === "object" && !Array.isArray(st.personalProfiles)
+      ? st.personalProfiles : null;
+    if (profiles) {
+      SUPPORTED_COUNTRIES.forEach(function (c) {
+        const d = profiles[c] && profiles[c].diary;
+        if (!d || typeof d !== "object" || Array.isArray(d)) return;
+        Object.keys(d).forEach(function (date) { if (d[date]) addPhoto(d[date].photo); });
+      });
+    } else {
+      const d = st.diary;
+      if (d && typeof d === "object" && !Array.isArray(d)) {
+        Object.keys(d).forEach(function (date) { if (d[date]) addPhoto(d[date].photo); });
+      }
+    }
     let total;
     try { total = approxBytes(JSON.stringify(state)); } catch (e) { total = photos; }
     return {

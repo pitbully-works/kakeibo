@@ -93,7 +93,7 @@ test("せっていで使用量が見え、写真をまとめて消せる", () =>
   assert.match(appSrc, /Core\.storageUsage\(state\)/, "使用量の表示が無い");
   assert.match(appSrc, /data-act="purge-photos"/, "写真を消すボタンが無い");
   assert.match(appSrc, /function purgePhotos\(\)/, "写真を消す処理が無い");
-  assert.match(appSrc, /t\.photo=null;[\s\S]{0,400}記録は残っています/, "記録まで消していないか要確認");
+  assert.match(appSrc, /t\.photo=null;[\s\S]{0,1200}記録は残っています/, "記録まで消していないか要確認");
 });
 
 /* ---------- 写真の選び方・記録ボタン ---------- */
