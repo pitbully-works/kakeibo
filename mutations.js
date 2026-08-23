@@ -1160,6 +1160,12 @@ const MUTATIONS = [
     from: '    if(lite.personalProfiles && typeof lite.personalProfiles === "object"){',
     to: '    if(false && lite.personalProfiles && typeof lite.personalProfiles === "object"){' },
 
+  /* ---- バックアップ：現在国の個人記録を先に同期 ---- */
+  { name: "バックアップ前の個人記録同期を外す", guards: "最新の現在国個人記録を国別バックアップへ入れる",
+    file: "index.html",
+    from: "function exportBackup(){\n  /* 現在国の top-level 個人記録を先に国別正本へ同期する。",
+    to: "function exportBackup(){\n  syncPersonalProfile = function(){};\n  /* 現在国の top-level 個人記録を先に国別正本へ同期する。" },
+
 ];
 
 module.exports = MUTATIONS;

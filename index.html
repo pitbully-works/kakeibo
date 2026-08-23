@@ -2966,6 +2966,10 @@ function purgePhotos(){
   render(); toast(L(`写真${n}枚を消しました（記録は残っています）`, `Deleted ${n} photos — the records are still there`));
 }
 function exportBackup(){
+  /* 現在国の top-level 個人記録を先に国別正本へ同期する。
+     保存直後でなくても、画面にある最新の health/diary/plans/pulse と
+     personalProfiles の内容がずれたままバックアップされないようにする。 */
+  syncPersonalProfile();
   /* 国別の個人記録もバックアップへ含める。
      旧形式との互換のため、active country の health/diary/plans/pulse も
      Core.buildBackup がこれまで通り書き出す。 */

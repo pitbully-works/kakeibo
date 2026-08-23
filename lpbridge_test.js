@@ -439,7 +439,7 @@ test("バックアップと連携データで、保存のしかたを使い分�
   /* バックアップ＝ファイル（読み込みがファイル選びのため）
      連携データ＝コピー（ライフプランは貼りつけて読み込むため） */
   const html = require("fs").readFileSync(path.join(__dirname, "index.html"), "utf8");
-  assert.match(html, /function exportBackup\(\)\{[\s\S]{0,300}saveFile\(/, "バックアップがファイル保存になっていない");
+  assert.match(html, /function exportBackup\(\)\{[\s\S]{0,700}saveFile\(/, "バックアップがファイル保存になっていない");
   assert.match(html, /function lpExport\(\)\{[\s\S]{0,600}shareText\(/, "連携データがコピーになっていない");
 });
 

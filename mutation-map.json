@@ -1167,5 +1167,8 @@
   ],
   "移行控えで国別日記写真を残す": [
     "migration_backup_diary_photo_test.js"
+  ],
+  "バックアップ前の個人記録同期を外す": [
+    "backup_personal_sync_test.js"
   ]
 }
