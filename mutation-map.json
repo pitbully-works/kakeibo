@@ -1204,5 +1204,8 @@
   ],
   "無効な記録でも電卓履歴だけ残す": [
     "invalid_record_history_test.js"
+  ],
+  "消えた記録の編集をそのまま続ける": [
+    "stale_edit_guard_test.js"
   ]
 }

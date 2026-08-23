@@ -2790,6 +2790,13 @@ async function saveTx(){
   /* 直すときは、その記録がもともと持っていた国で換算する。
      新しく作るときは、いま選んでいる国。 */
   const editIdx = st.mode==="edit" ? state.tx.findIndex(x=>x.id===st.id) : -1;
+  /* カメラ復帰や画面再読込の間に元記録が無くなっていた場合、
+     「更新しました」と表示して履歴だけ残すのではなく、ここで止める。 */
+  if(st.mode==="edit" && editIdx<0){
+    toast(L("元の記録が見つかりません。画面を閉じてもう一度開いてください",
+            "The original record could not be found. Close this screen and open it again."));
+    return;
+  }
   const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();
   /* 履歴の国も記録本体と必ず同じにする。 */
   calcHistCandidate.country=recCountry;

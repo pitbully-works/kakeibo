@@ -1230,6 +1230,12 @@ const MUTATIONS = [
     from: '  if(calcHistCandidate){\n    calcHistCandidate.txId=rec.id;',
     to: '  if(false && calcHistCandidate){\n    calcHistCandidate.txId=rec.id;' },
 
+
+  { name: "消えた記録の編集をそのまま続ける", guards: "古い編集画面から幽霊更新しない",
+    file: "index.html",
+    from: '  if(st.mode==="edit" && editIdx<0){',
+    to: '  if(false && st.mode==="edit" && editIdx<0){' },
+
 ];
 
 module.exports = MUTATIONS;
