@@ -157,6 +157,16 @@ test("対応表は、実在するテストファイルだけを指している",
   assert.deepEqual(bad, [], "対応表が存在しないテストを指している: " + bad.join(" / "));
 });
 
+test("対応表は、すべての変異を漏れなく持っている", () => {
+  const mapPath = path.join(__dirname, "mutation-map.json");
+  assert.ok(fs.existsSync(mapPath), "対応表 mutation-map.json が無い");
+  const map = JSON.parse(fs.readFileSync(mapPath, "utf8"));
+  const names = require("./mutations.js").map((m) => m.name);
+  const missing = names.filter((name) => !Array.isArray(map[name]) || map[name].length === 0);
+  assert.deepEqual(missing, [],
+    "対応表に未登録の変異がある（高速検査が全テストへフォールバックして遅くなる）: " + missing.join(" / "));
+});
+
 test("対応表は、いまある変異の名前だけを持っている", () => {
   const mapPath = path.join(__dirname, "mutation-map.json");
   if (!fs.existsSync(mapPath)) return;
