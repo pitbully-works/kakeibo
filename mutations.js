@@ -1212,6 +1212,12 @@ const MUTATIONS = [
     from: "    st.amount=Core.minorToMajorText(ranked[0].amount, sheetDec());\n    /* 金額欄は st.calc が正本。amount だけ変えると renderSheet/saveTx で古い0円へ戻る。 */\n    st.calc=Core.calcFrom(st.amount, sheetCalcDec());",
     to: "    st.amount=Core.minorToMajorText(ranked[0].amount, sheetDec());" },
 
+
+  { name: "レシート写真だけ外すボタンを隠す", guards: "写真だけ削除できる",
+    file: "index.html",
+    from: '       <button class="photobtn" data-act="rm-photo">${L("写真だけ外す","Remove photo")}</button>',
+    to: '' },
+
 ];
 
 module.exports = MUTATIONS;

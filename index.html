@@ -2376,6 +2376,7 @@ function renderSheet(){
        )}</div>
        <button class="photobtn main big" data-act="read-crop">${T("rec.readCrop")}</button>
        <button class="photobtn" data-act="shot-total">${T("rec.reshoot")}</button>
+       <button class="photobtn" data-act="rm-photo">${L("写真だけ外す","Remove photo")}</button>
        <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
        ${choicesHtml}`
     : `<button class="photobtn main" data-act="shot-total">${T("rec.shoot")}
