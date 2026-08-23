@@ -950,8 +950,26 @@ function save(){
   /* 移行を見送っている間は書き込まない。古い単位のまま上書きすると、
      次に開いたときに移行済みかどうかを判断できなくなる。 */
   if(migrationBlocked){ lastSaveError = new Error("QuotaExceededError"); lastSaveError.name="QuotaExceededError"; return false; }
-  try{ syncMoneyProfile(); syncPersonalProfile(); localStorage.setItem(STORE_KEY, JSON.stringify(state)); lastSaveError=null; return true; }
-  catch(e){ lastSaveError=e; return false; }
+  syncMoneyProfile(); syncPersonalProfile();
+  const text=JSON.stringify(state);
+  try{
+    localStorage.setItem(STORE_KEY, text);
+    lastSaveError=null; return true;
+  }catch(e){
+    /* 最小通貨単位への移行前に取った安全控えは、移行完了後は復旧処理には使わない。
+       写真追加で容量上限に当たったとき、この古い控えが数MB残っているだけで
+       新しい記録まで保存できなくなることがある。移行完了済みの場合だけ控えを解放し、
+       同じ保存を1回だけやり直す。現在の本体データは一切消さない。 */
+    if(isQuotaError(e) && !migrationDone && Number(state&&state.dataVersion||0)>=Core.DATA_VERSION){
+      try{
+        if(typeof localStorage.removeItem==="function") localStorage.removeItem(MIGRATION_BACKUP_KEY);
+        else localStorage.setItem(MIGRATION_BACKUP_KEY,"");
+        localStorage.setItem(STORE_KEY, text);
+        lastSaveError=null; return true;
+      }catch(e2){ lastSaveError=e2; return false; }
+    }
+    lastSaveError=e; return false;
+  }
 }
 function isQuotaError(e){
   if(!e) return false;

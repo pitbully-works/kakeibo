@@ -318,7 +318,7 @@ const MUTATIONS = [
   { name: "保存前の写真縮小をやめる", guards: "容量オーバー対策",
     file: "index.html", from: "if(photo) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);", to: "" },
   { name: "保存の失敗を握りつぶす", guards: "保存の成否判定",
-    file: "index.html", from: "catch(e){ lastSaveError=e; return false; }", to: "catch(e){ lastSaveError=e; return true; }" },
+    file: "index.html", from: "    lastSaveError=e; return false;\n  }\n}", to: "    lastSaveError=e; return true;\n  }\n}" },
   { name: "スクリプト読み込み関数を消す", guards: "呼んでいる関数が実在するか",
     file: "index.html", from: "function loadScript(src){", to: "function loadScript_REMOVED(src){" },
   { name: "保存の成否が出る前に高解像度を解放する", guards: "記録確定時にだけ解放",
@@ -1197,6 +1197,12 @@ const MUTATIONS = [
     file: "index.html",
     from: "    state.calcHistory=(state.calcHistory||[]).filter(h=>Core.normalizeCountry(h&&h.country)!==c);",
     to: "    state.calcHistory=[];" },
+
+
+  { name: "容量超過でも古い移行控えを解放しない", guards: "写真記録の容量不足を旧控え解放で救済",
+    file: "index.html",
+    from: '        if(typeof localStorage.removeItem==="function") localStorage.removeItem(MIGRATION_BACKUP_KEY);',
+    to: '        /* obsolete migration backup kept */' },
 
 ];
 
