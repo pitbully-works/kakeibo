@@ -17,6 +17,6 @@ test("バックアップ復元時は電卓履歴も同じバックアップへ�
  assert.match(b,/state\.recordCalcHistory = backupRecordCalcHistory/);
 });
 test("旧バックアップに履歴が無ければ空として扱う",()=>{
- assert.match(src,/function backupCalcHistory\(v\)[\s\S]{0,100}Array\.isArray\(v\)\?v:\[\]/);
- assert.match(src,/function backupRecordCalcHistory\(v\)[\s\S]{0,100}Array\.isArray\(v\)\?v:\[\]/);
+ assert.match(src,/function backupCalcHistory\(v\)[\s\S]*?Array\.isArray\(v\)\?v:\[\]/);
+ assert.match(src,/function backupRecordCalcHistory\(v, txList\)[\s\S]*?Array\.isArray\(v\)\?v:\[\]/);
 });

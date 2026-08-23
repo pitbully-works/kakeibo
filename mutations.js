@@ -1276,8 +1276,19 @@ const MUTATIONS = [
 
   { name: "バックアップ復元で古い電卓履歴を残す", guards: "履歴も同じバックアップへ置換",
     file: "index.html",
-    from: "    state.calcHistory = backupCalcHistory(rawBackup && rawBackup.calcHistory);\n    state.recordCalcHistory = backupRecordCalcHistory(rawBackup && rawBackup.recordCalcHistory);",
+    from: "    state.calcHistory = backupCalcHistory(rawBackup && rawBackup.calcHistory);\n    state.recordCalcHistory = backupRecordCalcHistory(rawBackup && rawBackup.recordCalcHistory, restored.tx);",
     to: "    /* calculator histories left unchanged */" },
+
+
+  { name: "バックアップ関数電卓履歴を無制限に復元する", guards: "各国20件上限",
+    file: "index.html",
+    from: "    out.push(...normalized.filter(h=>h.country===c).slice(0,20));",
+    to: "    out.push(...normalized.filter(h=>h.country===c));" },
+
+  { name: "存在しない記録への電卓履歴リンクを復元する", guards: "txIdリンク整合性",
+    file: "index.html",
+    from: "    if(!linked || Core.normalizeCountry(h.country)!==linked.country) return null;",
+    to: "    if(false && (!linked || Core.normalizeCountry(h.country)!==linked.country)) return null;" },
 
 ];
 

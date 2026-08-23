@@ -1231,5 +1231,11 @@
   ],
   "バックアップ復元で古い電卓履歴を残す": [
     "backup_history_integrity_test.js"
+  ],
+  "バックアップ関数電卓履歴を無制限に復元する": [
+    "backup_history_link_safety_test.js"
+  ],
+  "存在しない記録への電卓履歴リンクを復元する": [
+    "backup_history_link_safety_test.js"
   ]
 }

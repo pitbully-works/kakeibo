@@ -3072,23 +3072,39 @@ function exportBackup(){
 }
 
 function backupCalcHistory(v){
-  return (Array.isArray(v)?v:[]).map(h=>{
+  const normalized=(Array.isArray(v)?v:[]).map(h=>{
     if(!h||typeof h!=="object") return null;
     const expr=String(h.expr==null?"":h.expr).slice(0,320), value=Number(h.value);
     if(!expr||!Number.isFinite(value)) return null;
     return {expr,value,country:h.country?Core.normalizeCountry(h.country):"JP"};
   }).filter(Boolean);
-}
-function backupRecordCalcHistory(v){
-  const src=Array.isArray(v)?v:[];
-  const normalized=src.filter(h=>h&&typeof h==="object").map(h=>({
-    id:String(h.id||uid()), txId:String(h.txId||""), expr:String(h.expr||"").slice(0,120),
-    result:String(h.result||"").slice(0,40), cat:String(h.cat||"food").slice(0,30),
-    type:h.type==="income"?"income":"expense", country:Core.normalizeCountry(h.country),
-    date:Core.validateDateString(h.date)?h.date:todayISO()
-  })).filter(h=>h.expr&&h.result);
   const out=[];
-  for(const c of ["JP","US","GB","CA","AU"]) out.push(...normalized.filter(h=>h.country===c).slice(-50));
+  for(const c of ["JP","US","GB","CA","AU"]){
+    out.push(...normalized.filter(h=>h.country===c).slice(0,20));
+  }
+  return out;
+}
+function backupRecordCalcHistory(v, txList){
+  const src=Array.isArray(v)?v:[];
+  const txById={};
+  (Array.isArray(txList)?txList:[]).forEach(t=>{
+    if(t&&t.id) txById[String(t.id)]={country:Core.normalizeCountry(t.country),type:t.type,cat:t.cat,date:t.date};
+  });
+  const normalized=src.filter(h=>h&&typeof h==="object").map(h=>{
+    const txId=String(h.txId||"");
+    const linked=txById[txId];
+    if(!linked || Core.normalizeCountry(h.country)!==linked.country) return null;
+    return {
+      id:String(h.id||uid()), txId, expr:String(h.expr||"").slice(0,120),
+      result:String(h.result||"").slice(0,40), cat:linked.cat||"food",
+      type:linked.type==="income"?"income":"expense", country:linked.country,
+      date:Core.validateDateString(linked.date)?linked.date:todayISO()
+    };
+  }).filter(h=>h&&h.expr&&h.result);
+  const out=[];
+  for(const c of ["JP","US","GB","CA","AU"]){
+    out.push(...normalized.filter(h=>h.country===c).slice(-50));
+  }
   return out;
 }
 
@@ -3149,7 +3165,7 @@ function onBackupPicked(file){
     state.settings = Core.settingsForCountry(state.moneyProfiles, restoreCountry);
     state.tx = restored.tx;
     state.calcHistory = backupCalcHistory(rawBackup && rawBackup.calcHistory);
-    state.recordCalcHistory = backupRecordCalcHistory(rawBackup && rawBackup.recordCalcHistory);
+    state.recordCalcHistory = backupRecordCalcHistory(rawBackup && rawBackup.recordCalcHistory, restored.tx);
     // 旧テスト／旧復元仕様との互換。直後に国別領域から正しい国の値へ読み直す。
     state.health = restored.health || {};
     state.diary = restored.diary || {};
