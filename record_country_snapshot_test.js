@@ -29,6 +29,6 @@ test("カメラ復帰時に編集元が消えていたら復元しない",()=>{
   assert.match(e,/p && p\.mode==="edit" && !\(state\.tx\|\|\[\]\)\.some/);
   assert.match(e,/clearPending\(\);[\s\S]*?return false/);
   const r=src.slice(src.indexOf("function restorePending()"),src.indexOf("/* --- SW-REGISTRATION-START"));
-  assert.match(r,/p\.mode==="edit" && !\(state\.tx\|\|\[\]\)\.some/);
+  assert.match(r,/if\(p\.mode==="edit" && !\(state\.tx\|\|\[\]\)\.some/);
   assert.match(r,/clearPending\(\);[\s\S]*?pending edit was not restored[\s\S]*?return;/);
 });
