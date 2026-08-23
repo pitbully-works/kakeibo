@@ -394,3 +394,19 @@ test("package.json を前提にしていない", () => {
   assert.equal(files.includes("package.json"), false, "package.json ができている（テストの読み込み方が変わる）");
   assert.equal(/npm (test|ci|install)/.test(wf), false, "npm を前提にしている");
 });
+
+
+test("mutation の timeoutMs は早期検出と本検査の両方へ伝わる", () => {
+  const src = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");
+  assert.ok(src.includes("runTests(dir, o.quickFiles, { timeoutMs: o.timeoutMs })"));
+  assert.ok(src.includes("runTests(dir, o.testFiles, { timeoutMs: o.timeoutMs })"));
+});
+
+test("mutation の一時フォルダは runMutation の finally で必ず後始末する", () => {
+  const src = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");
+  const start = src.indexOf("async function runMutation");
+  const end = src.indexOf("async function runMutations", start);
+  const body = src.slice(start, end);
+  assert.ok(body.includes("finally"));
+  assert.ok(body.includes("removeWorkspace(dir)"));
+});

@@ -166,7 +166,7 @@ async function runMutation(m, opts) {
        落ちたテストは全テストにも含まれているので、
        全部走らせたときの判定と結果は同じになる（甘くならない）。 */
     if (Array.isArray(o.quickFiles) && o.quickFiles.length) {
-      const quick = await runTests(dir, o.quickFiles);
+      const quick = await runTests(dir, o.quickFiles, { timeoutMs: o.timeoutMs });
       if (quick.executionError) {
         return { status: "実行エラー", failedCount: null, detectedBy: [],
           note: quick.executionError, checkedBy: "早期検出（" + o.quickFiles.join(" / ") + "）" };
@@ -183,7 +183,7 @@ async function runMutation(m, opts) {
 
     /* ② 早く落ちなかったときだけ、指定のテスト（無指定なら全テスト）で確かめる。
        「見逃し」と判定するのは、必ずこちらを通ったときだけ。 */
-    const res = await runTests(dir, o.testFiles);
+    const res = await runTests(dir, o.testFiles, { timeoutMs: o.timeoutMs });
     if (res.executionError) {
       return { status: "実行エラー", failedCount: null, detectedBy: [],
         note: res.executionError, checkedBy: Array.isArray(o.testFiles) && o.testFiles.length
