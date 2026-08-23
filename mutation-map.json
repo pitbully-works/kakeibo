@@ -1252,5 +1252,17 @@
   ],
   "国別個人記録で継承プロパティを許す": [
     "personal_profiles_own_property_test.js"
+  ],
+  "国切替前の個人記録同期で現在国の正規化を外す": [
+    "personal_profile_switch_integrity_test.js"
+  ],
+  "国切替後の個人記録読込で指定国の正規化を外す": [
+    "personal_profile_switch_integrity_test.js"
+  ],
+  "国切替後の個人記録で未作成国にも現在データを使う": [
+    "personal_profile_switch_integrity_test.js"
+  ],
+  "国切替後の個人記録でpulseを切り替えない": [
+    "personal_profile_switch_integrity_test.js"
   ]
 }

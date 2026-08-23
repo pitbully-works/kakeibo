@@ -1320,6 +1320,27 @@ const MUTATIONS = [
     from: "      if(Object.prototype.hasOwnProperty.call(v,c) && v[c] && typeof v[c]===\"object\" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);",
     to: "      if(v[c] && typeof v[c]===\"object\" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);" },
 
+
+  { name: "国切替前の個人記録同期で現在国の正規化を外す", guards: "personal profile切替前同期",
+    file: "index.html",
+    from: "  const c=Core.normalizeCountry(state.settings.country);\n  state.personalProfiles=normalizePersonalProfiles(state.personalProfiles);",
+    to: "  const c=state.settings.country;\n  state.personalProfiles=normalizePersonalProfiles(state.personalProfiles);" },
+
+  { name: "国切替後の個人記録読込で指定国の正規化を外す", guards: "personal profile切替後読込",
+    file: "index.html",
+    from: "  const c=Core.normalizeCountry(country);\n  state.personalProfiles=normalizePersonalProfiles(state.personalProfiles);",
+    to: "  const c=country;\n  state.personalProfiles=normalizePersonalProfiles(state.personalProfiles);" },
+
+  { name: "国切替後の個人記録で未作成国にも現在データを使う", guards: "未作成国personal profile分離",
+    file: "index.html",
+    from: "  const d=state.personalProfiles[c] ? normalizePersonalData(state.personalProfiles[c]) : emptyPersonalData();",
+    to: "  const d=state.personalProfiles[c] ? normalizePersonalData(state.personalProfiles[c]) : normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});" },
+
+  { name: "国切替後の個人記録でpulseを切り替えない", guards: "personal profile 4領域切替",
+    file: "index.html",
+    from: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;",
+    to: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans;" },
+
 ];
 
 module.exports = MUTATIONS;
