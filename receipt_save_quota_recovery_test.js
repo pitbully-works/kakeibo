@@ -19,3 +19,11 @@ test("移行未完了のときは安全控えを勝手に消さない",()=>{
   const block=src.slice(start,start+2600);
   assert.match(block,/!migrationDone && Number\(state&&state\.dataVersion\|\|0\)>=Core\.DATA_VERSION/);
 });
+
+test("再試行も失敗した保存は成功扱いにしない",()=>{
+  const start=src.indexOf("function save(){");
+  const end=src.indexOf("\nfunction ", start+1);
+  const block=src.slice(start, end>start?end:start+4000);
+  assert.match(block,/catch\(e2\)\{\s*lastSaveError=e2;\s*return false;\s*\}/);
+  assert.match(block,/lastSaveError=e;\s*return false;\s*\n\s*\}/);
+});

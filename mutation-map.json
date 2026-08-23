@@ -346,7 +346,8 @@
     "storage.test.js"
   ],
   "保存の失敗を握りつぶす": [
-    "hires.test.js"
+    "hires.test.js",
+    "receipt_save_quota_recovery_test.js"
   ],
   "スクリプト読み込み関数を消す": [
     "wiring_test.js"
