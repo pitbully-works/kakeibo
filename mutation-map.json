@@ -1213,5 +1213,11 @@
   ],
   "カメラ復帰で毎月固定ONを失う": [
     "camera_pending_recurring_test.js"
+  ],
+  "カメラ退避から電卓状態を外す": [
+    "camera_pending_integrity2_test.js"
+  ],
+  "一時保存の書込み確認を存在確認だけに戻す": [
+    "camera_pending_integrity2_test.js"
   ]
 }

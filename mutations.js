@@ -1245,8 +1245,19 @@ const MUTATIONS = [
 
   { name: "カメラ復帰で毎月固定ONを失う", guards: "撮影をまたいでも毎月固定を保持",
     file: "index.html",
-    from: 'const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true};',
-    to: 'const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:false};' },
+    from: 'const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true,calc:st.calc||null};',
+    to: 'const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:false,calc:st.calc||null};' },
+
+
+  { name: "カメラ退避から電卓状態を外す", guards: "計算途中も撮影後に復元",
+    file: "index.html",
+    from: 'recurring:st.type==="expense" && st.recurring===true,calc:st.calc||null',
+    to: 'recurring:st.type==="expense" && st.recurring===true,calc:null' },
+
+  { name: "一時保存の書込み確認を存在確認だけに戻す", guards: "保存内容の一致まで確認",
+    file: "index.html",
+    from: 'return sessionStorage.getItem(PENDING_KEY)===encoded;',
+    to: 'return sessionStorage.getItem(PENDING_KEY)!==null;' },
 
 ];
 

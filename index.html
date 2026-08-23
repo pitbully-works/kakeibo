@@ -2443,9 +2443,10 @@ const PENDING_KEY="kakeibo:v1:pending";
 function savePending(){
   try{
     const st=sheetState; if(!st) return false;
-    const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true};
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify(light));
-    return sessionStorage.getItem(PENDING_KEY)!==null;
+    const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true,calc:st.calc||null};
+    const encoded=JSON.stringify(light);
+    sessionStorage.setItem(PENDING_KEY, encoded);
+    return sessionStorage.getItem(PENDING_KEY)===encoded;
   }catch(e){ return false; }
 }
 function loadPending(){
@@ -2466,7 +2467,7 @@ function ensureSheetForPhoto(){
   sheetState = p
     ? {mode:p.mode||"add", id:p.id||undefined, type:p.type||"expense", amount:p.amount||"",
        cat:p.cat||"food", date:p.date||todayISO(), memo:p.memo||"", photo:null,
-       recurring:p.type==="expense" && p.recurring===true}
+       recurring:p.type==="expense" && p.recurring===true, calc:p.calc||Core.calcFrom(p.amount||"", sheetCalcDec())}
     : {mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null};
   showSheet(true);
 }
@@ -4748,6 +4749,7 @@ render();
   sheetState={mode:p.mode||"add", id:p.id||undefined, type:p.type||"expense", amount:p.amount||"",
               cat:p.cat||"food", date:p.date||todayISO(), memo:p.memo||"", photo:null,
               recurring:p.type==="expense" && p.recurring===true,
+              calc:p.calc||Core.calcFrom(p.amount||"", sheetCalcDec()),
               ocrNote:L("カメラから戻りました。もう一度「レシートを撮る」を押してください","Returned from the camera. Tap Take receipt photo again")};
   renderSheet(); showSheet(true);
 })();

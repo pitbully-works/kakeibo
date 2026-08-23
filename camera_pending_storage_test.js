@@ -5,7 +5,7 @@ const src=fs.readFileSync("index.html","utf8");
 
 test("カメラ前の一時保存は成功可否を返す",()=>{
   const b=src.slice(src.indexOf("function savePending()"),src.indexOf("function loadPending()"));
-  assert.match(b,/return sessionStorage\.getItem\(PENDING_KEY\)!==null/);
+  assert.match(b,/return sessionStorage\.getItem\(PENDING_KEY\)===encoded/);
   assert.match(b,/catch\(e\)\{ return false; \}/);
 });
 test("一時保存に失敗したらカメラを開かない",()=>{
