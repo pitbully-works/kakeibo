@@ -1298,8 +1298,8 @@ const MUTATIONS = [
 
   { name: "各国個人記録の配列を許す", guards: "各国personal profile形検証",
     file: "index.html",
-    from: "      if(v[c] && typeof v[c]===\"object\" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);",
-    to: "      if(v[c] && typeof v[c]===\"object\") out[c]=normalizePersonalData(v[c]);" },
+    from: "      if(Object.prototype.hasOwnProperty.call(v,c) && v[c] && typeof v[c]===\"object\" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);",
+    to: "      if(Object.prototype.hasOwnProperty.call(v,c) && v[c] && typeof v[c]===\"object\") out[c]=normalizePersonalData(v[c]);" },
 
 
   { name: "1か国分の個人記録で配列を許す", guards: "personalData形検証",
@@ -1313,6 +1313,12 @@ const MUTATIONS = [
     from: "  return { health:{}, diary:{}, plans:{}, pulse:[] };",
     to: "  return { health:{}, diary:{}, plans:{}, pulse:sharedPulseForMutation };",
     prelude: "var sharedPulseForMutation=[];\n" },
+
+
+  { name: "国別個人記録で継承プロパティを許す", guards: "国別個人記録own property",
+    file: "index.html",
+    from: "      if(Object.prototype.hasOwnProperty.call(v,c) && v[c] && typeof v[c]===\"object\" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);",
+    to: "      if(v[c] && typeof v[c]===\"object\" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);" },
 
 ];
 

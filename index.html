@@ -649,7 +649,7 @@ function normalizePersonalProfiles(v){
      加工・破損したバックアップから配列を渡されても国別データとして扱わない。 */
   if(v && typeof v==="object" && !Array.isArray(v)){
     Core.SUPPORTED_COUNTRIES.forEach(c=>{
-      if(v[c] && typeof v[c]==="object" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);
+      if(Object.prototype.hasOwnProperty.call(v,c) && v[c] && typeof v[c]==="object" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);
     });
   }
   return out;

@@ -1249,5 +1249,8 @@
   ],
   "空の個人記録でpulse配列を国間共有する": [
     "empty_personal_data_isolation_test.js"
+  ],
+  "国別個人記録で継承プロパティを許す": [
+    "personal_profiles_own_property_test.js"
   ]
 }
