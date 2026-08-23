@@ -1124,5 +1124,11 @@
   ],
   "欠けた海外プロファイルをJPとして補完する": [
     "backup_country_profile_restore_test.js"
+  ],
+  "ライフプラン連携の重複IDをそのまま残す": [
+    "lp_id_integrity_test.js"
+  ],
+  "新しい連携IDの衝突を確認しない": [
+    "lp_id_integrity_test.js"
   ]
 }

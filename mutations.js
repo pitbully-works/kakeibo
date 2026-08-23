@@ -1084,6 +1084,16 @@ const MUTATIONS = [
     from: "      backupProfiles[backupSettings.country] = profileSettings(src.settings, backupSettings.country);",
     to: '      backupProfiles.JP = profileSettings(src.settings, "JP");' },
 
+  /* ---- ライフプラン連携：行IDの一意性 ---- */
+  { name: "ライフプラン連携の重複IDをそのまま残す", guards: "同じ種類の行IDは一意",
+    file: "core.js",
+    from: "        if (id && !seen[id]) { seen[id] = true; return r; }",
+    to: "        if (id) { seen[id] = true; return r; }" },
+  { name: "新しい連携IDの衝突を確認しない", guards: "生成IDも既存IDと重複しない",
+    file: "core.js",
+    from: "        do { id = lpId(gen()); } while (!id || seen[id]);",
+    to: "        id = lpId(gen());" },
+
 ];
 
 module.exports = MUTATIONS;

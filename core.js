@@ -1465,8 +1465,15 @@
     const gen = typeof makeId === "function" ? makeId : lpNewId;
     const a = normalizeLifePlanAssets(assets);
     const fix = function (list) {
+      const seen = {};
       return list.map(function (r) {
-        return r.id ? r : Object.assign({}, r, { id: lpId(gen()) });
+        let id = lpId(r && r.id);
+        /* 同じ種類の中でIDが重複すると、ライフプラン側が別の2行を同じ行として
+           照合する可能性がある。最初のIDは保ち、2件目以降だけ新しいIDへ振り直す。 */
+        if (id && !seen[id]) { seen[id] = true; return r; }
+        do { id = lpId(gen()); } while (!id || seen[id]);
+        seen[id] = true;
+        return Object.assign({}, r, { id: id });
       });
     };
     a.banks = fix(a.banks);
