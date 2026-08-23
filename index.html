@@ -2876,8 +2876,9 @@ async function saveTx(){
     return;
   }
 
-  /* 入りきらなかった。写真だけ落として、記録そのものは必ず残す。 */
-  if(photo){
+  /* 入りきらなかった。容量不足のときだけ写真を外して再保存する。
+     private browsing 等の保存不能まで「写真の容量オーバー」と誤案内しない。 */
+  if(photo && isQuotaError(lastSaveError)){
     const t2 = st.mode==="edit" ? state.tx.find(x=>x.id===st.id) : state.tx[state.tx.length-1];
     if(t2) t2.photo=null;
     if(save()){

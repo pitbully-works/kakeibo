@@ -1236,6 +1236,12 @@ const MUTATIONS = [
     from: '  if(st.mode==="edit" && editIdx<0){',
     to: '  if(false && st.mode==="edit" && editIdx<0){' },
 
+
+  { name: "保存不能でも写真容量不足として再試行する", guards: "写真フォールバック理由を容量不足に限定",
+    file: "index.html",
+    from: '  if(photo && isQuotaError(lastSaveError)){',
+    to: '  if(photo){' },
+
 ];
 
 module.exports = MUTATIONS;

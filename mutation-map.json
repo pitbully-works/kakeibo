@@ -1207,5 +1207,8 @@
   ],
   "消えた記録の編集をそのまま続ける": [
     "stale_edit_guard_test.js"
+  ],
+  "保存不能でも写真容量不足として再試行する": [
+    "photo_fallback_reason_test.js"
   ]
 }
