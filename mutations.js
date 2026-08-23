@@ -1389,6 +1389,11 @@ const MUTATIONS = [
     from: "    if(!hasPersonalProfile) personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});",
     to: "    if(false && !hasPersonalProfile) personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});" },
 
+  { name: "バックアップ復元の空personalProfilesから個人記録を救出しない", guards: "復元時の旧top-level個人記録JP救出",
+    file: "index.html",
+    from: "    if(!hasRestoredPersonalProfile) {",
+    to: "    if(false && !hasRestoredPersonalProfile) {" },
+
 ];
 
 module.exports = MUTATIONS;

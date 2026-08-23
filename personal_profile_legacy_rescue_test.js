@@ -29,3 +29,25 @@ test("既存の国別personalProfilesがある場合はtop-levelで上書きし�
   const rescue=b.indexOf("if(!hasPersonalProfile) personalProfiles.JP=");
   assert.ok(check>=0 && rescue>check,"既存プロファイル確認後にだけ救出する必要がある");
 });
+
+
+function restoreBlock(){
+  const p=src.indexOf("function onBackupPicked(file){");
+  assert.ok(p>=0,"onBackupPicked が見つからない");
+  const e=src.indexOf("function shareText",p);
+  assert.ok(e>p,"バックアップ復元処理の終端が見つからない");
+  return src.slice(p,e);
+}
+
+test("バックアップ復元でも空personalProfilesなら旧top-level個人記録をJPへ救出する",()=>{
+  const b=restoreBlock();
+  assert.match(b,/const hasRestoredPersonalProfile = Core\.SUPPORTED_COUNTRIES\.some\(c=>Object\.prototype\.hasOwnProperty\.call\(state\.personalProfiles,c\)\)/);
+  assert.match(b,/if\(!hasRestoredPersonalProfile\) \{/);
+  assert.match(b,/state\.personalProfiles\.JP = normalizePersonalData\(\{health:restored\.health,diary:restored\.diary,plans:restored\.plans,pulse:restored\.pulse\}\)/);
+});
+
+test("バックアップ復元でpersonalProfilesが配列でも存在判定だけで旧記録を捨てない",()=>{
+  const b=restoreBlock();
+  assert.doesNotMatch(b,/if\(!rawBackup \|\| !rawBackup\.personalProfiles \|\| typeof rawBackup\.personalProfiles!=="object"\)/);
+  assert.match(b,/state\.personalProfiles = normalizePersonalProfiles\(rawBackup && rawBackup\.personalProfiles\)/);
+});

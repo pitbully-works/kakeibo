@@ -3190,7 +3190,10 @@ function onBackupPicked(file){
        旧バックアップは health/diary/plans/pulse を日本の記録として復元する。
        ここで他国データを推測・コピー・削除しない。 */
     state.personalProfiles = normalizePersonalProfiles(rawBackup && rawBackup.personalProfiles);
-    if(!rawBackup || !rawBackup.personalProfiles || typeof rawBackup.personalProfiles!=="object") {
+    /* 途中版や壊れたバックアップでは personalProfiles が {} / [] の形だけ残り、
+       旧top-levelの個人記録があることがある。国別データが1件も無い場合に限りJPへ救出する。 */
+    const hasRestoredPersonalProfile = Core.SUPPORTED_COUNTRIES.some(c=>Object.prototype.hasOwnProperty.call(state.personalProfiles,c));
+    if(!hasRestoredPersonalProfile) {
       state.personalProfiles.JP = normalizePersonalData({health:restored.health,diary:restored.diary,plans:restored.plans,pulse:restored.pulse});
     }
     loadPersonalProfile(state.settings.country);
