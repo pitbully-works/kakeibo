@@ -1218,6 +1218,12 @@ const MUTATIONS = [
     from: '       <button class="photobtn" data-act="rm-photo">${L("写真だけ外す","Remove photo")}</button>',
     to: '' },
 
+
+  { name: "レシート撮影キャンセル時に記録画面へ戻さない", guards: "撮影キャンセルでも入力を保持する",
+    file: "index.html",
+    from: '    ensureSheetForPhoto();\n    clearPending();\n    setStatus(L("撮影をキャンセルしました。入力内容はそのままです","Photo capture cancelled. Your entries are unchanged"));\n    renderSheet(); showSheet(true);',
+    to: '    clearPending();' },
+
 ];
 
 module.exports = MUTATIONS;

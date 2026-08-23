@@ -4691,7 +4691,17 @@ function handleAct(a,e){
 if(typeof window!=="undefined" && typeof window.addEventListener==="function"){
   window.addEventListener("pagehide",()=>{ if(pRunning || pStream || pGen!==pStopGen) pulseStopAll(); });
 }
-$("camInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) onPhotoPicked(f); });
+$("camInput").addEventListener("change",e=>{
+  const f=e.target.files&&e.target.files[0];
+  if(f) onPhotoPicked(f);
+  else{
+    /* iPhoneで撮影をキャンセルした時も、撮影前に退避した記録内容を残したまま戻す。 */
+    ensureSheetForPhoto();
+    clearPending();
+    setStatus(L("撮影をキャンセルしました。入力内容はそのままです","Photo capture cancelled. Your entries are unchanged"));
+    renderSheet(); showSheet(true);
+  }
+});
 $("backupInput").addEventListener("change",e=>{ onBackupPicked(e.target.files&&e.target.files[0]); });
 $("diaryPhotoInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return;
   const tEl=$("d-text"); const keepText=tEl?tEl.value:"";   // 入力中の本文を失わない

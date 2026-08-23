@@ -1198,5 +1198,8 @@
   ],
   "レシート写真だけ外すボタンを隠す": [
     "receipt_remove_photo_button_test.js"
+  ],
+  "レシート撮影キャンセル時に記録画面へ戻さない": [
+    "receipt_camera_cancel_test.js"
   ]
 }
