@@ -146,6 +146,52 @@ test("早期検出は「検出」しか決められない（見逃しの判定�
 });
 
 /* ---------- 対応表 ---------- */
+test("変異の定義は、必須項目が揃い名前も重複していない", () => {
+  const list = require("./mutations.js");
+  const names = [];
+  const bad = [];
+  list.forEach((m, i) => {
+    if (!m || typeof m !== "object" || typeof m.name !== "string" || !m.name.trim()
+      || typeof m.guards !== "string" || !m.guards.trim()
+      || typeof m.file !== "string" || !m.file.trim()
+      || typeof m.from !== "string" || !m.from.length
+      || typeof m.to !== "string" || m.from === m.to) bad.push(i + 1);
+    else names.push(m.name);
+  });
+  const dup = [...new Set(names.filter((name, i) => names.indexOf(name) !== i))];
+  assert.deepEqual(bad, [], "必須項目が壊れた変異がある: " + bad.join(", "));
+  assert.deepEqual(dup, [], "同じ名前の変異がある（対応表が衝突する）: " + dup.join(" / "));
+});
+
+test("変異が指すソースファイルは、すべて実在する", () => {
+  const missing = [...new Set(require("./mutations.js").map((m) => m.file)
+    .filter((f) => !fs.existsSync(path.join(__dirname, f))))];
+  assert.deepEqual(missing, [], "存在しないソースを指す変異がある: " + missing.join(" / "));
+});
+
+test("対応表の各変異に、同じテストファイルを二重登録していない", () => {
+  const map = JSON.parse(fs.readFileSync(path.join(__dirname, "mutation-map.json"), "utf8"));
+  const dup = [];
+  Object.entries(map).forEach(([name, tests]) => {
+    if (!Array.isArray(tests)) return;
+    const repeated = [...new Set(tests.filter((f, i) => tests.indexOf(f) !== i))];
+    if (repeated.length) dup.push(name + " → " + repeated.join(", "));
+  });
+  assert.deepEqual(dup, [], "対応表に同じテストの二重登録がある: " + dup.join(" / "));
+});
+
+test("対応表が指すファイルは、実行対象のテスト名だけ", () => {
+  const map = JSON.parse(fs.readFileSync(path.join(__dirname, "mutation-map.json"), "utf8"));
+  const bad = [];
+  Object.entries(map).forEach(([name, tests]) => {
+    if (!Array.isArray(tests)) { bad.push(name + " → 配列ではない"); return; }
+    tests.forEach((f) => {
+      if (!/(?:_test|\.test)\.js$/i.test(f)) bad.push(name + " → " + f);
+    });
+  });
+  assert.deepEqual(bad, [], "対応表にテスト以外のファイルが混じっている: " + bad.join(" / "));
+});
+
 test("対応表は、実在するテストファイルだけを指している", () => {
   const mapPath = path.join(__dirname, "mutation-map.json");
   if (!fs.existsSync(mapPath)) return; // 無くても動く（そのとき高速検査は全テストで試す）

@@ -132,9 +132,12 @@ function preflight() {
   const pre = preflight();
   if (pre.ambiguous.length) {
     /* 1か所に定まらない変異は、狙った行ではなく別の行を壊してしまう。
-       検出はされるので緑にはなるが、見張っている中身が違う。 */
+       通常テストを迂回してこの runner だけ実行した場合も安全側で止める。 */
+    console.error(`::error::当たり先が1か所に定まらない変異が ${pre.ambiguous.length} 件あります。`
+      + "狙った行とは別の行を壊す可能性があるため、検査を中止します。");
     pre.ambiguous.forEach((x) =>
-      console.log(`::warning::変異「${x.m.name}」は ${x.m.file} の ${x.hits} か所に当たります（狙った行を壊せていない可能性）`));
+      console.error(`  複数箇所: ${x.m.name} （${x.m.file}／${x.hits}か所）`));
+    process.exit(1);
   }
   if (pre.dead.length) {
     console.error(`::error::変異の当たり先が見つかりません（対象なし ${pre.dead.length} 件）。`
