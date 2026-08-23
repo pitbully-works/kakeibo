@@ -2416,7 +2416,7 @@ function onPhotoPicked(file){
       sheetState.photo=shrunk;
       sheetState.photoHi=hires||shrunk;   // メモリ内だけ。localStorageには入れない
       sheetState.crop=Object.assign({},Core.CROP_DEFAULT);
-      sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";
+      sheetState.ocrNote=L("枠を合計に合わせて、読み取りボタンを押してください","Move the box over the total, then tap Read");
       sheetState.ocrChoices=null;
       clearPending();
       renderSheet(); showSheet(true);
@@ -4437,7 +4437,7 @@ document.addEventListener("click",e=>{
     sheetState.amount=Core.minorToMajorText(pick.dataset.pick, sheetDec());
     sheetState.calc=Core.calcFrom(sheetState.amount, sheetCalcDec());
     sheetState.ocrChoices=null;
-    sheetState.ocrNote="金額を入れました。内容を確かめて「記録する」を押してください";
+    sheetState.ocrNote=L("金額を入れました。内容を確かめて「記録する」を押してください","Amount entered. Check the details, then tap Record");
     renderSheet(); return; }
   const act=e.target.closest("[data-act]"); if(act){ handleAct(act.dataset.act,e); return; }
   const edit=e.target.closest("[data-edit]"); if(edit){ openRecord(edit.dataset.edit); return; }
@@ -4486,7 +4486,7 @@ function handleAct(a,e){
   if(a==="shot-total"){ readSheetInputs(); savePending(); $("camInput").value=""; $("camInput").click(); return; }
   if(a==="read-crop"){ readSheetInputs(); return readCrop(); }
   if(a==="manual-amount"){ if(sheetState){ readSheetInputs(); sheetState.ocrChoices=null;
-      sheetState.ocrNote="金額を入れてください"; renderSheet(); focusField("s-amt"); } return; }
+      sheetState.ocrNote=L("金額を入れてください","Enter the amount"); renderSheet(); focusField("s-amt"); } return; }
   if(a==="calc"){
     if(!sheetState) return;
     const el=e&&e.target&&e.target.closest("[data-key]");
@@ -4617,7 +4617,7 @@ render();
   const p=loadPending(); if(!p) return;
   sheetState={mode:p.mode||"add", id:p.id||undefined, type:p.type||"expense", amount:p.amount||"",
               cat:p.cat||"food", date:p.date||todayISO(), memo:p.memo||"", photo:null,
-              ocrNote:"カメラから戻りました。もう一度「レシートを撮る」を押してください"};
+              ocrNote:L("カメラから戻りました。もう一度「レシートを撮る」を押してください","Returned from the camera. Tap Take receipt photo again")};
   renderSheet(); showSheet(true);
 })();
 /* --- SW-REGISTRATION-START ---

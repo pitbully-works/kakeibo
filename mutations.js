@@ -313,8 +313,8 @@ const MUTATIONS = [
     file: "index.html", from: "  else state.tx.push(rec);",
     to: "  else { rec.photoHi=st.photoHi; state.tx.push(rec); }" },
   { name: "候補をタップしたら保存する", guards: "タップだけでは保存しない",
-    file: "index.html", from: "sheetState.ocrChoices=null;\n    sheetState.ocrNote=\"金額を入れました。",
-    to: "sheetState.ocrChoices=null; save();\n    sheetState.ocrNote=\"金額を入れました。" },
+    file: "index.html", from: "sheetState.ocrChoices=null;\n    sheetState.ocrNote=L(\"金額を入れました。",
+    to: "sheetState.ocrChoices=null; save();\n    sheetState.ocrNote=L(\"金額を入れました。" },
   { name: "保存前の写真縮小をやめる", guards: "容量オーバー対策",
     file: "index.html", from: "if(photo) photo = await resizeDataUrl(photo, Core.PHOTO_STORE_MAX, 0.6);", to: "" },
   { name: "保存の失敗を握りつぶす", guards: "保存の成否判定",
@@ -1121,6 +1121,12 @@ const MUTATIONS = [
     file: "index.html",
     from: '  const ok=confirm(L(\n    `先月（${plan.from.replace("-","年")}月）の毎月固定を、今月へ入れます。',
     to: '  const ok=confirm((\n    `先月（${plan.from.replace("-","年")}月）の毎月固定を、今月へ入れます。' },
+
+  /* ---- レシート画面の案内文の多言語化 ---- */
+  { name: "レシート枠合わせ案内を日本語固定に戻す", guards: "海外レシート案内は英語",
+    file: "index.html",
+    from: 'sheetState.ocrNote=L("枠を合計に合わせて、読み取りボタンを押してください","Move the box over the total, then tap Read");',
+    to: 'sheetState.ocrNote="枠を合計に合わせて、読み取りボタンを押してください";' },
 
 ];
 
