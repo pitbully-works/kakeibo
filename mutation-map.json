@@ -1225,5 +1225,11 @@
   ],
   "消えた編集元をカメラ復帰で復元する": [
     "record_country_snapshot_test.js"
+  ],
+  "バックアップ前の国別設定同期を外す": [
+    "backup_history_integrity_test.js"
+  ],
+  "バックアップ復元で古い電卓履歴を残す": [
+    "backup_history_integrity_test.js"
   ]
 }

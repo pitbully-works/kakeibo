@@ -1163,8 +1163,8 @@ const MUTATIONS = [
   /* ---- バックアップ：現在国の個人記録を先に同期 ---- */
   { name: "バックアップ前の個人記録同期を外す", guards: "最新の現在国個人記録を国別バックアップへ入れる",
     file: "index.html",
-    from: "function exportBackup(){\n  /* 現在国の top-level 個人記録を先に国別正本へ同期する。",
-    to: "function exportBackup(){\n  syncPersonalProfile = function(){};\n  /* 現在国の top-level 個人記録を先に国別正本へ同期する。" },
+    from: "function exportBackup(){\n  /* バックアップは、その瞬間に画面で使っている現在国の設定・個人記録を",
+    to: "function exportBackup(){\n  syncPersonalProfile = function(){};\n  /* バックアップは、その瞬間に画面で使っている現在国の設定・個人記録を" },
 
   /* ---- 記録電卓履歴：国別分離 ---- */
   { name: "記録電卓履歴を国で絞らない", guards: "記録電卓履歴は国別",
@@ -1269,6 +1269,15 @@ const MUTATIONS = [
     file: "index.html",
     from: '  if(p.mode==="edit" && !(state.tx||[]).some(t=>t&&t.id===p.id)){',
     to: '  if(false && p.mode==="edit" && !(state.tx||[]).some(t=>t&&t.id===p.id)){' },
+
+
+  { name: "バックアップ前の国別設定同期を外す", guards: "最新設定をバックアップへ入れる",
+    file: "index.html", from: "  syncMoneyProfile();\n  syncPersonalProfile();", to: "  syncPersonalProfile();" },
+
+  { name: "バックアップ復元で古い電卓履歴を残す", guards: "履歴も同じバックアップへ置換",
+    file: "index.html",
+    from: "    state.calcHistory = backupCalcHistory(rawBackup && rawBackup.calcHistory);\n    state.recordCalcHistory = backupRecordCalcHistory(rawBackup && rawBackup.recordCalcHistory);",
+    to: "    /* calculator histories left unchanged */" },
 
 ];
 

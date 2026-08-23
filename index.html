@@ -3056,17 +3056,40 @@ function purgePhotos(){
   render(); toast(L(`写真${n}枚を消しました（記録は残っています）`, `Deleted ${n} photos — the records are still there`));
 }
 function exportBackup(){
-  /* 現在国の top-level 個人記録を先に国別正本へ同期する。
-     保存直後でなくても、画面にある最新の health/diary/plans/pulse と
-     personalProfiles の内容がずれたままバックアップされないようにする。 */
+  /* バックアップは、その瞬間に画面で使っている現在国の設定・個人記録を
+     先に国別正本へ同期してから作る。 */
+  syncMoneyProfile();
   syncPersonalProfile();
   /* 国別の個人記録もバックアップへ含める。
      旧形式との互換のため、active country の health/diary/plans/pulse も
      Core.buildBackup がこれまで通り書き出す。 */
   const backup=Core.buildBackup(state);
   backup.personalProfiles=normalizePersonalProfiles(state.personalProfiles);
+  backup.calcHistory=JSON.parse(JSON.stringify(state.calcHistory||[]));
+  backup.recordCalcHistory=JSON.parse(JSON.stringify(state.recordCalcHistory||[]));
   saveFile(`kakeibo-backup-${todayISO()}.json`, JSON.stringify(backup, null, 2),
     "application/json", L("バックアップを書き出しました","Backup exported"));
+}
+
+function backupCalcHistory(v){
+  return (Array.isArray(v)?v:[]).map(h=>{
+    if(!h||typeof h!=="object") return null;
+    const expr=String(h.expr==null?"":h.expr).slice(0,320), value=Number(h.value);
+    if(!expr||!Number.isFinite(value)) return null;
+    return {expr,value,country:h.country?Core.normalizeCountry(h.country):"JP"};
+  }).filter(Boolean);
+}
+function backupRecordCalcHistory(v){
+  const src=Array.isArray(v)?v:[];
+  const normalized=src.filter(h=>h&&typeof h==="object").map(h=>({
+    id:String(h.id||uid()), txId:String(h.txId||""), expr:String(h.expr||"").slice(0,120),
+    result:String(h.result||"").slice(0,40), cat:String(h.cat||"food").slice(0,30),
+    type:h.type==="income"?"income":"expense", country:Core.normalizeCountry(h.country),
+    date:Core.validateDateString(h.date)?h.date:todayISO()
+  })).filter(h=>h.expr&&h.result);
+  const out=[];
+  for(const c of ["JP","US","GB","CA","AU"]) out.push(...normalized.filter(h=>h.country===c).slice(-50));
+  return out;
 }
 
 /* --- バックアップの読み込み（復元） --- */
@@ -3125,6 +3148,8 @@ function onBackupPicked(file){
     );
     state.settings = Core.settingsForCountry(state.moneyProfiles, restoreCountry);
     state.tx = restored.tx;
+    state.calcHistory = backupCalcHistory(rawBackup && rawBackup.calcHistory);
+    state.recordCalcHistory = backupRecordCalcHistory(rawBackup && rawBackup.recordCalcHistory);
     // 旧テスト／旧復元仕様との互換。直後に国別領域から正しい国の値へ読み直す。
     state.health = restored.health || {};
     state.diary = restored.diary || {};
