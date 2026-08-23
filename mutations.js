@@ -1307,6 +1307,13 @@ const MUTATIONS = [
     from: "  const src=(v && typeof v===\"object\" && !Array.isArray(v))?v:{};",
     to: "  const src=(v && typeof v===\"object\")?v:{};" },
 
+
+  { name: "空の個人記録でpulse配列を国間共有する", guards: "空個人記録の独立性",
+    file: "index.html",
+    from: "  return { health:{}, diary:{}, plans:{}, pulse:[] };",
+    to: "  return { health:{}, diary:{}, plans:{}, pulse:sharedPulseForMutation };",
+    prelude: "var sharedPulseForMutation=[];\n" },
+
 ];
 
 module.exports = MUTATIONS;

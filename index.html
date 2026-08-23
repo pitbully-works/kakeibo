@@ -633,7 +633,10 @@ function backupBeforeMigration(raw){
   }catch(e){ return false; }
 }
 
-function emptyPersonalData(){ return { health:{}, diary:{}, plans:{}, pulse:[] }; }
+function emptyPersonalData(){
+  /* 呼び出すたびに新しい入れ物を返す。国同士で配列・オブジェクト参照を共有しない。 */
+  return { health:{}, diary:{}, plans:{}, pulse:[] };
+}
 function normalizePersonalData(v){
   /* 配列も typeof === "object" なので明示的に除外する。
      個人記録1か国分は {health,diary,plans,pulse} のオブジェクトだけを受け付ける。 */
