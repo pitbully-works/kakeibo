@@ -1096,7 +1096,7 @@ function taskCard(){
   const plans=Core.todayPlans(state, today);
   const shown=plans.slice(0, Core.PLAN_SHOW_MAX);
   if(!tasks.length && !shown.length) return "";
-  const planRows=shown.map((p,i)=>`<button class="todo${i===0?" first":""}" data-act="plan-toggle" data-date="${today}" data-id="${p.id}">
+  const planRows=shown.map((p,i)=>`<button class="todo${i===0?" first":""}" data-act="plan-toggle" data-date="${today}" data-id="${escapeAttr(p.id)}">
       <span class="ti">☐</span>
       <span class="tm"><span class="t1">${p.time?`${p.time}　`:""}${escapeHtml(p.text)}</span><span class="t2">${T("home.todayPlan")}</span></span>
       <span class="tg">✓</span>
@@ -1194,7 +1194,7 @@ function monthPlanCard(){
     }
     const p=r.plan;
     html+=`<div class="prow${p.done?" done":""}">
-      <button class="pchk" data-act="plan-toggle" data-date="${r.date}" data-id="${p.id}" aria-label="済みにする">${p.done?"☑":"☐"}</button>
+      <button class="pchk" data-act="plan-toggle" data-date="${r.date}" data-id="${escapeAttr(p.id)}" aria-label="済みにする">${p.done?"☑":"☐"}</button>
       <span class="ptime mono">${p.time||"—"}</span>
       <button class="ptext mplink" data-act="cal-edit-plan" data-date="${r.date}">${escapeHtml(p.text)}</button>
     </div>`;
@@ -1393,7 +1393,7 @@ function renderSummary(){
       const dayTotal=items.filter(t=>t.type==="expense").reduce((a,t)=>a+Number(t.amount),0);
       const md=Core.formatMonthDay(date, state.settings);
       const rows=items.map(t=>{ const cat=catOf(t.type,t.cat); const cn=catN(t.type,t.cat);
-        return `<div class="tx" data-edit="${t.id}"><div class="ic">${t.type==="income"?"💴":cat.e}</div>
+        return `<div class="tx" data-edit="${escapeAttr(t.id)}"><div class="ic">${t.type==="income"?"💴":cat.e}</div>
           <div class="mid"><div class="t1">${escapeHtml(t.memo|| cn)}</div>
           <div class="t2">${t.type==="income"?T("sum.incomeTag"):""}${escapeHtml(cn)}${t.photo?" ・📷":""}${t.recurring?`<span class="tag fx">${T("sum.recurring")}</span>`:""}</div></div>
           <div class="amt ${t.type}">${t.type==="income"?"+":""}${yen(t.amount)}</div>
@@ -1716,9 +1716,9 @@ function renderCalendar(){
     const md=Core.formatMonthDay(calSelected, state.settings);
     const rows=[];
     dd.income.forEach(t=>{ const c=catOf("income",t.cat);
-      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||catN("income",t.cat))}</span><b class="mono inc">+${yen(t.amount)}</b></div>`); });
+      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${escapeAttr(t.id)}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||catN("income",t.cat))}</span><b class="mono inc">+${yen(t.amount)}</b></div>`); });
     dd.expense.forEach(t=>{ const c=catOf("expense",t.cat);
-      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${t.id}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||catN("expense",t.cat))}</span><b class="mono">${yen(t.amount)}</b></div>`); });
+      rows.push(`<div class="krow" data-act="cal-edit-tx" data-id="${escapeAttr(t.id)}" style="cursor:pointer"><span>${c.e} ${escapeHtml(t.memo||catN("expense",t.cat))}</span><b class="mono">${yen(t.amount)}</b></div>`); });
     dd.plans.forEach(p=>{
       rows.push(`<div class="krow" data-act="cal-edit-plan" data-date="${calSelected}" style="cursor:pointer"><span>📝 ${p.time?`<b class="mono">${p.time}</b> `:""}${escapeHtml(p.text)}${p.done?"（済）":""}</span></div>`); });
     if(dd.diary) rows.push(`<div class="krow" data-act="cal-edit-diary" data-date="${calSelected}" style="cursor:pointer;align-items:flex-start"><span>📖 ${escapeHtml((dd.diary.text||"（写真のみ）").slice(0,40))}</span>${dd.diary.photo?'<span>🖼</span>':''}</div>`);
@@ -1755,10 +1755,10 @@ function planSection(date){
   const md=date.slice(5).replace("-","/");
   const rows = list.length ? list.map(p=>`
     <div class="prow${p.done?" done":""}">
-      <button class="pchk" data-act="plan-toggle" data-date="${date}" data-id="${p.id}" aria-label="${L("済みにする","Mark as done")}">${p.done?"☑":"☐"}</button>
+      <button class="pchk" data-act="plan-toggle" data-date="${date}" data-id="${escapeAttr(p.id)}" aria-label="${L("済みにする","Mark as done")}">${p.done?"☑":"☐"}</button>
       <span class="ptime mono">${p.time||"—"}</span>
       <span class="ptext">${escapeHtml(p.text)}</span>
-      <button class="pdel" data-act="plan-del" data-date="${date}" data-id="${p.id}" aria-label="${L("消す","Delete")}">✕</button>
+      <button class="pdel" data-act="plan-del" data-date="${date}" data-id="${escapeAttr(p.id)}" aria-label="${L("消す","Delete")}">✕</button>
     </div>`).join("")
     : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">${L("この日の予定はありません","Nothing scheduled for this day")}</div>`;
   const full = list.length >= Core.PLAN_PER_DAY_MAX;
@@ -2983,11 +2983,25 @@ function onBackupPicked(file){
     /* 古いバックアップには生年月日が無いものがある。
        NISAの年齢区間は生年月日が無いと自動計算できず、旧nisaMonthlyへ戻ってしまう。
        復元データに正しい生年月日が無い場合だけ、端末に現在入っている生年月日を残す。 */
-    const restoredBirth = Core.validateDateString(restored.settings.birth)
-      ? restored.settings.birth
-      : ((state.settings && Core.validateDateString(state.settings.birth)) ? state.settings.birth : "");
-    state.moneyProfiles = restored.moneyProfiles || Core.normalizeMoneyProfiles(null, restored.settings);
-    state.settings = Core.settingsForCountry(state.moneyProfiles, restored.settings.country);
+    const restoreCountry = Core.normalizeCountry(restored.settings.country);
+    const restoredProfiles = restored.moneyProfiles || Core.normalizeMoneyProfiles(null, restored.settings);
+    const restoredCountrySettings = Core.settingsForCountry(restoredProfiles, restoreCountry);
+    /* 復元側に生年月日があるなら必ずそれを使う。無い場合だけ、
+       端末に現在保存されている「同じ国」の生年月日を残す。
+       別の国の生年月日を流用しない。 */
+    const currentProfiles = Core.normalizeMoneyProfiles(
+      state.moneyProfiles,
+      Core.normalizeCountry(state.settings && state.settings.country)==="JP" ? state.settings : null
+    );
+    const currentCountrySettings = Core.settingsForCountry(currentProfiles, restoreCountry);
+    const restoredBirth = Core.validateDateString(restoredCountrySettings.birth)
+      ? restoredCountrySettings.birth
+      : (Core.validateDateString(currentCountrySettings.birth) ? currentCountrySettings.birth : "");
+    state.moneyProfiles = restoredProfiles;
+    state.moneyProfiles[restoreCountry] = Core.normalizeSettings(
+      Object.assign({}, restoredCountrySettings, { country: restoreCountry, birth: restoredBirth })
+    );
+    state.settings = Core.settingsForCountry(state.moneyProfiles, restoreCountry);
     state.tx = restored.tx;
     // 旧テスト／旧復元仕様との互換。直後に国別領域から正しい国の値へ読み直す。
     state.health = restored.health || {};
