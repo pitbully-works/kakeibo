@@ -2282,7 +2282,17 @@ function recordCalcCatEmoji(type, key){
   const c=cats.find(x=>x.k===key); return c&&c.e?c.e:"🧾";
 }
 function recordCalcHistoryHtml(){
-  const hs=(state.recordCalcHistory||[]).slice().reverse();
+  /* 記録電卓の履歴も国別に分ける。
+     新規記録は現在国、編集時はその記録自身の国を見る。US画面からJP記録を
+     編集した場合でも、そのJP記録に対応する履歴だけを表示する。 */
+  let historyCountry=curCountry();
+  if(sheetState && sheetState.mode==="edit"){
+    const tx=(state.tx||[]).find(t=>t && t.id===sheetState.id);
+    if(tx) historyCountry=txCountryOf(tx);
+  }
+  const hs=(state.recordCalcHistory||[])
+    .filter(h=>Core.normalizeCountry(h&&h.country)===historyCountry)
+    .slice().reverse();
   if(!hs.length) return `<div class="muted" style="font-size:12px;text-align:center;padding:10px">${L("まだ計算履歴はありません","No calculation history yet")}</div>`;
   return hs.map(h=>{
     const expr=String(h.expr||"").replace(/\s+/g,"").replace(/＝$/g,"");

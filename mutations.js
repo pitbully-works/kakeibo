@@ -1166,6 +1166,16 @@ const MUTATIONS = [
     from: "function exportBackup(){\n  /* 現在国の top-level 個人記録を先に国別正本へ同期する。",
     to: "function exportBackup(){\n  syncPersonalProfile = function(){};\n  /* 現在国の top-level 個人記録を先に国別正本へ同期する。" },
 
+  /* ---- 記録電卓履歴：国別分離 ---- */
+  { name: "記録電卓履歴を国で絞らない", guards: "記録電卓履歴は国別",
+    file: "index.html",
+    from: "    .filter(h=>Core.normalizeCountry(h&&h.country)===historyCountry)",
+    to: "" },
+  { name: "編集時の電卓履歴を現在国で表示する", guards: "編集履歴は記録自身の国",
+    file: "index.html",
+    from: "    if(tx) historyCountry=txCountryOf(tx);",
+    to: "" },
+
 ];
 
 module.exports = MUTATIONS;
