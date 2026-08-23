@@ -2277,6 +2277,7 @@ function sheetDec(){
     const t=state.tx.find(x=>x.id===st.id);
     if(t) return decOf(txCountryOf(t));
   }
+  if(st && st.country) return decOf(Core.normalizeCountry(st.country));
   return decOf(curCountry());
 }
 /* 記録電卓の計算桁。日本円も計算中だけは小数第2位まで保持する。
@@ -2292,9 +2293,9 @@ function sheetCalcDec(){
 function txCountryOf(t){ return Core.normalizeCountry(t && t.country); }
 function openRecord(editId){
   if(editId){ const t=state.tx.find(x=>x.id===editId); if(!t) return;
-    sheetState={mode:"edit", id:t.id, type:t.type, amount:String(sheetMajor(t.amount, txCountryOf(t))), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null, shot:"total", recurring:t.recurring===true};
+    sheetState={mode:"edit", id:t.id, country:txCountryOf(t), type:t.type, amount:String(sheetMajor(t.amount, txCountryOf(t))), cat:t.cat, date:t.date, memo:t.memo||"", photo:t.photo||null, shot:"total", recurring:t.recurring===true};
   } else {
-    sheetState={mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total", recurring:false};
+    sheetState={mode:"add", country:curCountry(), type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null, shot:"total", recurring:false};
   }
   sheetState.calc=Core.calcFrom(sheetState.amount, sheetCalcDec());
   renderSheet(); showSheet(true);
@@ -2320,7 +2321,7 @@ function recordCalcHistoryHtml(){
   /* 記録電卓の履歴も国別に分ける。
      新規記録は現在国、編集時はその記録自身の国を見る。US画面からJP記録を
      編集した場合でも、そのJP記録に対応する履歴だけを表示する。 */
-  let historyCountry=curCountry();
+  let historyCountry=sheetState&&sheetState.country ? Core.normalizeCountry(sheetState.country) : curCountry();
   if(sheetState && sheetState.mode==="edit"){
     const tx=(state.tx||[]).find(t=>t && t.id===sheetState.id);
     if(tx) historyCountry=txCountryOf(tx);
@@ -2443,7 +2444,7 @@ const PENDING_KEY="kakeibo:v1:pending";
 function savePending(){
   try{
     const st=sheetState; if(!st) return false;
-    const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true,calc:st.calc||null};
+    const light={mode:st.mode,id:st.id||null,country:Core.normalizeCountry(st.country||curCountry()),type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true,calc:st.calc||null};
     const encoded=JSON.stringify(light);
     sessionStorage.setItem(PENDING_KEY, encoded);
     return sessionStorage.getItem(PENDING_KEY)===encoded;
@@ -2462,20 +2463,28 @@ function clearPending(){ try{ sessionStorage.removeItem(PENDING_KEY); }catch(e){
 
 /* 写真が届いたのにシートが消えていたら、作り直して必ず受け取る */
 function ensureSheetForPhoto(){
-  if(sheetState) return;
+  if(sheetState) return true;
   const p=loadPending();
+  if(p && p.mode==="edit" && !(state.tx||[]).some(t=>t&&t.id===p.id)){
+    clearPending();
+    toast(L("元の記録が見つからないため、撮影内容は復元しませんでした",
+            "The original record could not be found, so the pending photo entry was not restored"));
+    return false;
+  }
+  const pendingCountry=Core.normalizeCountry((p&&p.country)||curCountry());
   sheetState = p
-    ? {mode:p.mode||"add", id:p.id||undefined, type:p.type||"expense", amount:p.amount||"",
+    ? {mode:p.mode||"add", id:p.id||undefined, country:pendingCountry, type:p.type||"expense", amount:p.amount||"",
        cat:p.cat||"food", date:p.date||todayISO(), memo:p.memo||"", photo:null,
-       recurring:p.type==="expense" && p.recurring===true, calc:p.calc||Core.calcFrom(p.amount||"", sheetCalcDec())}
-    : {mode:"add", type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null};
+       recurring:p.type==="expense" && p.recurring===true, calc:p.calc||Core.calcFrom(p.amount||"", Math.max(decOf(pendingCountry),2))}
+    : {mode:"add", country:curCountry(), type:"expense", amount:"", cat:"food", date:todayISO(), memo:"", photo:null};
   showSheet(true);
+  return true;
 }
 
 /* ---------- 写真＋OCR（任意・失敗しても写真は残る） ---------- */
 function onPhotoPicked(file){
   const reader=new FileReader();
-  ensureSheetForPhoto();
+  if(!ensureSheetForPhoto()) return;
   const kb=Math.round((file.size||0)/1024);
   setStatus(L(`写真を受け取りました（${kb}KB / ${file.type||"形式不明"}）。準備中…`, `Photo received — ${kb}KB, ${file.type||"unknown type"}. Getting it ready…`));
   reader.onerror=()=>{ setStatus(L("写真を読み込めませんでした。もう一度おねがいします","Could not read that photo. Please try again")); };
@@ -2806,7 +2815,7 @@ async function saveTx(){
             "The original record could not be found. Close this screen and open it again."));
     return;
   }
-  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();
+  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : Core.normalizeCountry(st.country||curCountry());
   /* 履歴の国も記録本体と必ず同じにする。 */
   calcHistCandidate.country=recCountry;
   /* ここが「打ち込み → 内部」の境目。以降はすべて最小単位で扱う。
@@ -4746,10 +4755,17 @@ render();
 /* カメラでページが再読み込みされた場合、記録の途中から戻す */
 (function restorePending(){
   const p=loadPending(); if(!p) return;
-  sheetState={mode:p.mode||"add", id:p.id||undefined, type:p.type||"expense", amount:p.amount||"",
+  if(p.mode==="edit" && !(state.tx||[]).some(t=>t&&t.id===p.id)){
+    clearPending();
+    toast(L("元の記録が見つからないため、入力途中の編集は復元しませんでした",
+            "The original record could not be found, so the pending edit was not restored"));
+    return;
+  }
+  const pendingCountry=Core.normalizeCountry(p.country||curCountry());
+  sheetState={mode:p.mode||"add", id:p.id||undefined, country:pendingCountry, type:p.type||"expense", amount:p.amount||"",
               cat:p.cat||"food", date:p.date||todayISO(), memo:p.memo||"", photo:null,
               recurring:p.type==="expense" && p.recurring===true,
-              calc:p.calc||Core.calcFrom(p.amount||"", sheetCalcDec()),
+              calc:p.calc||Core.calcFrom(p.amount||"", Math.max(decOf(pendingCountry),2)),
               ocrNote:L("カメラから戻りました。もう一度「レシートを撮る」を押してください","Returned from the camera. Tap Take receipt photo again")};
   renderSheet(); showSheet(true);
 })();

@@ -865,7 +865,7 @@ const MUTATIONS = [
     file: "index.html", from: "tx:Core.normalizeTxList(s.tx)",
     to: "tx:(Array.isArray(s.tx)?s.tx:[])" },
   { name: "編集で記録の国を取り違える", guards: "直しても記録の国は変わらない",
-    file: "index.html", from: "  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();",
+    file: "index.html", from: "  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : Core.normalizeCountry(st.country||curCountry());",
     to: "  const recCountry = curCountry();" },
   { name: "グラフの左端を月ずらしで出す", guards: "月末でも1か月ぶん出る",
     file: "index.html", from: "  return Core.shiftDate(todayISO(), -back);",
@@ -955,7 +955,7 @@ const MUTATIONS = [
     file: "index.html", from: "  const typed=Core.majorTextToMinorRound(st.amount, decOf(recCountry));",
     to: "  const typed=Math.round(Number(String(st.amount).replace(/[^0-9.]/g,\"\"))||0);" },
   { name: "直すときいまの国で換算する", guards: "直すときも記録の国で換算",
-    file: "index.html", from: "  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();",
+    file: "index.html", from: "  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : Core.normalizeCountry(st.country||curCountry());",
     to: "  const recCountry = curCountry();" },
 
   /* ---- ⑤第2段階：小数の打ち込み・電卓・レシート読み取り ---- */
@@ -1245,8 +1245,8 @@ const MUTATIONS = [
 
   { name: "カメラ復帰で毎月固定ONを失う", guards: "撮影をまたいでも毎月固定を保持",
     file: "index.html",
-    from: 'const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true,calc:st.calc||null};',
-    to: 'const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:false,calc:st.calc||null};' },
+    from: 'const light={mode:st.mode,id:st.id||null,country:Core.normalizeCountry(st.country||curCountry()),type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true,calc:st.calc||null};',
+    to: 'const light={mode:st.mode,id:st.id||null,country:Core.normalizeCountry(st.country||curCountry()),type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:false,calc:st.calc||null};' },
 
 
   { name: "カメラ退避から電卓状態を外す", guards: "計算途中も撮影後に復元",
@@ -1258,6 +1258,17 @@ const MUTATIONS = [
     file: "index.html",
     from: 'return sessionStorage.getItem(PENDING_KEY)===encoded;',
     to: 'return sessionStorage.getItem(PENDING_KEY)!==null;' },
+
+
+  { name: "撮影中に新規記録の国を現在国へすり替える", guards: "記録開始時の国を固定",
+    file: "index.html",
+    from: '  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : Core.normalizeCountry(st.country||curCountry());',
+    to: '  const recCountry = editIdx>=0 ? txCountryOf(state.tx[editIdx]) : curCountry();' },
+
+  { name: "消えた編集元をカメラ復帰で復元する", guards: "stale editを復元しない",
+    file: "index.html",
+    from: '  if(p.mode==="edit" && !(state.tx||[]).some(t=>t&&t.id===p.id)){',
+    to: '  if(false && p.mode==="edit" && !(state.tx||[]).some(t=>t&&t.id===p.id)){' },
 
 ];
 
