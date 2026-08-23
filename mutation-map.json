@@ -1264,5 +1264,17 @@
   ],
   "国切替後の個人記録でpulseを切り替えない": [
     "personal_profile_switch_integrity_test.js"
+  ],
+  "国切替後の個人記録でhealthを切り替えない": [
+    "personal_profile_switch_integrity_test.js"
+  ],
+  "国切替後の個人記録でdiaryを切り替えない": [
+    "personal_profile_switch_integrity_test.js"
+  ],
+  "国切替後の個人記録でplansを切り替えない": [
+    "personal_profile_switch_integrity_test.js"
+  ],
+  "国切替後の個人記録でhealthとdiaryを入れ替える": [
+    "personal_profile_switch_integrity_test.js"
   ]
 }

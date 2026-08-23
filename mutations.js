@@ -1341,6 +1341,27 @@ const MUTATIONS = [
     from: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;",
     to: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans;" },
 
+
+  { name: "国切替後の個人記録でhealthを切り替えない", guards: "personal profile health切替",
+    file: "index.html",
+    from: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;",
+    to: "  state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;" },
+
+  { name: "国切替後の個人記録でdiaryを切り替えない", guards: "personal profile diary切替",
+    file: "index.html",
+    from: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;",
+    to: "  state.health=d.health; state.plans=d.plans; state.pulse=d.pulse;" },
+
+  { name: "国切替後の個人記録でplansを切り替えない", guards: "personal profile plans切替",
+    file: "index.html",
+    from: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;",
+    to: "  state.health=d.health; state.diary=d.diary; state.pulse=d.pulse;" },
+
+  { name: "国切替後の個人記録でhealthとdiaryを入れ替える", guards: "personal profile領域対応",
+    file: "index.html",
+    from: "  state.health=d.health; state.diary=d.diary; state.plans=d.plans; state.pulse=d.pulse;",
+    to: "  state.health=d.diary; state.diary=d.health; state.plans=d.plans; state.pulse=d.pulse;" },
+
 ];
 
 module.exports = MUTATIONS;
