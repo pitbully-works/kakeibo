@@ -216,3 +216,14 @@ test("保存できるときは、記録がちゃんと残る（比較用）", as
   assert.ok(String(app.saved() || "").includes("1234"), "端末に保存されていない");
   assert.equal(String(app.saved() || "").includes("photoHi"), false, "保存データに高解像度画像が入っている");
 });
+
+
+test("起動時の保存JSONが壊れていても、白画面にせず初期状態へ退避する", () => {
+  assert.match(appSrc, /function load\(\)\{[\s\S]*?JSON\.parse\(raw\)[\s\S]*?catch\(e\)\{ \/\* ignore \*\/ \}[\s\S]*?return defaultState\(\);/,
+    "壊れたlocalStorageで起動不能になる防御が失われている");
+});
+
+test("保存データの記録一覧は起動時に必ず normalizeTxList を通す", () => {
+  assert.match(appSrc, /tx:Core\.normalizeTxList\(s\.tx\)/,
+    "壊れた記録データをそのまま画面へ渡している");
+});
