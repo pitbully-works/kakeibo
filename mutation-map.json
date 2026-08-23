@@ -1201,5 +1201,8 @@
   ],
   "レシート撮影キャンセル時に記録画面へ戻さない": [
     "receipt_camera_cancel_test.js"
+  ],
+  "無効な記録でも電卓履歴だけ残す": [
+    "invalid_record_history_test.js"
   ]
 }

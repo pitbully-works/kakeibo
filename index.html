@@ -2830,13 +2830,8 @@ async function saveTx(){
   if(recurring) rec.recurring=true;   // オフのときはキーごと持たない（保存を軽くする）
   if(recCountry!=="JP") rec.country=recCountry;   // JPは印を持たない
   if(st.mode==="edit") rec.id=st.id;
-  if(calcHistCandidate){
-    calcHistCandidate.txId=rec.id;
-    const allRecordCalcHistory=(state.recordCalcHistory||[]).concat([calcHistCandidate]);
-    const sameCountry=allRecordCalcHistory.filter(h=>Core.normalizeCountry(h&&h.country)===recCountry).slice(-50);
-    const otherCountries=allRecordCalcHistory.filter(h=>Core.normalizeCountry(h&&h.country)!==recCountry);
-    state.recordCalcHistory=otherCountries.concat(sameCountry);
-  }
+  /* 履歴は、記録本体の検証が通ってから追加する。
+     検証に失敗した記録の電卓履歴だけが残る「幽霊履歴」を防ぐ。 */
 
   /* 記録は必ず core.js の normalizeTransaction を通してから state に入れる。
      復元のときだけ整えて、手で入れたときは素通し、という作りにすると、
@@ -2848,6 +2843,14 @@ async function saveTx(){
      将来キーを増やしたときに、片方だけ残るのを防ぐための保険として置いてある。 */
   Object.keys(rec).forEach(k=>{ if(!(k in safe)) delete rec[k]; });
   Object.assign(rec, safe);
+
+  if(calcHistCandidate){
+    calcHistCandidate.txId=rec.id;
+    const allRecordCalcHistory=(state.recordCalcHistory||[]).concat([calcHistCandidate]);
+    const sameCountry=allRecordCalcHistory.filter(h=>Core.normalizeCountry(h&&h.country)===recCountry).slice(-50);
+    const otherCountries=allRecordCalcHistory.filter(h=>Core.normalizeCountry(h&&h.country)!==recCountry);
+    state.recordCalcHistory=otherCountries.concat(sameCountry);
+  }
 
   if(st.mode==="edit"){ if(idx>=0) state.tx[idx]=rec; }
   else state.tx.push(rec);

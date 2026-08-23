@@ -1224,6 +1224,12 @@ const MUTATIONS = [
     from: '    ensureSheetForPhoto();\n    clearPending();\n    setStatus(L("撮影をキャンセルしました。入力内容はそのままです","Photo capture cancelled. Your entries are unchanged"));\n    renderSheet(); showSheet(true);',
     to: '    clearPending();' },
 
+
+  { name: "無効な記録でも電卓履歴だけ残す", guards: "記録検証失敗時の幽霊履歴を防ぐ",
+    file: "index.html",
+    from: '  if(calcHistCandidate){\n    calcHistCandidate.txId=rec.id;',
+    to: '  if(false && calcHistCandidate){\n    calcHistCandidate.txId=rec.id;' },
+
 ];
 
 module.exports = MUTATIONS;
