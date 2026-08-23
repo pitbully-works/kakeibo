@@ -2442,13 +2442,20 @@ function setStatus(msg){
 const PENDING_KEY="kakeibo:v1:pending";
 function savePending(){
   try{
-    const st=sheetState; if(!st) return;
+    const st=sheetState; if(!st) return false;
     const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true};
     sessionStorage.setItem(PENDING_KEY, JSON.stringify(light));
-  }catch(e){}
+    return sessionStorage.getItem(PENDING_KEY)!==null;
+  }catch(e){ return false; }
 }
 function loadPending(){
-  try{ const raw=sessionStorage.getItem(PENDING_KEY); return raw?JSON.parse(raw):null; }catch(e){ return null; }
+  try{
+    const raw=sessionStorage.getItem(PENDING_KEY);
+    if(!raw) return null;
+    const p=JSON.parse(raw);
+    if(!p || typeof p!=="object" || Array.isArray(p)) throw new Error("invalid pending record");
+    return p;
+  }catch(e){ clearPending(); return null; }
 }
 function clearPending(){ try{ sessionStorage.removeItem(PENDING_KEY); }catch(e){} }
 
@@ -4582,7 +4589,14 @@ function handleAct(a,e){
   if(a==="save-tx") return saveTx();
   if(a==="del-tx") return delTx();
   if(a==="rm-photo"){ if(sheetState){ readSheetInputs(); releaseOcrImage(sheetState); sheetState.photo=null; sheetState.crop=null; sheetState.ocrNote=""; sheetState.ocrChoices=null; renderSheet(); } return; }
-  if(a==="shot-total"){ readSheetInputs(); savePending(); $("camInput").value=""; $("camInput").click(); return; }
+  if(a==="shot-total"){
+    readSheetInputs();
+    if(!savePending()){
+      setStatus(L("入力内容を一時保存できないため、レシート撮影を開始できません","Could not temporarily save your entries, so receipt capture was not started"));
+      return;
+    }
+    $("camInput").value=""; $("camInput").click(); return;
+  }
   if(a==="read-crop"){ readSheetInputs(); return readCrop(); }
   if(a==="manual-amount"){ if(sheetState){ readSheetInputs(); sheetState.ocrChoices=null;
       sheetState.ocrNote=L("金額を入れてください","Enter the amount"); renderSheet(); focusField("s-amt"); } return; }
