@@ -1182,5 +1182,11 @@
   ],
   "記録電卓履歴を全世界50件に戻す": [
     "record_calc_country_cap_test.js"
+  ],
+  "関数電卓履歴を全世界共有に戻す": [
+    "sci_history_country_test.js"
+  ],
+  "関数電卓履歴削除で全世界を消す": [
+    "sci_history_country_test.js"
   ]
 }

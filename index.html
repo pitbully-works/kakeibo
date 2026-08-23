@@ -924,7 +924,12 @@ function load(){
     let personalProfiles=normalizePersonalProfiles(s.personalProfiles);
     if(!s.personalProfiles || typeof s.personalProfiles!=="object") personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});
     const activePersonal=personalProfiles[active.country] ? normalizePersonalData(personalProfiles[active.country]) : emptyPersonalData();
-    const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:activePersonal.health, diary:activePersonal.diary, plans:activePersonal.plans, pulse:activePersonal.pulse, personalProfiles, calcHistory:Core.normalizeSciHistory(s.calcHistory), recordCalcHistory };
+    const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:activePersonal.health, diary:activePersonal.diary, plans:activePersonal.plans, pulse:activePersonal.pulse, personalProfiles, calcHistory:(Array.isArray(s.calcHistory)?s.calcHistory:[]).map(h=>{
+      if(!h||typeof h!=="object") return null;
+      const expr=String(h.expr==null?"":h.expr).slice(0,320), value=Number(h.value);
+      if(!expr||!Number.isFinite(value)) return null;
+      return {expr,value,country:h.country?Core.normalizeCountry(h.country):"JP"};
+    }).filter(Boolean), recordCalcHistory };
     if(Number(s.countryStorageSplitVersion||0)>0) out.countryStorageSplitVersion=Number(s.countryStorageSplitVersion);
     if(profiles) out.moneyProfiles=profiles;
     /* 移行を見送ったときは印を付けない。次に開いたとき、もう一度やり直す。 */
@@ -2083,7 +2088,14 @@ function cycleHelp(cur){
 /* 画面だけの状態。履歴は端末に残す（state.calcHistory）。 */
 let sciState=null;
 function sci(){
-  if(!sciState){ sciState=Core.newSci(); sciState.history=(state.calcHistory||[]).slice(); }
+  if(!sciState){
+    sciState=Core.newSci();
+    const c=curCountry();
+    sciState.history=(state.calcHistory||[])
+      .filter(h=>Core.normalizeCountry(h&&h.country)===c)
+      .slice(0,20)
+      .map(h=>({expr:h.expr,value:h.value}));
+  }
   return sciState;
 }
 
@@ -4548,8 +4560,12 @@ function handleAct(a,e){
     sciState=Core.sciPress(before, el.dataset.key);
     /* 履歴が増えたときだけ端末に残す */
     if(sciState.history.length!==before.history.length){
-      state.calcHistory=sciState.history.slice();
-      if(!save()){ state.calcHistory=before.history.slice(); toast(L("履歴を保存できませんでした","Could not save the history")); }
+      const c=curCountry();
+      const beforeAll=JSON.parse(JSON.stringify(state.calcHistory||[]));
+      const other=(state.calcHistory||[]).filter(h=>Core.normalizeCountry(h&&h.country)!==c);
+      const current=sciState.history.slice(0,20).map(h=>({expr:h.expr,value:h.value,country:c}));
+      state.calcHistory=other.concat(current);
+      if(!save()){ state.calcHistory=beforeAll; sciState=before; toast(L("履歴を保存できませんでした","Could not save the history")); }
     }
     render(); return;
   }
@@ -4563,8 +4579,10 @@ function handleAct(a,e){
   if(a==="sci-clear"){
     const before=sci();
     sciState=Core.sciClearHistory(before);
-    state.calcHistory=[];
-    if(!save()){ state.calcHistory=before.history.slice(); sciState=before; toast(L("消せませんでした","Could not delete it")); }
+    const c=curCountry();
+    const beforeAll=JSON.parse(JSON.stringify(state.calcHistory||[]));
+    state.calcHistory=(state.calcHistory||[]).filter(h=>Core.normalizeCountry(h&&h.country)!==c);
+    if(!save()){ state.calcHistory=beforeAll; sciState=before; toast(L("消せませんでした","Could not delete it")); }
     render(); return;
   }
   if(a==="sci-record"){

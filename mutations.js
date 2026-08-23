@@ -1188,6 +1188,16 @@ const MUTATIONS = [
     from: "    const sameCountry=allRecordCalcHistory.filter(h=>Core.normalizeCountry(h&&h.country)===recCountry).slice(-50);",
     to: "    const sameCountry=allRecordCalcHistory.slice(-50);" },
 
+
+  { name: "関数電卓履歴を全世界共有に戻す", guards: "関数電卓履歴も国別",
+    file: "index.html",
+    from: "      .filter(h=>Core.normalizeCountry(h&&h.country)===c)",
+    to: "      .filter(h=>true)" },
+  { name: "関数電卓履歴削除で全世界を消す", guards: "関数電卓履歴削除は現在国だけ",
+    file: "index.html",
+    from: "    state.calcHistory=(state.calcHistory||[]).filter(h=>Core.normalizeCountry(h&&h.country)!==c);",
+    to: "    state.calcHistory=[];" },
+
 ];
 
 module.exports = MUTATIONS;

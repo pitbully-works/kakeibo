@@ -273,7 +273,7 @@ test("履歴は端末に残り、次に開いたときも出る", () => {
   const app = boot();
   screen(app);
   press(app, "1", "+", "1", "=");
-  assert.deepEqual(JSON.parse(app.saved()).calcHistory, [{ expr: "1+1", value: 2 }]);
+  assert.deepEqual(JSON.parse(app.saved()).calcHistory, [{ expr: "1+1", value: 2, country: "JP" }]);
   const again = boot(JSON.parse(app.saved()).calcHistory);
   assert.match(screen(again), /1\+1/, "残した履歴が出ていない");
 });
