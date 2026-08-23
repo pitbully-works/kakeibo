@@ -1383,6 +1383,12 @@ const MUTATIONS = [
     from: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans,pulse:state.pulse});",
     to: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans});" },
 
+
+  { name: "旧保存の空personalProfilesから個人記録を救出しない", guards: "旧top-level個人記録のJP救出",
+    file: "index.html",
+    from: "    if(!hasPersonalProfile) personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});",
+    to: "    if(false && !hasPersonalProfile) personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});" },
+
 ];
 
 module.exports = MUTATIONS;

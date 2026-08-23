@@ -933,7 +933,11 @@ function load(){
     }
     // personalProfiles導入前の個人記録は、日本で入力された既存データとしてJPへ移す。
     let personalProfiles=normalizePersonalProfiles(s.personalProfiles);
-    if(!s.personalProfiles || typeof s.personalProfiles!=="object") personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});
+    /* personalProfiles が未導入だった旧保存だけでなく、途中版・破損保存で {} / [] だけが
+       残っている場合も、top-level の既存個人記録をJPへ救出する。
+       既にどこか1か国でも正規のプロファイルがある場合は上書きしない。 */
+    const hasPersonalProfile=Core.SUPPORTED_COUNTRIES.some(c=>Object.prototype.hasOwnProperty.call(personalProfiles,c));
+    if(!hasPersonalProfile) personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});
     const activePersonal=personalProfiles[active.country] ? normalizePersonalData(personalProfiles[active.country]) : emptyPersonalData();
     const out={ settings:active, tx:Core.normalizeTxList(s.tx), health:activePersonal.health, diary:activePersonal.diary, plans:activePersonal.plans, pulse:activePersonal.pulse, personalProfiles, calcHistory:(Array.isArray(s.calcHistory)?s.calcHistory:[]).map(h=>{
       if(!h||typeof h!=="object") return null;
