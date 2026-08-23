@@ -617,6 +617,18 @@ function backupBeforeMigration(raw){
         if(lite.diary[d] && typeof lite.diary[d] === "object") lite.diary[d] = { text: lite.diary[d].text || "" };
       });
     }
+    /* 国別保存後の日記写真は personalProfiles 側が正本。
+       ここを外さないと、容量不足時の「写真なし控え」に写真が残り続け、
+       移行用バックアップを作れないことがある。 */
+    if(lite.personalProfiles && typeof lite.personalProfiles === "object"){
+      Object.keys(lite.personalProfiles).forEach(c => {
+        const diary=lite.personalProfiles[c] && lite.personalProfiles[c].diary;
+        if(!diary || typeof diary!=="object") return;
+        Object.keys(diary).forEach(d => {
+          if(diary[d] && typeof diary[d]==="object") diary[d]={ text:diary[d].text || "" };
+        });
+      });
+    }
     return put(JSON.stringify(lite));
   }catch(e){ return false; }
 }

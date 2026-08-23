@@ -1154,6 +1154,12 @@ const MUTATIONS = [
     from: '    render(); const t2=$("d-text"); if(t2) t2.value=keepText;',
     to: '    const cur=state.diary[diaryEditDate||todayISO()]||{}; cur.text=keepText; render(); const t2=$("d-text"); if(t2) t2.value=keepText;' },
 
+  /* ---- 移行バックアップ：国別日記写真も容量削減 ---- */
+  { name: "移行控えで国別日記写真を残す", guards: "容量不足時は全プロフィールの日記写真も外す",
+    file: "index.html",
+    from: '    if(lite.personalProfiles && typeof lite.personalProfiles === "object"){',
+    to: '    if(false && lite.personalProfiles && typeof lite.personalProfiles === "object"){' },
+
 ];
 
 module.exports = MUTATIONS;
