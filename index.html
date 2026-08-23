@@ -635,7 +635,9 @@ function backupBeforeMigration(raw){
 
 function emptyPersonalData(){ return { health:{}, diary:{}, plans:{}, pulse:[] }; }
 function normalizePersonalData(v){
-  const src=(v && typeof v==="object")?v:{};
+  /* 配列も typeof === "object" なので明示的に除外する。
+     個人記録1か国分は {health,diary,plans,pulse} のオブジェクトだけを受け付ける。 */
+  const src=(v && typeof v==="object" && !Array.isArray(v))?v:{};
   return { health:Core.normalizeHealth(src.health), diary:Core.normalizeDiary(src.diary), plans:Core.normalizePlans(src.plans), pulse:Core.normalizePulseList(src.pulse) };
 }
 function normalizePersonalProfiles(v){

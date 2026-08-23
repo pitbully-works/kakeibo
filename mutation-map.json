@@ -1243,5 +1243,8 @@
   ],
   "各国個人記録の配列を許す": [
     "personal_profiles_shape_test.js"
+  ],
+  "1か国分の個人記録で配列を許す": [
+    "personal_data_shape_test.js"
   ]
 }

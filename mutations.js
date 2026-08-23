@@ -1301,6 +1301,12 @@ const MUTATIONS = [
     from: "      if(v[c] && typeof v[c]===\"object\" && !Array.isArray(v[c])) out[c]=normalizePersonalData(v[c]);",
     to: "      if(v[c] && typeof v[c]===\"object\") out[c]=normalizePersonalData(v[c]);" },
 
+
+  { name: "1か国分の個人記録で配列を許す", guards: "personalData形検証",
+    file: "index.html",
+    from: "  const src=(v && typeof v===\"object\" && !Array.isArray(v))?v:{};",
+    to: "  const src=(v && typeof v===\"object\")?v:{};" },
+
 ];
 
 module.exports = MUTATIONS;
