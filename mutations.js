@@ -1242,6 +1242,12 @@ const MUTATIONS = [
     from: '  if(photo && isQuotaError(lastSaveError)){',
     to: '  if(photo){' },
 
+
+  { name: "カメラ復帰で毎月固定ONを失う", guards: "撮影をまたいでも毎月固定を保持",
+    file: "index.html",
+    from: 'const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:st.type==="expense" && st.recurring===true};',
+    to: 'const light={mode:st.mode,id:st.id||null,type:st.type,amount:st.amount,cat:st.cat,date:st.date,memo:st.memo,recurring:false};' },
+
 ];
 
 module.exports = MUTATIONS;

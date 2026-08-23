@@ -1210,5 +1210,8 @@
   ],
   "保存不能でも写真容量不足として再試行する": [
     "photo_fallback_reason_test.js"
+  ],
+  "カメラ復帰で毎月固定ONを失う": [
+    "camera_pending_recurring_test.js"
   ]
 }
