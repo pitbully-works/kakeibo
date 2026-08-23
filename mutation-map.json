@@ -1192,5 +1192,8 @@
   ],
   "容量超過でも古い移行控えを解放しない": [
     "receipt_save_quota_recovery_test.js"
+  ],
+  "OCR金額を電卓状態へ同期しない": [
+    "receipt_ocr_amount_sync_test.js"
   ]
 }

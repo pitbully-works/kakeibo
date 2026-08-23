@@ -1204,6 +1204,14 @@ const MUTATIONS = [
     from: '        if(typeof localStorage.removeItem==="function") localStorage.removeItem(MIGRATION_BACKUP_KEY);',
     to: '        /* obsolete migration backup kept */' },
 
+
+
+
+  { name: "OCR金額を電卓状態へ同期しない", guards: "読み取った金額をそのまま記録できる",
+    file: "index.html",
+    from: "    st.amount=Core.minorToMajorText(ranked[0].amount, sheetDec());\n    /* 金額欄は st.calc が正本。amount だけ変えると renderSheet/saveTx で古い0円へ戻る。 */\n    st.calc=Core.calcFrom(st.amount, sheetCalcDec());",
+    to: "    st.amount=Core.minorToMajorText(ranked[0].amount, sheetDec());" },
+
 ];
 
 module.exports = MUTATIONS;

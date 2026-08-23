@@ -2370,12 +2370,20 @@ function renderSheet(){
        </div>
        <div class="shothint">${T("rec.cropHint")}
          <span style="color:#a7b2af">${T("rec.online")}</span></div>
+       <div class="fixhint" style="margin:6px 0 10px">${L(
+         "※ 読み取り精度は、暗さ・影・傾き・ピンぼけ・文字の小ささで下がります。合計金額を明るく、枠の中央に大きく入れると読み取りやすくなります。",
+         "※ Reading accuracy drops with low light, shadows, tilt, blur, or small text. Keep the total bright, large, and centered in the box."
+       )}</div>
        <button class="photobtn main big" data-act="read-crop">${T("rec.readCrop")}</button>
        <button class="photobtn" data-act="shot-total">${T("rec.reshoot")}</button>
        <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
        ${choicesHtml}`
     : `<button class="photobtn main" data-act="shot-total">${T("rec.shoot")}
          <span class="sm">${T("rec.shootSub")}</span></button>
+       <div class="fixhint" style="margin:6px 0 10px">${L(
+         "※ 読み取り精度は撮影条件で変わります。明るい場所で、影や傾き・ピンぼけを避け、合計金額を大きく撮ってください。",
+         "※ Reading accuracy depends on the photo. Use good light, avoid shadows, tilt and blur, and capture the total as large as possible."
+       )}</div>
        <div class="ocrnote" id="ocrnote">${escapeHtml(st.ocrNote||"")}</div>
        ${choicesHtml}`;
   $("sheet").innerHTML=`<div class="grip"></div>
@@ -2573,6 +2581,8 @@ async function readCrop(){
     }
     st.ocrChoices=null;
     st.amount=Core.minorToMajorText(ranked[0].amount, sheetDec());
+    /* 金額欄は st.calc が正本。amount だけ変えると renderSheet/saveTx で古い0円へ戻る。 */
+    st.calc=Core.calcFrom(st.amount, sheetCalcDec());
     setStatus(L(`金額を「${yen(ranked[0].amount)}」と読みました。ちがう時は直してね`, `Read the amount as ${yen(ranked[0].amount)}. Change it if that's wrong`));
     renderSheet();
   }catch(e){
