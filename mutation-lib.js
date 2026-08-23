@@ -104,9 +104,17 @@ function runTests(dir, testFiles) {
 async function runMutation(m, opts) {
   const o = opts || {};
   const original = fs.readFileSync(path.join(ROOT, m.file), "utf8");
-  if (!original.includes(m.from)) {
+  const hits = original.split(m.from).length - 1;
+  if (hits === 0) {
     return { status: "対象なし", failedCount: 0, detectedBy: [],
       note: "変異させる箇所が見つかりません（コードが変わった可能性）" };
+  }
+  /* run-mutations.js の事前点検を通さず、この関数を直接呼ばれても安全側で止める。
+     2か所以上に当たる変異を replace() すると最初の1か所だけ壊し、
+     狙った場所とは別のコードを検査して緑になるおそれがある。 */
+  if (hits !== 1) {
+    return { status: "対象不明", failedCount: 0, detectedBy: [],
+      note: `変異させる箇所が ${hits} か所あり、1か所に定まりません` };
   }
   const dir = makeWorkspace();
   try {

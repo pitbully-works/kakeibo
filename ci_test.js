@@ -272,6 +272,34 @@ test("元のソースをその場で書き換える作りに戻っていない",
   });
 });
 
+
+test("変異の単体実行も、当たり先が複数なら安全側で止める", () => {
+  const libSrc = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");
+  assert.match(libSrc, /const hits = original\.split\(m\.from\)\.length - 1;/,
+    "runMutation 自身が当たり先の件数を確認していない");
+  assert.match(libSrc, /status: "対象不明"/,
+    "runMutation を直接呼ぶと複数一致を見逃す");
+});
+
+test("完全検査は、対応表を更新しない回に mutation-map.json の差分を隠さない", () => {
+  if (!wfFull) return;
+  assert.match(wfFull, /if \[ "\$\{\{ inputs\.update_map \}\}" = "true" \]; then/,
+    "update_map の有無で差分検査を分けていない");
+  const elseAt = wfFull.indexOf("else", wfFull.indexOf("ソースが元に戻っているか確認"));
+  const fiAt = wfFull.indexOf("fi", elseAt);
+  const normalBlock = wfFull.slice(elseAt, fiAt);
+  assert.equal(normalBlock.includes("exclude)mutation-map.json"), false,
+    "対応表を更新しない回でも mutation-map.json の改変を無視している");
+});
+
+test("完全検査で自動生成した対応表は、commit 前に ci_test.js で再検証する", () => {
+  if (!wfFull) return;
+  const validate = wfFull.indexOf("run: node --test --test-reporter=spec ci_test.js");
+  const commit = wfFull.indexOf("git commit -m");
+  assert.ok(validate > 0, "自動生成した対応表の再検証が無い");
+  assert.ok(commit > validate, "対応表を検証する前に commit している");
+});
+
 /* ---------- ワークフロー ---------- */
 test("main への push と pull request で走る", () => {
   assert.match(wf, /on:\s*\n\s*push:\s*\n\s*branches: \[main\]/);
