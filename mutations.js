@@ -1104,6 +1104,12 @@ const MUTATIONS = [
     from: '      const monthlyBank = a.banks.reduce(function (sum, b) { return sum + (Number(b.monthlyDeposit) || 0); }, 0);',
     to: '      const monthlyBank = a.banks.length ? (Number(a.banks[0].monthlyDeposit) || 0) : 0;' },
 
+  /* ---- バックアップ復元確認の多言語化 ---- */
+  { name: "海外でもバックアップ復元確認を日本語固定にする", guards: "US復元確認は英語のみ",
+    file: "index.html",
+    from: '    const ok = confirm(L(',
+    to: '    const ok = confirm((' },
+
 ];
 
 module.exports = MUTATIONS;

@@ -2970,12 +2970,16 @@ function onBackupPicked(file){
       clear(); return;                              // 現在のデータは一切変更しない
     }
 
-    const ok = confirm(
+    const ok = confirm(L(
       "現在のデータを上書きします。\n先にバックアップを書き出すことをおすすめします。\n\n" +
-      `復元する記録：${restored.tx.length}件` +
-      (restored.dropped ? `（読み取れなかった${restored.dropped}件は除外）` : "") +
-      "\n\n続けますか？"
-    );
+        `復元する記録：${restored.tx.length}件` +
+        (restored.dropped ? `（読み取れなかった${restored.dropped}件は除外）` : "") +
+        "\n\n続けますか？",
+      "This will overwrite the current data.\nWe recommend exporting a backup first.\n\n" +
+        `Records to restore: ${restored.tx.length}` +
+        (restored.dropped ? ` (${restored.dropped} unreadable records will be skipped)` : "") +
+        "\n\nContinue?"
+    ));
     if(!ok){ clear(); return; }                     // キャンセル：何も変えない
 
     const before = JSON.parse(JSON.stringify(state));
