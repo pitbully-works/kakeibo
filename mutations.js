@@ -1426,6 +1426,12 @@ const MUTATIONS = [
     from: "      if(activeBirth && Core.normalizeBirth(other.birth)===activeBirth){",
     to: "      if(activeBirth && Core.normalizeBirth(other.birth)!==activeBirth){" },
 
+
+  { name: "v3移行でAUだけ旧共有生年月日を残す", guards: "v3→v4で非アクティブ4カ国すべてを分離",
+    file: "index.html",
+    from: "      if(c===active || !state.moneyProfiles[c]) return;",
+    to: "      if(c===active || c===\"AU\" || !state.moneyProfiles[c]) return;" },
+
 ];
 
 module.exports = MUTATIONS;
