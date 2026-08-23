@@ -1074,6 +1074,16 @@ const MUTATIONS = [
   { name: "打てる小数の桁を通貨まかせにする", guards: "5か国とも同じだけ打てる",
     file: "core.js", from: "  function calcInputDec(c) { return Math.max((c && c.dec) || 0, CALC_INPUT_DEC); }",
     to: "  function calcInputDec(c) { return (c && c.dec) || 0; }" },
+  /* ---- バックアップ：moneyProfiles導入途中の海外設定 ---- */
+  { name: "USバックアップの設定プロファイルを補完しない", guards: "moneyProfiles無しでもUS設定を失わない",
+    file: "core.js",
+    from: "    if (!backupProfiles[backupSettings.country]) {\n      backupProfiles[backupSettings.country] = profileSettings(src.settings, backupSettings.country);\n    }",
+    to: "" },
+  { name: "欠けた海外プロファイルをJPとして補完する", guards: "復元対象国の設定をその国へ補完する",
+    file: "core.js",
+    from: "      backupProfiles[backupSettings.country] = profileSettings(src.settings, backupSettings.country);",
+    to: '      backupProfiles.JP = profileSettings(src.settings, "JP");' },
+
 ];
 
 module.exports = MUTATIONS;

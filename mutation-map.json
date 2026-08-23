@@ -1,1122 +1,1128 @@
 {
- "借入を先取りに戻す": [
-  "lifeplan_test.js"
- ],
- "各種保険を支出に入れない": [
-  "lifeplan_test.js"
- ],
- "出ていくお金を毎月固定に数えない": [
-  "lifeplan_test.js"
- ],
- "出ていくお金を先取りにも足す": [
-  "lifeplan_test.js"
- ],
- "iDeCoの掛金を先取りに入れない": [
-  "lifeplan_test.js"
- ],
- "iDeCo・各種保険を渡さない": [
-  "lifeplan_test.js"
- ],
- "記録の選択に保険を残す": [
-  "lifeplan_test.js"
- ],
- "記録の選択に私年金を残す": [
-  "lifeplan_test.js"
- ],
- "まとめで先取りと支出を分けない": [
-  "lifeplan_test.js"
- ],
- "毎月の金額を先取りに入れない": [
-  "lifeplan_test.js"
- ],
- "毎月の金額を支出にも足す": [
-  "lifeplan_test.js"
- ],
- "一括投資も毎月の計算に入れる": [
-  "lifeplan_test.js"
- ],
- "月額を銘柄の合計にしない": [
-  "lifeplan_test.js"
- ],
- "一括投資をライフプランへ渡さない": [
-  "lifeplan_test.js"
- ],
- "まとめに先取りの内わけを出さない": [
-  "lifeplan_test.js"
- ],
- "NISAのタイルを古い設定欄へ飛ばす": [
-  "render.test.js"
- ],
- "年齢の数え方を1年ずらす": [
-  "agebound_test.js",
-  "lifeplan_test.js"
- ],
- "おかしな生年月日も受け入れる": [
-  "lifeplan_test.js"
- ],
- "未来の生年月日を受け入れる": [
-  "lifeplan_test.js"
- ],
- "区間の終わりを含めない": [
-  "lifeplan_test.js"
- ],
- "逆さまの区間をそのまま通す": [
-  "lifeplan_test.js"
- ],
- "生年月日が無くても自動にする": [
-  "lifeplan_test.js"
- ],
- "NISAのスケジュールを渡さない": [
-  "lpbridge_test.js"
- ],
- "生年月日を拾わない": [
-  "lifeplan_test.js"
- ],
- "先取り貯金の欄を設定へ戻す（銀行貯金と二重）": [
-  "render.test.js"
- ],
- "タイルを横スクロールに戻す（隠れた分に気づけない）": [
-  "lpbridge_test.js"
- ],
- "生年月日を保存しない": [
-  "lifeplan_test.js"
- ],
- "渡す形の入れものを変える": [
-  "lpbridge_test.js"
- ],
- "ライフプランの入力まで上書きする": [
-  "lifeplan_test.js"
- ],
- "件数の上限を外す": [
-  "lifeplan_test.js"
- ],
- "マイナスの金額を受け入れる": [
-  "lifeplan_test.js"
- ],
- "金の評価額を足し算にする": [
-  "lifeplan_test.js"
- ],
- "空でも設定に持たせる": [
-  "hires.test.js",
-  "lifeplan_test.js"
- ],
- "保存に失敗しても巻き戻さない": [
-  "lifeplan_test.js"
- ],
- "内訳へ移るときに書きかけを捨てる": [
-  "lifeplan_test.js"
- ],
- "確かめずに行を消す": [
-  "lifeplan_test.js"
- ],
- "書きかけを確かめずに捨てる": [
-  "diary_test.js"
- ],
- "おかしな日付でも切り替える": [
-  "diary_test.js"
- ],
- "今日を選んでも今日に戻らない": [
-  "diary_test.js"
- ],
- "日付えらびを受け取らない": [
-  "diary_test.js"
- ],
- "写真ボタンをただの文字に戻す": [
-  "diary_test.js"
- ],
- "いる画面の台の色を消す": [
-  "swipe_test.js"
- ],
- "いる画面の絵文字を大きくしない": [
-  "swipe_test.js"
- ],
- "いない画面の印を消し忘れる": [
-  "swipe_test.js"
- ],
- "画面を切り替えても印を付け替えない": [
-  "swipe_test.js"
- ],
- "開始日を経過日数の近似で出す": [
-  "agebound_test.js"
- ],
- "開始日を切り捨てる（まだ達していない日を返す）": [
-  "agebound_test.js"
- ],
- "開始日で満年の分を進めない": [
-  "agebound_test.js",
-  "lifeplan_test.js"
- ],
- "生年月日なしで入力内訳ではなく旧NISA月額へ戻す": [
-  "nisa_birth_mode_test.js"
- ],
- "書き出しでコピーを試さない": [
-  "lpbridge_test.js"
- ],
- "コピーに失敗してもファイルへ落とさない": [
-  "lpbridge_test.js"
- ],
- "バックアップで共有シートを試さない": [
-  "lpbridge_test.js"
- ],
- "共有を取り消してもダウンロードへ落とさない": [
-  "lpbridge_test.js"
- ],
- "バックアップをコピーだけにする（ファイルで戻せない）": [
-  "lpbridge_test.js"
- ],
- "打っても自動で保存しない": [
-  "lpbridge_test.js",
-  "autosave_immediate_test.js"
- ],
- "内訳の自動保存だけやめる": [
-  "lpbridge_test.js",
-  "autosave_immediate_test.js"
- ],
- "せっていの自動保存だけやめる": [
-  "lpbridge_test.js",
-  "autosave_immediate_test.js"
- ],
- "自動保存で全部の欄を読み直す（生年月日が消える）": [
-  "lpbridge_test.js"
- ],
- "NISAのタイルだけ色を変える": [
-  "lpbridge_test.js"
- ],
- "自動保存で画面を作り直す（入力中の欄から指が外れる）": [
-  "lpbridge_test.js"
- ],
- "NISAの見出しを分かりにくい言い方に戻す": [
-  "lpbridge_test.js"
- ],
- "銘柄を足しても入力欄へ移らない": [
-  "lpbridge_test.js"
- ],
- "区間を足しても入力欄へ移らない": [
-  "lpbridge_test.js"
- ],
- "行を足しても入力欄へ移らない": [
-  "lpbridge_test.js"
- ],
- "足した行ではなく先頭の欄へ移る": [
-  "lpbridge_test.js"
- ],
- "内訳のカードを入口カードと同じ名前に戻す": [
-  "lpbridge_test.js"
- ],
- "目標タイルの色分けをやめる": [
-  "lpbridge_test.js"
- ],
- "先取りタイルの文言を戻す": [
-  "lpbridge_test.js"
- ],
- "初期化のたずねを一度だけにする": [
-  "lpbridge_test.js"
- ],
- "初期化に失敗しても元へ戻さない": [
-  "lpbridge_test.js"
- ],
- "年齢を経過日数の近似に戻す": [
-  "agebound_test.js"
- ],
- "応当日を末日へ寄せない（2月29日生まれ）": [
-  "agebound_test.js"
- ],
- "満年数を1つ多く数える": [
-  "agebound_test.js"
- ],
- "端でも回り込ませる": [
-  "swipe_test.js"
- ],
- "払う向きを逆にする": [
-  "swipe_test.js"
- ],
- "せっていもスワイプの並びに入れる": [
-  "swipe_test.js"
- ],
- "縦スクロールでも切り替える": [
-  "swipe_test.js"
- ],
- "ほんの少し触れただけで切り替える": [
-  "swipe_test.js"
- ],
- "ゆっくりなぞっても切り替える": [
-  "swipe_test.js"
- ],
- "シートを開いていても切り替える": [
-  "swipe_test.js"
- ],
- "測定中でも切り替える": [
-  "swipe_test.js"
- ],
- "つまむ操作でも切り替える": [
-  "swipe_test.js"
- ],
- "採用窓の下限を外す": [
-  "pulse_test.js"
- ],
- "fpsの下限を外す": [
-  "pulse_test.js"
- ],
- "測定品質の下限を下げる": [
-  "pulse_test.js"
- ],
- "指が離れた測定も保存する": [
-  "pulse_test.js"
- ],
- "保存できる心拍数の範囲を広げる": [
-  "pulse_test.js"
- ],
- "準備時間も計算に使う": [
-  "pulse_test.js"
- ],
- "途中で止めた測定も解析する": [
-  "pulse_test.js"
- ],
- "解析の長さを固定しない": [
-  "pulse_test.js"
- ],
- "移動平均の末尾を埋めない": [
-  "pulse_test.js"
- ],
- "履歴の上限を外す": [
-  "pulse_test.js"
- ],
- "止めるときにライトを消さない": [
-  "pulse_test.js"
- ],
- "画面を移ってもカメラを止めない": [
-  "pulse_test.js"
- ],
- "心拍の保存に失敗しても巻き戻さない": [
-  "pulse_test.js"
- ],
- "心拍の削除に失敗しても巻き戻さない": [
-  "pulse_test.js",
-  "us_language.test.js"
- ],
- "健康記録へ入れて失敗しても巻き戻さない": [
-  "pulse_test.js"
- ],
- "拡大枠を効かなくする": [
-  "scoring_test.js"
- ],
- "縮小枠を効かなくする": [
-  "scoring_test.js"
- ],
- "枠のはみ出し防止を外す": [
-  "scoring_test.js"
- ],
- "一致回数の加点を消す": [
-  "scoring_test.js"
- ],
- "桁区切りの検査を外す": [
-  "scoring_test.js"
- ],
- "低確信でも自動確定する": [
-  "scoring_test.js"
- ],
- "1位2位の点差を見ない": [
-  "scoring_test.js"
- ],
- "1回出ただけで打ち切る": [
-  "hires.test.js"
- ],
- "自動反転をやめる": [
-  "scoring_test.js"
- ],
- "反転を二重に適用する": [
-  "scoring_test.js"
- ],
- "読み取り用の高解像度をやめる": [
-  "hires.test.js"
- ],
- "読み取り後に高解像度を捨てる": [
-  "hires.test.js"
- ],
- "シートを閉じても解放しない": [
-  "hires.test.js"
- ],
- "記録に高解像度画像を混ぜる": [
-  "hires.test.js"
- ],
- "候補をタップしたら保存する": [
-  "scoring_test.js"
- ],
- "保存前の写真縮小をやめる": [
-  "storage.test.js"
- ],
- "保存の失敗を握りつぶす": [
-  "hires.test.js"
- ],
- "スクリプト読み込み関数を消す": [
-  "wiring_test.js"
- ],
- "保存の成否が出る前に高解像度を解放する": [
-  "hires.test.js"
- ],
- "保存に失敗しても高解像度を解放する": [
-  "hires.test.js"
- ],
- "写真を外した再保存の成功で解放しない": [
-  "hires.test.js"
- ],
- "キャッシュの版数を上げ忘れる": [
-  "sw_test.js"
- ],
- "設定の保存失敗を巻き戻さない": [
-  "audit_test.js"
- ],
- "設定の保存失敗でも成功と表示する": [
-  "rollback_test.js"
- ],
- "記録削除の失敗を巻き戻さない": [
-  "rollback_test.js"
- ],
- "写真一括削除の失敗を巻き戻さない": [
-  "rollback_test.js"
- ],
- "写真0枚でも保存を試みる": [
-  "rollback_test.js"
- ],
- "バックアップ復元の失敗を巻き戻さない": [
-  "backup_test.js"
- ],
- "バックアップの確認ダイアログを出さない": [
-  "backup_test.js"
- ],
- "壊れた記録をそのまま取り込む": [
-  "backup_test.js"
- ],
- "巨大な金額を制限しない": [
-  "backup_test.js"
- ],
- "危険な写真データを通す": [
-  "backup_test.js"
- ],
- "Tesseractの版を範囲指定に戻す": [
-  "storage.test.js"
- ],
- "旧固定費キーを支出カテゴリから外す": [
-  "backup_test.js"
- ],
- "支出集計から一部カテゴリを除外する": [
-  "analysis_test.js"
- ],
- "健康の範囲外を受け入れる": [
-  "health_test.js"
- ],
- "健康の未入力を0として記録する": [
-  "health_test.js"
- ],
- "健康の保存失敗を巻き戻さない": [
-  "health_test.js"
- ],
- "バックアップから健康を外す": [
-  "health_test.js"
- ],
- "日記の空を残す": [
-  "diary_test.js"
- ],
- "日記の上限を外す": [
-  "diary_test.js"
- ],
- "日記の危険な写真を通す": [
-  "diary_test.js"
- ],
- "日記の写真を保存前に縮小しない": [
-  "diary_test.js"
- ],
- "日記の保存失敗を巻き戻さない": [
-  "diary_test.js"
- ],
- "バックアップから日記を外す": [
-  "diary_test.js"
- ],
- "その日以外の記録も混ぜる": [
-  "country_us.test.js"
- ],
- "別の月にも印をつける": [
-  "calendar_test.js"
- ],
- "のこりのマイナスを0にしない": [
-  "render.test.js"
- ],
- "円グラフの割合を収入基準にしない": [
-  "render.test.js"
- ],
- "内訳を一部カテゴリだけにする": [
-  "backup_test.js",
-  "core.test.js"
- ],
- "core.js をキャッシュ優先に戻す": [
-  "sw_test.js"
- ],
- "sw.js をブラウザのキャッシュ任せにする": [
-  "sw_test.js"
- ],
- "更新確認をやめる": [
-  "sw_test.js"
- ],
- "初回登録でも読み直す（余計なリロード）": [
-  "sw_test.js"
- ],
- "制御の有無を見ない（常に更新扱い）": [
-  "sw_test.js"
- ],
- "再読み込みの印を外す（無限ループ）": [
-  "sw_test.js"
- ],
- "切り替わっても読み直さない": [
-  "sw_test.js"
- ],
- "古いキャッシュを消さない": [
-  "sw_test.js"
- ],
- "画面をキャッシュ優先に戻す": [
-  "sw_test.js"
- ],
- "桁欠けに気づかない": [
-  "leading_test.js"
- ],
- "桁欠けの減点をやめる": [
-  "leading_test.js"
- ],
- "推測を自動入力する": [
-  "leading_test.js"
- ],
- "推測の信頼度に上限を設けない": [
-  "leading_test.js"
- ],
- "補正の対象を広げすぎる（候補が増えすぎる）": [
-  "leading_test.js"
- ],
- "📦 を選べるボタンに戻す": [
-  "recurring_test.js"
- ],
- "📦 のキーごと消す": [
-  "recurring_test.js"
- ],
- "毎月固定の印を見ない": [
-  "chart_test.js"
- ],
- "収入にも固定の印を認める": [
-  "recurring_test.js"
- ],
- "印を文字列でも受け入れる": [
-  "recurring_test.js"
- ],
- "毎月固定も日割りする": [
-  "recurring_test.js"
- ],
- "まだ来ていない日付もペースに混ぜる": [
-  "recurring_test.js"
- ],
- "毎月固定を、印を見ずに0にする": [
-  "recurring_test.js"
- ],
- "保存のときに印を落とす": [
-  "recurring_test.js"
- ],
- "収入に切り替えても印を残す": [
-  "recurring_test.js"
- ],
- "スイッチを押しても切り替わらない": [
-  "recurring_test.js"
- ],
- "月末の予測を経過日数で割らない": [
-  "recurring_test.js"
- ],
- "つかってよい額から先取りを引かない": [
-  "analysis_test.js"
- ],
- "収入が無くても使いすぎと決めつける": [
-  "analysis_test.js"
- ],
- "つかわなかった日を数えない": [
-  "analysis_test.js"
- ],
- "カテゴリ集計にほかの月を混ぜる": [
-  "cycle_test.js"
- ],
- "曜日の集計にほかの月を混ぜる": [
-  "analysis_test.js"
- ],
- "先月ではなく当月と比べる": [
-  "analysis_test.js"
- ],
- "平均を記録の無い月でも割る": [
-  "analysis_test.js"
- ],
- "使いすぎの警告を出さない": [
-  "analysis_test.js"
- ],
- "先月の記録が無くても「ふえた」と言う": [
-  "analysis_test.js"
- ],
- "気づきを何件でも出す": [
-  "analysis_test.js"
- ],
- "分析タブを開いても今月のまとめを出す": [
-  "chart_test.js"
- ],
- "今月にすでにあっても、もう一度入れる": [
-  "recurring_test.js"
- ],
- "先月ではなく当月を写す": [
-  "cycle_test.js"
- ],
- "印の無い支出まで写す": [
-  "recurring_test.js"
- ],
- "無い起点日を月末へ寄せない（2/31）": [
-  "cycle_test.js"
- ],
- "区切りからはみ出す日付を作る": [
-  "cycle_test.js"
- ],
- "区切りの境目を1日ずらす": [
-  "cycle_test.js"
- ],
- "集計が区切りを見ずに暦の月で数える": [
-  "cycle_test.js"
- ],
- "写した記録に🔁を付けない": [
-  "recurring_test.js"
- ],
- "確認しないで入れる": [
-  "recurring_test.js"
- ],
- "まとめて入れる失敗を巻き戻さない": [
-  "recurring_test.js"
- ],
- "やることを何件でも出す": [
-  "tasks_test.js"
- ],
- "給料日より前でも催促する": [
-  "cycle_test.js"
- ],
- "はじめての人にも給料を催促する": [
-  "plan_test.js",
-  "tasks_test.js"
- ],
- "1日あいただけで記録を催促する": [
-  "tasks_test.js"
- ],
- "まだ来ていない記録も数える": [
-  "tasks_test.js"
- ],
- "続けていない人にも日記を催促する": [
-  "tasks_test.js"
- ],
- "今日つけた分も習慣の数に入れる": [
-  "tasks_test.js"
- ],
- "やることが無くてもカードを出す": [
-  "plan_test.js",
-  "tasks_test.js"
- ],
- "まとめのカードを横1列に戻す": [
-  "integrity.test.js"
- ],
- "オフライン時の受け皿を外す": [
-  "sw_test.js"
- ],
- "済んだ予定もホームに出す": [
-  "plan_test.js"
- ],
- "時刻なしの予定を先頭に置く": [
-  "backup_test.js"
- ],
- "1日に入れられる予定の上限を外す": [
-  "plan_test.js"
- ],
- "中身が空の予定も残す": [
-  "plan_test.js"
- ],
- "おかしな時刻をそのまま通す": [
-  "plan_test.js"
- ],
- "保存に失敗しても予定を残す": [
-  "plan_test.js"
- ],
- "ホームに今日の予定を全部出す": [
-  "plan_test.js"
- ],
- "わり算を切り捨てにする": [
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "0で割れてしまう": [
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "＝を押さないと計算されない": [
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "打ち込める桁数の上限を外す": [
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "＝のあとに打ち足せてしまう": [
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "式を出さない": [
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "記録するとき、待っている計算を捨てる": [
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "金額欄にキーボードを出す": [
-  "calc_test.js"
- ],
- "ほかの月の予定まで混ぜる": [
-  "plan_test.js"
- ],
- "のこり件数を全件にする": [
-  "plan_test.js"
- ],
- "ホームの一覧の行数の上限を外す": [
-  "plan_test.js"
- ],
- "予定が無くても今月の予定カードを出す": [
-  "plan_test.js"
- ],
- "かけ算より足し算を先に計算する": [
-  "sci_test.js"
- ],
- "べき乗を左から計算する": [
-  "sci_test.js"
- ],
- "符号のマイナスをふつうの引き算にする": [
-  "sci_test.js"
- ],
- "かっこの数が合わなくても計算する": [
-  "sci_test.js"
- ],
- "三角関数を、いつも弧度で計算する": [
-  "sci_test.js"
- ],
- "電卓でも0で割れてしまう": [
-  "sci_test.js"
- ],
- "答えが数でなくても出してしまう": [
-  "sci_test.js"
- ],
- "小数や0以下でも家計簿にまわす": [
-  "sci_test.js"
- ],
- "履歴を古い順にためる": [
-  "sci_test.js"
- ],
- "式の長さの上限を外す": [
-  "sci_test.js"
- ],
- "AC で履歴まで消す": [
-  "sci_test.js"
- ],
- "下のタブを半透明のぼかしに戻す": [
-  "integrity.test.js"
- ],
- "下のタブを独立した層にしない": [
-  "integrity.test.js"
- ],
- "下のタブより記録の画面を手前にする": [
-  "integrity.test.js"
- ],
- "画面の高さをアドレスバーに合わせない": [
-  "integrity.test.js"
- ],
- "目もりを切りのよい数に合わせない": [
-  "chart_test.js"
- ],
- "上の端を値より下にする": [
-  "chart_test.js"
- ],
- "同じ値ばかりのときに余白を作らない": [
-  "chart_test.js"
- ],
- "日付ラベルの最初と最後を落とす": [
-  "chart_test.js"
- ],
- "変化量の丸めをやめる": [
-  "chart_test.js"
- ],
- "確定ボタンの色を消す": [
-  "button_test.js"
- ],
- "確定ボタンを小さくする": [
-  "button_test.js"
- ],
- "電卓の ＝ を他のキーと同じ大きさにする": [
-  "button_test.js"
- ],
- "復元で予定を入れ忘れる": [
-  "backup_test.js"
- ],
- "ペースの目もりを勝手な式にする": [
-  "chart_test.js"
- ],
- "金額を万単位で書かない": [
-  "chart_test.js"
- ],
- "凡例から予測の線を消す": [
-  "chart_test.js"
- ],
- "心拍数の項目を消す": [
-  "health_test.js"
- ],
- "心拍数の範囲チェックを緩める": [
-  "health_test.js"
- ],
- "保存で心拍数を読まない": [
-  "health_test.js"
- ],
- "棒グラフの目もりを勝手な式にする": [
-  "chart_test.js"
- ],
- "棒を下端から立てない": [
-  "chart_test.js"
- ],
- "カレンダー描画で日またぎを見ない": [
-  "calendar_test.js"
- ],
- "日またぎ判定を常に「またいでいない」にする": [
-  "calendar_test.js"
- ],
- "日またぎで月を今月に戻さない": [
-  "calendar_test.js"
- ],
- "旧データを国なしのまま通す（JPへ寄せない）": [
-  "country_us.test.js"
- ],
- "記録を国で分けない（JPとUSが混ざる）": [
-  "country_us.test.js"
- ],
- "当月の計算で国を見ない": [
-  "country_us.test.js"
- ],
- "円にも小数を付ける": [
-  "about_test.js"
- ],
- "ドルを小数なしで出す": [
-  "country_us.test.js"
- ],
- "国と通貨の組をほどく": [
-  "country_guard.test.js",
-  "country_us.test.js"
- ],
- "英語のときも日本語のカテゴリ名を出す": [
-  "country_us.test.js"
- ],
- "カテゴリを英語の文字列で保存する": [
-  "backup_test.js"
- ],
- "JPの記録にも国の印を付ける（保存の形が変わる）": [
-  "country_us.test.js"
- ],
- "連携の国コードを決め打ちにする": [
-  "country_us.test.js"
- ],
- "連携の基準通貨を決め打ちにする": [
-  "country_us.test.js"
- ],
- "ライフプランへ渡す入力から国を落とす": [
-  "country_us.test.js"
- ],
- "せっていで国を読まない（切り替えても保存されない）": [
-  "audit_test.js",
-  "country_us.test.js"
- ],
- "まとめの記録一覧を国で絞らない": [
-  "country_us.test.js"
- ],
- "新しい記録に国の印を付けない": [
-  "country_us.test.js"
- ],
- "国を選び直しても保存も描き直しもしない": [
-  "country_us.test.js"
- ],
- "国の選択を change で受け取らない": [
-  "country_us.test.js"
- ],
- "下のタブを日本語のまま置き去りにする": [
-  "country_us.test.js",
-  "us_language.test.js"
- ],
- "カレンダーの今月を区切りキーにする": [
-  "calendar_test.js"
- ],
- "CAを選択対象から外す": [
-  "country_ca.test.js"
- ],
- "CAの通貨をUSDにする": [
-  "country_ca.test.js"
- ],
- "CAの完全日付を米国順にする": [
-  "country_ca.test.js"
- ],
- "CAの月日を米国スラッシュ順にする": [
-  "country_ca.test.js"
- ],
- "CAの月区切り表示を米国順にする": [
-  "country_ca.test.js"
- ],
- "AUを選択対象から外す": [
-  "country_au.test.js"
- ],
- "AUの通貨をUSDにする": [
-  "country_au.test.js"
- ],
- "AUの完全日付を米国順にする": [
-  "country_au.test.js"
- ],
- "AUの見出し日付を米国順にする": [
-  "country_au.test.js"
- ],
- "AUの月区切り表示を米国順にする": [
-  "country_au.test.js"
- ],
- "写真の検証を先頭だけにする": [
-  "audit_test.js"
- ],
- "日記の写真をエスケープせず出す": [
-  "audit_test.js"
- ],
- "escapeHtml が引用符を逃がさない": [
-  "audit_test.js"
- ],
- "金額の上限を効かせない": [
-  "audit_test.js"
- ],
- "記録を整えずに保存する": [
-  "audit_test.js"
- ],
- "読み込んだ記録を整えない": [
-  "audit_test.js"
- ],
- "編集で記録の国を取り違える": [
-  "audit_test.js"
- ],
- "グラフの左端を月ずらしで出す": [
-  "audit_test.js"
- ],
- "グラフの左端をUTCで書き出す": [
-  "audit_test.js"
- ],
- "許可待ちの映像を捨てない": [
-  "audit_test.js",
-  "pulse_test.js"
- ],
- "停止で世代を進めない": [
-  "audit_test.js",
-  "pulse_test.js"
- ],
- "度の特別扱いをやめる": [
-  "sci_test.js"
- ],
- "弧度でも度の丸めを使う": [
-  "sci_test.js"
- ],
- "失敗した返事もキャッシュに入れる": [
-  "sw_test.js",
-  "audit_test.js"
- ],
- "JPにも100を掛ける": [
-  "minor_units_test.js"
- ],
- "GBだけ倍率を取り違える": [
-  "minor_units_test.js"
- ],
- "記録をいまの国で一括換算する": [
-  "minor_units_test.js"
- ],
- "プロファイルをいまの国で一括換算する": [
-  "minor_units_test.js"
- ],
- "移行済みでも、もう一度換算する": [
-  "minor_units_test.js"
- ],
- "移行しても印を付けない": [
-  "minor_units_test.js"
- ],
- "％や年齢にも100を掛ける": [
-  "minor_units_test.js"
- ],
- "お金の欄をひとつ換算し忘れる": [
-  "minor_units_test.js"
- ],
- "古いバックアップを最小単位として読む": [
-  "minor_units_test.js"
- ],
- "新しすぎるバックアップも読み込む": [
-  "minor_units_test.js"
- ],
- "ライフプランへ最小単位のまま渡す": [
-  "minor_units_test.js"
- ],
- "渡す前の検算をやめる": [
-  "minor_units_test.js"
- ],
- "ライフプラン入力を最小単位のまま渡す": [
-  "minor_units_test.js"
- ],
- "控えが取れなくても移行する": [
-  "minor_units_test.js"
- ],
- "控えを書けたか確かめない": [
-  "minor_units_test.js"
- ],
- "移行を見送っても保存してしまう": [
-  "minor_units_test.js"
- ],
- "見送ったのに印を付ける": [
-  "minor_units_test.js"
- ],
- "画面へ主単位に戻さず出す": [
-  "minor_units_test.js"
- ],
- "打ち込みを最小単位へ直さない": [
-  "minor_units_test.js",
-  "decimal_input_test.js"
- ],
- "直すときいまの国で換算する": [
-  "minor_units_test.js"
- ],
- "円でも小数点を受け付ける": [
-  "decimal_input_test.js"
- ],
- "小数点を2つ置けるようにする": [
-  "decimal_input_test.js"
- ],
- "小数の桁数を制限しない": [
-  "decimal_input_test.js"
- ],
- "掛け算で倍率をならさない": [
-  "decimal_input_test.js"
- ],
- "割り算で倍率をならさない": [
-  "decimal_input_test.js"
- ],
- "打ち込みを小数のまま数にする": [
-  "decimal_input_test.js"
- ],
- "打ち込み欄でセントを切り捨てる": [
-  "decimal_input_test.js"
- ],
- "記録の電卓をいまの国の桁数で作る": [
-  "decimal_input_test.js"
- ],
- "レシートの小数を読まない": [
-  "decimal_input_test.js"
- ],
- "小計を合計として拾う": [
-  "decimal_input_test.js",
-  "chart_ocr_i18n_test.js"
- ],
- "お釣りを合計として拾う": [
-  "decimal_input_test.js",
-  "chart_ocr_i18n_test.js"
- ],
- "英語の言い回しを合計と見なさない": [
-  "decimal_input_test.js",
-  "chart_ocr_i18n_test.js"
- ],
- "レシートの桁数を渡さない": [
-  "decimal_input_test.js",
-  "integrity.test.js"
- ],
- "候補を主単位へ戻さずに入れる": [
-  "decimal_input_test.js",
-  "scoring_test.js"
- ],
- "設定の小数を切り捨てる": [
-  "decimal_input_test.js"
- ],
- "金額の欄に小数のキーボードを出さない": [
-  "decimal_input_test.js"
- ],
- "直しても記録に反映されない": [
-  "audit_test.js",
-  "recurring_test.js"
- ],
- "英語圏の目もりに M を出さない": [
-  "chart_ocr_i18n_test.js"
- ],
- "英語圏の目もりに k を出さない": [
-  "chart_ocr_i18n_test.js"
- ],
- "円でも k を出す": [
-  "chart_ocr_i18n_test.js"
- ],
- "目もりを最小単位のまま出す": [
-  "chart_ocr_i18n_test.js"
- ],
- "目もりの短縮で小数を捨てる": [
-  "chart_ocr_i18n_test.js"
- ],
- "税込みの合計より税の語を優先する": [
-  "chart_ocr_i18n_test.js"
- ],
- "はっきりした合計の言い方を知らない": [
-  "chart_ocr_i18n_test.js"
- ],
- "英語の税を拾ってしまう": [
-  "chart_ocr_i18n_test.js"
- ],
- "カード会社名を拾ってしまう": [
-  "chart_ocr_i18n_test.js"
- ],
- "チップ・値引きを拾ってしまう": [
-  "chart_ocr_i18n_test.js"
- ],
- "数量・単価を拾ってしまう": [
-  "chart_ocr_i18n_test.js"
- ],
- "電卓の並びを国で分ける": [
-  "chart_ocr_i18n_test.js",
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "小数点キーを出さない": [
-  "chart_ocr_i18n_test.js",
-  "calc_test.js",
-  "decimal_input_test.js"
- ],
- "関数電卓の記録ボタンを出さない": [
-  "chart_ocr_i18n_test.js"
- ],
- "記録ボタンの金額を主単位のまま出す": [
-  "chart_ocr_i18n_test.js"
- ],
- "記録画面へ最小単位のまま渡す": [
-  "chart_ocr_i18n_test.js"
- ],
- "0や負の答えも記録させる": [
-  "chart_ocr_i18n_test.js"
- ],
- "丸めたことを知らせない": [
-  "decimal_input_test.js"
- ],
- "丸めたかどうかを見ない": [
-  "decimal_input_test.js"
- ],
- "細かい桁の判定を通貨の桁で切らない": [
-  "decimal_input_test.js"
- ],
- "打ち込みを切り捨てにする": [
-  "decimal_input_test.js"
- ],
- "打てる小数の桁を通貨まかせにする": [
-  "decimal_input_test.js"
- ],
- "予定IDの長さ制限を外す": [
-  "plan_id_integrity_test.js"
- ],
- "重複した予定IDをそのまま残す": [
-  "plan_id_integrity_test.js"
- ]
+  "借入を先取りに戻す": [
+    "lifeplan_test.js"
+  ],
+  "各種保険を支出に入れない": [
+    "lifeplan_test.js"
+  ],
+  "出ていくお金を毎月固定に数えない": [
+    "lifeplan_test.js"
+  ],
+  "出ていくお金を先取りにも足す": [
+    "lifeplan_test.js"
+  ],
+  "iDeCoの掛金を先取りに入れない": [
+    "lifeplan_test.js"
+  ],
+  "iDeCo・各種保険を渡さない": [
+    "lifeplan_test.js"
+  ],
+  "記録の選択に保険を残す": [
+    "lifeplan_test.js"
+  ],
+  "記録の選択に私年金を残す": [
+    "lifeplan_test.js"
+  ],
+  "まとめで先取りと支出を分けない": [
+    "lifeplan_test.js"
+  ],
+  "毎月の金額を先取りに入れない": [
+    "lifeplan_test.js"
+  ],
+  "毎月の金額を支出にも足す": [
+    "lifeplan_test.js"
+  ],
+  "一括投資も毎月の計算に入れる": [
+    "lifeplan_test.js"
+  ],
+  "月額を銘柄の合計にしない": [
+    "lifeplan_test.js"
+  ],
+  "一括投資をライフプランへ渡さない": [
+    "lifeplan_test.js"
+  ],
+  "まとめに先取りの内わけを出さない": [
+    "lifeplan_test.js"
+  ],
+  "NISAのタイルを古い設定欄へ飛ばす": [
+    "render.test.js"
+  ],
+  "年齢の数え方を1年ずらす": [
+    "agebound_test.js",
+    "lifeplan_test.js"
+  ],
+  "おかしな生年月日も受け入れる": [
+    "lifeplan_test.js"
+  ],
+  "未来の生年月日を受け入れる": [
+    "lifeplan_test.js"
+  ],
+  "区間の終わりを含めない": [
+    "lifeplan_test.js"
+  ],
+  "逆さまの区間をそのまま通す": [
+    "lifeplan_test.js"
+  ],
+  "生年月日が無くても自動にする": [
+    "lifeplan_test.js"
+  ],
+  "NISAのスケジュールを渡さない": [
+    "lpbridge_test.js"
+  ],
+  "生年月日を拾わない": [
+    "lifeplan_test.js"
+  ],
+  "先取り貯金の欄を設定へ戻す（銀行貯金と二重）": [
+    "render.test.js"
+  ],
+  "タイルを横スクロールに戻す（隠れた分に気づけない）": [
+    "lpbridge_test.js"
+  ],
+  "生年月日を保存しない": [
+    "lifeplan_test.js"
+  ],
+  "渡す形の入れものを変える": [
+    "lpbridge_test.js"
+  ],
+  "ライフプランの入力まで上書きする": [
+    "lifeplan_test.js"
+  ],
+  "件数の上限を外す": [
+    "lifeplan_test.js"
+  ],
+  "マイナスの金額を受け入れる": [
+    "lifeplan_test.js"
+  ],
+  "金の評価額を足し算にする": [
+    "lifeplan_test.js"
+  ],
+  "空でも設定に持たせる": [
+    "hires.test.js",
+    "lifeplan_test.js"
+  ],
+  "保存に失敗しても巻き戻さない": [
+    "lifeplan_test.js"
+  ],
+  "内訳へ移るときに書きかけを捨てる": [
+    "lifeplan_test.js"
+  ],
+  "確かめずに行を消す": [
+    "lifeplan_test.js"
+  ],
+  "書きかけを確かめずに捨てる": [
+    "diary_test.js"
+  ],
+  "おかしな日付でも切り替える": [
+    "diary_test.js"
+  ],
+  "今日を選んでも今日に戻らない": [
+    "diary_test.js"
+  ],
+  "日付えらびを受け取らない": [
+    "diary_test.js"
+  ],
+  "写真ボタンをただの文字に戻す": [
+    "diary_test.js"
+  ],
+  "いる画面の台の色を消す": [
+    "swipe_test.js"
+  ],
+  "いる画面の絵文字を大きくしない": [
+    "swipe_test.js"
+  ],
+  "いない画面の印を消し忘れる": [
+    "swipe_test.js"
+  ],
+  "画面を切り替えても印を付け替えない": [
+    "swipe_test.js"
+  ],
+  "開始日を経過日数の近似で出す": [
+    "agebound_test.js"
+  ],
+  "開始日を切り捨てる（まだ達していない日を返す）": [
+    "agebound_test.js"
+  ],
+  "開始日で満年の分を進めない": [
+    "agebound_test.js",
+    "lifeplan_test.js"
+  ],
+  "生年月日なしで入力内訳ではなく旧NISA月額へ戻す": [
+    "nisa_birth_mode_test.js"
+  ],
+  "書き出しでコピーを試さない": [
+    "lpbridge_test.js"
+  ],
+  "コピーに失敗してもファイルへ落とさない": [
+    "lpbridge_test.js"
+  ],
+  "バックアップで共有シートを試さない": [
+    "lpbridge_test.js"
+  ],
+  "共有を取り消してもダウンロードへ落とさない": [
+    "lpbridge_test.js"
+  ],
+  "バックアップをコピーだけにする（ファイルで戻せない）": [
+    "lpbridge_test.js"
+  ],
+  "打っても自動で保存しない": [
+    "lpbridge_test.js",
+    "autosave_immediate_test.js"
+  ],
+  "内訳の自動保存だけやめる": [
+    "lpbridge_test.js",
+    "autosave_immediate_test.js"
+  ],
+  "せっていの自動保存だけやめる": [
+    "lpbridge_test.js",
+    "autosave_immediate_test.js"
+  ],
+  "自動保存で全部の欄を読み直す（生年月日が消える）": [
+    "lpbridge_test.js"
+  ],
+  "NISAのタイルだけ色を変える": [
+    "lpbridge_test.js"
+  ],
+  "自動保存で画面を作り直す（入力中の欄から指が外れる）": [
+    "lpbridge_test.js"
+  ],
+  "NISAの見出しを分かりにくい言い方に戻す": [
+    "lpbridge_test.js"
+  ],
+  "銘柄を足しても入力欄へ移らない": [
+    "lpbridge_test.js"
+  ],
+  "区間を足しても入力欄へ移らない": [
+    "lpbridge_test.js"
+  ],
+  "行を足しても入力欄へ移らない": [
+    "lpbridge_test.js"
+  ],
+  "足した行ではなく先頭の欄へ移る": [
+    "lpbridge_test.js"
+  ],
+  "内訳のカードを入口カードと同じ名前に戻す": [
+    "lpbridge_test.js"
+  ],
+  "目標タイルの色分けをやめる": [
+    "lpbridge_test.js"
+  ],
+  "先取りタイルの文言を戻す": [
+    "lpbridge_test.js"
+  ],
+  "初期化のたずねを一度だけにする": [
+    "lpbridge_test.js"
+  ],
+  "初期化に失敗しても元へ戻さない": [
+    "lpbridge_test.js"
+  ],
+  "年齢を経過日数の近似に戻す": [
+    "agebound_test.js"
+  ],
+  "応当日を末日へ寄せない（2月29日生まれ）": [
+    "agebound_test.js"
+  ],
+  "満年数を1つ多く数える": [
+    "agebound_test.js"
+  ],
+  "端でも回り込ませる": [
+    "swipe_test.js"
+  ],
+  "払う向きを逆にする": [
+    "swipe_test.js"
+  ],
+  "せっていもスワイプの並びに入れる": [
+    "swipe_test.js"
+  ],
+  "縦スクロールでも切り替える": [
+    "swipe_test.js"
+  ],
+  "ほんの少し触れただけで切り替える": [
+    "swipe_test.js"
+  ],
+  "ゆっくりなぞっても切り替える": [
+    "swipe_test.js"
+  ],
+  "シートを開いていても切り替える": [
+    "swipe_test.js"
+  ],
+  "測定中でも切り替える": [
+    "swipe_test.js"
+  ],
+  "つまむ操作でも切り替える": [
+    "swipe_test.js"
+  ],
+  "採用窓の下限を外す": [
+    "pulse_test.js"
+  ],
+  "fpsの下限を外す": [
+    "pulse_test.js"
+  ],
+  "測定品質の下限を下げる": [
+    "pulse_test.js"
+  ],
+  "指が離れた測定も保存する": [
+    "pulse_test.js"
+  ],
+  "保存できる心拍数の範囲を広げる": [
+    "pulse_test.js"
+  ],
+  "準備時間も計算に使う": [
+    "pulse_test.js"
+  ],
+  "途中で止めた測定も解析する": [
+    "pulse_test.js"
+  ],
+  "解析の長さを固定しない": [
+    "pulse_test.js"
+  ],
+  "移動平均の末尾を埋めない": [
+    "pulse_test.js"
+  ],
+  "履歴の上限を外す": [
+    "pulse_test.js"
+  ],
+  "止めるときにライトを消さない": [
+    "pulse_test.js"
+  ],
+  "画面を移ってもカメラを止めない": [
+    "pulse_test.js"
+  ],
+  "心拍の保存に失敗しても巻き戻さない": [
+    "pulse_test.js"
+  ],
+  "心拍の削除に失敗しても巻き戻さない": [
+    "pulse_test.js",
+    "us_language.test.js"
+  ],
+  "健康記録へ入れて失敗しても巻き戻さない": [
+    "pulse_test.js"
+  ],
+  "拡大枠を効かなくする": [
+    "scoring_test.js"
+  ],
+  "縮小枠を効かなくする": [
+    "scoring_test.js"
+  ],
+  "枠のはみ出し防止を外す": [
+    "scoring_test.js"
+  ],
+  "一致回数の加点を消す": [
+    "scoring_test.js"
+  ],
+  "桁区切りの検査を外す": [
+    "scoring_test.js"
+  ],
+  "低確信でも自動確定する": [
+    "scoring_test.js"
+  ],
+  "1位2位の点差を見ない": [
+    "scoring_test.js"
+  ],
+  "1回出ただけで打ち切る": [
+    "hires.test.js"
+  ],
+  "自動反転をやめる": [
+    "scoring_test.js"
+  ],
+  "反転を二重に適用する": [
+    "scoring_test.js"
+  ],
+  "読み取り用の高解像度をやめる": [
+    "hires.test.js"
+  ],
+  "読み取り後に高解像度を捨てる": [
+    "hires.test.js"
+  ],
+  "シートを閉じても解放しない": [
+    "hires.test.js"
+  ],
+  "記録に高解像度画像を混ぜる": [
+    "hires.test.js"
+  ],
+  "候補をタップしたら保存する": [
+    "scoring_test.js"
+  ],
+  "保存前の写真縮小をやめる": [
+    "storage.test.js"
+  ],
+  "保存の失敗を握りつぶす": [
+    "hires.test.js"
+  ],
+  "スクリプト読み込み関数を消す": [
+    "wiring_test.js"
+  ],
+  "保存の成否が出る前に高解像度を解放する": [
+    "hires.test.js"
+  ],
+  "保存に失敗しても高解像度を解放する": [
+    "hires.test.js"
+  ],
+  "写真を外した再保存の成功で解放しない": [
+    "hires.test.js"
+  ],
+  "キャッシュの版数を上げ忘れる": [
+    "sw_test.js"
+  ],
+  "設定の保存失敗を巻き戻さない": [
+    "audit_test.js"
+  ],
+  "設定の保存失敗でも成功と表示する": [
+    "rollback_test.js"
+  ],
+  "記録削除の失敗を巻き戻さない": [
+    "rollback_test.js"
+  ],
+  "写真一括削除の失敗を巻き戻さない": [
+    "rollback_test.js"
+  ],
+  "写真0枚でも保存を試みる": [
+    "rollback_test.js"
+  ],
+  "バックアップ復元の失敗を巻き戻さない": [
+    "backup_test.js"
+  ],
+  "バックアップの確認ダイアログを出さない": [
+    "backup_test.js"
+  ],
+  "壊れた記録をそのまま取り込む": [
+    "backup_test.js"
+  ],
+  "巨大な金額を制限しない": [
+    "backup_test.js"
+  ],
+  "危険な写真データを通す": [
+    "backup_test.js"
+  ],
+  "Tesseractの版を範囲指定に戻す": [
+    "storage.test.js"
+  ],
+  "旧固定費キーを支出カテゴリから外す": [
+    "backup_test.js"
+  ],
+  "支出集計から一部カテゴリを除外する": [
+    "analysis_test.js"
+  ],
+  "健康の範囲外を受け入れる": [
+    "health_test.js"
+  ],
+  "健康の未入力を0として記録する": [
+    "health_test.js"
+  ],
+  "健康の保存失敗を巻き戻さない": [
+    "health_test.js"
+  ],
+  "バックアップから健康を外す": [
+    "health_test.js"
+  ],
+  "日記の空を残す": [
+    "diary_test.js"
+  ],
+  "日記の上限を外す": [
+    "diary_test.js"
+  ],
+  "日記の危険な写真を通す": [
+    "diary_test.js"
+  ],
+  "日記の写真を保存前に縮小しない": [
+    "diary_test.js"
+  ],
+  "日記の保存失敗を巻き戻さない": [
+    "diary_test.js"
+  ],
+  "バックアップから日記を外す": [
+    "diary_test.js"
+  ],
+  "その日以外の記録も混ぜる": [
+    "country_us.test.js"
+  ],
+  "別の月にも印をつける": [
+    "calendar_test.js"
+  ],
+  "のこりのマイナスを0にしない": [
+    "render.test.js"
+  ],
+  "円グラフの割合を収入基準にしない": [
+    "render.test.js"
+  ],
+  "内訳を一部カテゴリだけにする": [
+    "backup_test.js",
+    "core.test.js"
+  ],
+  "core.js をキャッシュ優先に戻す": [
+    "sw_test.js"
+  ],
+  "sw.js をブラウザのキャッシュ任せにする": [
+    "sw_test.js"
+  ],
+  "更新確認をやめる": [
+    "sw_test.js"
+  ],
+  "初回登録でも読み直す（余計なリロード）": [
+    "sw_test.js"
+  ],
+  "制御の有無を見ない（常に更新扱い）": [
+    "sw_test.js"
+  ],
+  "再読み込みの印を外す（無限ループ）": [
+    "sw_test.js"
+  ],
+  "切り替わっても読み直さない": [
+    "sw_test.js"
+  ],
+  "古いキャッシュを消さない": [
+    "sw_test.js"
+  ],
+  "画面をキャッシュ優先に戻す": [
+    "sw_test.js"
+  ],
+  "桁欠けに気づかない": [
+    "leading_test.js"
+  ],
+  "桁欠けの減点をやめる": [
+    "leading_test.js"
+  ],
+  "推測を自動入力する": [
+    "leading_test.js"
+  ],
+  "推測の信頼度に上限を設けない": [
+    "leading_test.js"
+  ],
+  "補正の対象を広げすぎる（候補が増えすぎる）": [
+    "leading_test.js"
+  ],
+  "📦 を選べるボタンに戻す": [
+    "recurring_test.js"
+  ],
+  "📦 のキーごと消す": [
+    "recurring_test.js"
+  ],
+  "毎月固定の印を見ない": [
+    "chart_test.js"
+  ],
+  "収入にも固定の印を認める": [
+    "recurring_test.js"
+  ],
+  "印を文字列でも受け入れる": [
+    "recurring_test.js"
+  ],
+  "毎月固定も日割りする": [
+    "recurring_test.js"
+  ],
+  "まだ来ていない日付もペースに混ぜる": [
+    "recurring_test.js"
+  ],
+  "毎月固定を、印を見ずに0にする": [
+    "recurring_test.js"
+  ],
+  "保存のときに印を落とす": [
+    "recurring_test.js"
+  ],
+  "収入に切り替えても印を残す": [
+    "recurring_test.js"
+  ],
+  "スイッチを押しても切り替わらない": [
+    "recurring_test.js"
+  ],
+  "月末の予測を経過日数で割らない": [
+    "recurring_test.js"
+  ],
+  "つかってよい額から先取りを引かない": [
+    "analysis_test.js"
+  ],
+  "収入が無くても使いすぎと決めつける": [
+    "analysis_test.js"
+  ],
+  "つかわなかった日を数えない": [
+    "analysis_test.js"
+  ],
+  "カテゴリ集計にほかの月を混ぜる": [
+    "cycle_test.js"
+  ],
+  "曜日の集計にほかの月を混ぜる": [
+    "analysis_test.js"
+  ],
+  "先月ではなく当月と比べる": [
+    "analysis_test.js"
+  ],
+  "平均を記録の無い月でも割る": [
+    "analysis_test.js"
+  ],
+  "使いすぎの警告を出さない": [
+    "analysis_test.js"
+  ],
+  "先月の記録が無くても「ふえた」と言う": [
+    "analysis_test.js"
+  ],
+  "気づきを何件でも出す": [
+    "analysis_test.js"
+  ],
+  "分析タブを開いても今月のまとめを出す": [
+    "chart_test.js"
+  ],
+  "今月にすでにあっても、もう一度入れる": [
+    "recurring_test.js"
+  ],
+  "先月ではなく当月を写す": [
+    "cycle_test.js"
+  ],
+  "印の無い支出まで写す": [
+    "recurring_test.js"
+  ],
+  "無い起点日を月末へ寄せない（2/31）": [
+    "cycle_test.js"
+  ],
+  "区切りからはみ出す日付を作る": [
+    "cycle_test.js"
+  ],
+  "区切りの境目を1日ずらす": [
+    "cycle_test.js"
+  ],
+  "集計が区切りを見ずに暦の月で数える": [
+    "cycle_test.js"
+  ],
+  "写した記録に🔁を付けない": [
+    "recurring_test.js"
+  ],
+  "確認しないで入れる": [
+    "recurring_test.js"
+  ],
+  "まとめて入れる失敗を巻き戻さない": [
+    "recurring_test.js"
+  ],
+  "やることを何件でも出す": [
+    "tasks_test.js"
+  ],
+  "給料日より前でも催促する": [
+    "cycle_test.js"
+  ],
+  "はじめての人にも給料を催促する": [
+    "plan_test.js",
+    "tasks_test.js"
+  ],
+  "1日あいただけで記録を催促する": [
+    "tasks_test.js"
+  ],
+  "まだ来ていない記録も数える": [
+    "tasks_test.js"
+  ],
+  "続けていない人にも日記を催促する": [
+    "tasks_test.js"
+  ],
+  "今日つけた分も習慣の数に入れる": [
+    "tasks_test.js"
+  ],
+  "やることが無くてもカードを出す": [
+    "plan_test.js",
+    "tasks_test.js"
+  ],
+  "まとめのカードを横1列に戻す": [
+    "integrity.test.js"
+  ],
+  "オフライン時の受け皿を外す": [
+    "sw_test.js"
+  ],
+  "済んだ予定もホームに出す": [
+    "plan_test.js"
+  ],
+  "時刻なしの予定を先頭に置く": [
+    "backup_test.js"
+  ],
+  "1日に入れられる予定の上限を外す": [
+    "plan_test.js"
+  ],
+  "中身が空の予定も残す": [
+    "plan_test.js"
+  ],
+  "おかしな時刻をそのまま通す": [
+    "plan_test.js"
+  ],
+  "保存に失敗しても予定を残す": [
+    "plan_test.js"
+  ],
+  "ホームに今日の予定を全部出す": [
+    "plan_test.js"
+  ],
+  "わり算を切り捨てにする": [
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "0で割れてしまう": [
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "＝を押さないと計算されない": [
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "打ち込める桁数の上限を外す": [
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "＝のあとに打ち足せてしまう": [
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "式を出さない": [
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "記録するとき、待っている計算を捨てる": [
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "金額欄にキーボードを出す": [
+    "calc_test.js"
+  ],
+  "ほかの月の予定まで混ぜる": [
+    "plan_test.js"
+  ],
+  "のこり件数を全件にする": [
+    "plan_test.js"
+  ],
+  "ホームの一覧の行数の上限を外す": [
+    "plan_test.js"
+  ],
+  "予定が無くても今月の予定カードを出す": [
+    "plan_test.js"
+  ],
+  "かけ算より足し算を先に計算する": [
+    "sci_test.js"
+  ],
+  "べき乗を左から計算する": [
+    "sci_test.js"
+  ],
+  "符号のマイナスをふつうの引き算にする": [
+    "sci_test.js"
+  ],
+  "かっこの数が合わなくても計算する": [
+    "sci_test.js"
+  ],
+  "三角関数を、いつも弧度で計算する": [
+    "sci_test.js"
+  ],
+  "電卓でも0で割れてしまう": [
+    "sci_test.js"
+  ],
+  "答えが数でなくても出してしまう": [
+    "sci_test.js"
+  ],
+  "小数や0以下でも家計簿にまわす": [
+    "sci_test.js"
+  ],
+  "履歴を古い順にためる": [
+    "sci_test.js"
+  ],
+  "式の長さの上限を外す": [
+    "sci_test.js"
+  ],
+  "AC で履歴まで消す": [
+    "sci_test.js"
+  ],
+  "下のタブを半透明のぼかしに戻す": [
+    "integrity.test.js"
+  ],
+  "下のタブを独立した層にしない": [
+    "integrity.test.js"
+  ],
+  "下のタブより記録の画面を手前にする": [
+    "integrity.test.js"
+  ],
+  "画面の高さをアドレスバーに合わせない": [
+    "integrity.test.js"
+  ],
+  "目もりを切りのよい数に合わせない": [
+    "chart_test.js"
+  ],
+  "上の端を値より下にする": [
+    "chart_test.js"
+  ],
+  "同じ値ばかりのときに余白を作らない": [
+    "chart_test.js"
+  ],
+  "日付ラベルの最初と最後を落とす": [
+    "chart_test.js"
+  ],
+  "変化量の丸めをやめる": [
+    "chart_test.js"
+  ],
+  "確定ボタンの色を消す": [
+    "button_test.js"
+  ],
+  "確定ボタンを小さくする": [
+    "button_test.js"
+  ],
+  "電卓の ＝ を他のキーと同じ大きさにする": [
+    "button_test.js"
+  ],
+  "復元で予定を入れ忘れる": [
+    "backup_test.js"
+  ],
+  "ペースの目もりを勝手な式にする": [
+    "chart_test.js"
+  ],
+  "金額を万単位で書かない": [
+    "chart_test.js"
+  ],
+  "凡例から予測の線を消す": [
+    "chart_test.js"
+  ],
+  "心拍数の項目を消す": [
+    "health_test.js"
+  ],
+  "心拍数の範囲チェックを緩める": [
+    "health_test.js"
+  ],
+  "保存で心拍数を読まない": [
+    "health_test.js"
+  ],
+  "棒グラフの目もりを勝手な式にする": [
+    "chart_test.js"
+  ],
+  "棒を下端から立てない": [
+    "chart_test.js"
+  ],
+  "カレンダー描画で日またぎを見ない": [
+    "calendar_test.js"
+  ],
+  "日またぎ判定を常に「またいでいない」にする": [
+    "calendar_test.js"
+  ],
+  "日またぎで月を今月に戻さない": [
+    "calendar_test.js"
+  ],
+  "旧データを国なしのまま通す（JPへ寄せない）": [
+    "country_us.test.js"
+  ],
+  "記録を国で分けない（JPとUSが混ざる）": [
+    "country_us.test.js"
+  ],
+  "当月の計算で国を見ない": [
+    "country_us.test.js"
+  ],
+  "円にも小数を付ける": [
+    "about_test.js"
+  ],
+  "ドルを小数なしで出す": [
+    "country_us.test.js"
+  ],
+  "国と通貨の組をほどく": [
+    "country_guard.test.js",
+    "country_us.test.js"
+  ],
+  "英語のときも日本語のカテゴリ名を出す": [
+    "country_us.test.js"
+  ],
+  "カテゴリを英語の文字列で保存する": [
+    "backup_test.js"
+  ],
+  "JPの記録にも国の印を付ける（保存の形が変わる）": [
+    "country_us.test.js"
+  ],
+  "連携の国コードを決め打ちにする": [
+    "country_us.test.js"
+  ],
+  "連携の基準通貨を決め打ちにする": [
+    "country_us.test.js"
+  ],
+  "ライフプランへ渡す入力から国を落とす": [
+    "country_us.test.js"
+  ],
+  "せっていで国を読まない（切り替えても保存されない）": [
+    "audit_test.js",
+    "country_us.test.js"
+  ],
+  "まとめの記録一覧を国で絞らない": [
+    "country_us.test.js"
+  ],
+  "新しい記録に国の印を付けない": [
+    "country_us.test.js"
+  ],
+  "国を選び直しても保存も描き直しもしない": [
+    "country_us.test.js"
+  ],
+  "国の選択を change で受け取らない": [
+    "country_us.test.js"
+  ],
+  "下のタブを日本語のまま置き去りにする": [
+    "country_us.test.js",
+    "us_language.test.js"
+  ],
+  "カレンダーの今月を区切りキーにする": [
+    "calendar_test.js"
+  ],
+  "CAを選択対象から外す": [
+    "country_ca.test.js"
+  ],
+  "CAの通貨をUSDにする": [
+    "country_ca.test.js"
+  ],
+  "CAの完全日付を米国順にする": [
+    "country_ca.test.js"
+  ],
+  "CAの月日を米国スラッシュ順にする": [
+    "country_ca.test.js"
+  ],
+  "CAの月区切り表示を米国順にする": [
+    "country_ca.test.js"
+  ],
+  "AUを選択対象から外す": [
+    "country_au.test.js"
+  ],
+  "AUの通貨をUSDにする": [
+    "country_au.test.js"
+  ],
+  "AUの完全日付を米国順にする": [
+    "country_au.test.js"
+  ],
+  "AUの見出し日付を米国順にする": [
+    "country_au.test.js"
+  ],
+  "AUの月区切り表示を米国順にする": [
+    "country_au.test.js"
+  ],
+  "写真の検証を先頭だけにする": [
+    "audit_test.js"
+  ],
+  "日記の写真をエスケープせず出す": [
+    "audit_test.js"
+  ],
+  "escapeHtml が引用符を逃がさない": [
+    "audit_test.js"
+  ],
+  "金額の上限を効かせない": [
+    "audit_test.js"
+  ],
+  "記録を整えずに保存する": [
+    "audit_test.js"
+  ],
+  "読み込んだ記録を整えない": [
+    "audit_test.js"
+  ],
+  "編集で記録の国を取り違える": [
+    "audit_test.js"
+  ],
+  "グラフの左端を月ずらしで出す": [
+    "audit_test.js"
+  ],
+  "グラフの左端をUTCで書き出す": [
+    "audit_test.js"
+  ],
+  "許可待ちの映像を捨てない": [
+    "audit_test.js",
+    "pulse_test.js"
+  ],
+  "停止で世代を進めない": [
+    "audit_test.js",
+    "pulse_test.js"
+  ],
+  "度の特別扱いをやめる": [
+    "sci_test.js"
+  ],
+  "弧度でも度の丸めを使う": [
+    "sci_test.js"
+  ],
+  "失敗した返事もキャッシュに入れる": [
+    "sw_test.js",
+    "audit_test.js"
+  ],
+  "JPにも100を掛ける": [
+    "minor_units_test.js"
+  ],
+  "GBだけ倍率を取り違える": [
+    "minor_units_test.js"
+  ],
+  "記録をいまの国で一括換算する": [
+    "minor_units_test.js"
+  ],
+  "プロファイルをいまの国で一括換算する": [
+    "minor_units_test.js"
+  ],
+  "移行済みでも、もう一度換算する": [
+    "minor_units_test.js"
+  ],
+  "移行しても印を付けない": [
+    "minor_units_test.js"
+  ],
+  "％や年齢にも100を掛ける": [
+    "minor_units_test.js"
+  ],
+  "お金の欄をひとつ換算し忘れる": [
+    "minor_units_test.js"
+  ],
+  "古いバックアップを最小単位として読む": [
+    "minor_units_test.js"
+  ],
+  "新しすぎるバックアップも読み込む": [
+    "minor_units_test.js"
+  ],
+  "ライフプランへ最小単位のまま渡す": [
+    "minor_units_test.js"
+  ],
+  "渡す前の検算をやめる": [
+    "minor_units_test.js"
+  ],
+  "ライフプラン入力を最小単位のまま渡す": [
+    "minor_units_test.js"
+  ],
+  "控えが取れなくても移行する": [
+    "minor_units_test.js"
+  ],
+  "控えを書けたか確かめない": [
+    "minor_units_test.js"
+  ],
+  "移行を見送っても保存してしまう": [
+    "minor_units_test.js"
+  ],
+  "見送ったのに印を付ける": [
+    "minor_units_test.js"
+  ],
+  "画面へ主単位に戻さず出す": [
+    "minor_units_test.js"
+  ],
+  "打ち込みを最小単位へ直さない": [
+    "minor_units_test.js",
+    "decimal_input_test.js"
+  ],
+  "直すときいまの国で換算する": [
+    "minor_units_test.js"
+  ],
+  "円でも小数点を受け付ける": [
+    "decimal_input_test.js"
+  ],
+  "小数点を2つ置けるようにする": [
+    "decimal_input_test.js"
+  ],
+  "小数の桁数を制限しない": [
+    "decimal_input_test.js"
+  ],
+  "掛け算で倍率をならさない": [
+    "decimal_input_test.js"
+  ],
+  "割り算で倍率をならさない": [
+    "decimal_input_test.js"
+  ],
+  "打ち込みを小数のまま数にする": [
+    "decimal_input_test.js"
+  ],
+  "打ち込み欄でセントを切り捨てる": [
+    "decimal_input_test.js"
+  ],
+  "記録の電卓をいまの国の桁数で作る": [
+    "decimal_input_test.js"
+  ],
+  "レシートの小数を読まない": [
+    "decimal_input_test.js"
+  ],
+  "小計を合計として拾う": [
+    "decimal_input_test.js",
+    "chart_ocr_i18n_test.js"
+  ],
+  "お釣りを合計として拾う": [
+    "decimal_input_test.js",
+    "chart_ocr_i18n_test.js"
+  ],
+  "英語の言い回しを合計と見なさない": [
+    "decimal_input_test.js",
+    "chart_ocr_i18n_test.js"
+  ],
+  "レシートの桁数を渡さない": [
+    "decimal_input_test.js",
+    "integrity.test.js"
+  ],
+  "候補を主単位へ戻さずに入れる": [
+    "decimal_input_test.js",
+    "scoring_test.js"
+  ],
+  "設定の小数を切り捨てる": [
+    "decimal_input_test.js"
+  ],
+  "金額の欄に小数のキーボードを出さない": [
+    "decimal_input_test.js"
+  ],
+  "直しても記録に反映されない": [
+    "audit_test.js",
+    "recurring_test.js"
+  ],
+  "英語圏の目もりに M を出さない": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "英語圏の目もりに k を出さない": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "円でも k を出す": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "目もりを最小単位のまま出す": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "目もりの短縮で小数を捨てる": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "税込みの合計より税の語を優先する": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "はっきりした合計の言い方を知らない": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "英語の税を拾ってしまう": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "カード会社名を拾ってしまう": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "チップ・値引きを拾ってしまう": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "数量・単価を拾ってしまう": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "電卓の並びを国で分ける": [
+    "chart_ocr_i18n_test.js",
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "小数点キーを出さない": [
+    "chart_ocr_i18n_test.js",
+    "calc_test.js",
+    "decimal_input_test.js"
+  ],
+  "関数電卓の記録ボタンを出さない": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "記録ボタンの金額を主単位のまま出す": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "記録画面へ最小単位のまま渡す": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "0や負の答えも記録させる": [
+    "chart_ocr_i18n_test.js"
+  ],
+  "丸めたことを知らせない": [
+    "decimal_input_test.js"
+  ],
+  "丸めたかどうかを見ない": [
+    "decimal_input_test.js"
+  ],
+  "細かい桁の判定を通貨の桁で切らない": [
+    "decimal_input_test.js"
+  ],
+  "打ち込みを切り捨てにする": [
+    "decimal_input_test.js"
+  ],
+  "打てる小数の桁を通貨まかせにする": [
+    "decimal_input_test.js"
+  ],
+  "予定IDの長さ制限を外す": [
+    "plan_id_integrity_test.js"
+  ],
+  "重複した予定IDをそのまま残す": [
+    "plan_id_integrity_test.js"
+  ],
+  "USバックアップの設定プロファイルを補完しない": [
+    "backup_country_profile_restore_test.js"
+  ],
+  "欠けた海外プロファイルをJPとして補完する": [
+    "backup_country_profile_restore_test.js"
+  ]
 }

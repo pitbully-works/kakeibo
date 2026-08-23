@@ -2604,9 +2604,19 @@
     const r = normalizeTxListWithCount(src.tx);
     const tx = r.tx;
     const dropped = r.dropped;
+    /* moneyProfiles 導入途中のバックアップでは settings.country が US/GB/CA/AU でも
+       moneyProfiles が無い（またはその国だけ欠ける）ことがある。
+       normalizeMoneyProfiles の「旧データはJPへ退避」という通常移行ルールだけに任せると、
+       復元時にその国の settings が空になってしまうため、バックアップ自身が明示した国には
+       settings を補完する。JPデータを他国へ推測コピーする処理ではない。 */
+    const backupSettings = normalizeSettings(src.settings);
+    const backupProfiles = normalizeMoneyProfiles(src.moneyProfiles, src.settings);
+    if (!backupProfiles[backupSettings.country]) {
+      backupProfiles[backupSettings.country] = profileSettings(src.settings, backupSettings.country);
+    }
     return {
-      settings: normalizeSettings(src.settings),
-      moneyProfiles: normalizeMoneyProfiles(src.moneyProfiles, src.settings),
+      settings: backupSettings,
+      moneyProfiles: backupProfiles,
       tx: tx,
       health: normalizeHealth(data.health),   // 旧バックアップに health が無ければ空
       diary: normalizeDiary(data.diary),       // 旧バックアップに diary が無ければ空
