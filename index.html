@@ -1324,10 +1324,12 @@ function carryRecurring(){
   const plan=Core.recurringCarryPlan(state.tx, curYM(), cycleStart(), state.settings);
   if(!plan.toAdd.length){ toast(L("入れるものはありません","There is nothing to add")); return; }
   const lines=plan.toAdd.map(i=>`${i.emoji} ${i.name} ${yen(i.amount)}`).join("\n");
-  const ok=confirm(
+  const ok=confirm(L(
     `先月（${plan.from.replace("-","年")}月）の毎月固定を、今月へ入れます。\n\n${lines}\n\n合計 ${yen(plan.total)}\n\n` +
-    "金額は先月と同じです。ちがうときは、入れたあとで直してください。\n\n続けますか？"
-  );
+      "金額は先月と同じです。ちがうときは、入れたあとで直してください。\n\n続けますか？",
+    `Add last month's (${plan.from}) recurring expenses to this month?\n\n${lines}\n\nTotal ${yen(plan.total)}\n\n` +
+      "The amounts are the same as last month. If anything has changed, edit it after adding.\n\nContinue?"
+  ));
   if(!ok) return;                                   // キャンセル：何も変えない
   const before = JSON.parse(JSON.stringify(state.tx));   // 失敗したら戻せるように退避
   plan.toAdd.forEach(i=>{

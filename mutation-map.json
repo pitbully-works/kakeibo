@@ -1143,5 +1143,8 @@
   "OCR画像調整中を日本語固定に戻す": [
     "ocr_status_i18n_test.js",
     "scoring_test.js"
+  ],
+  "海外でも毎月固定の繰越確認を日本語固定にする": [
+    "carry_recurring_i18n_test.js"
   ]
 }

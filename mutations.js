@@ -1116,6 +1116,12 @@ const MUTATIONS = [
     from: '  setStatus(L("画像を調整しています…","Adjusting the image…"));',
     to: '  setStatus("画像を調整しています…");' },
 
+  /* ---- 毎月固定の繰越確認の多言語化 ---- */
+  { name: "海外でも毎月固定の繰越確認を日本語固定にする", guards: "繰越確認は海外で英語",
+    file: "index.html",
+    from: '  const ok=confirm(L(\n    `先月（${plan.from.replace("-","年")}月）の毎月固定を、今月へ入れます。',
+    to: '  const ok=confirm((\n    `先月（${plan.from.replace("-","年")}月）の毎月固定を、今月へ入れます。' },
+
 ];
 
 module.exports = MUTATIONS;
