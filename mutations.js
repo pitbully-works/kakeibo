@@ -1432,6 +1432,11 @@ const MUTATIONS = [
     from: "      if(c===active || !state.moneyProfiles[c]) return;",
     to: "      if(c===active || c===\"AU\" || !state.moneyProfiles[c]) return;" },
 
+  { name: "v3→v4後に処理済み印を保存しない", guards: "v3→v4移行完了をversion=4で記録",
+    file: "index.html",
+    from: "    state.settings=Core.settingsForCountry(state.moneyProfiles,active);\n    state.countryStorageSplitVersion=COUNTRY_STORAGE_SPLIT_VERSION;\n    return true;",
+    to: "    state.settings=Core.settingsForCountry(state.moneyProfiles,active);\n    return true;" },
+
 ];
 
 module.exports = MUTATIONS;
