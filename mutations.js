@@ -1182,6 +1182,12 @@ const MUTATIONS = [
     from: "  calcHistCandidate.country=recCountry;",
     to: "" },
 
+
+  { name: "記録電卓履歴を全世界50件に戻す", guards: "記録電卓履歴の上限は国ごと",
+    file: "index.html",
+    from: "    const sameCountry=allRecordCalcHistory.filter(h=>Core.normalizeCountry(h&&h.country)===recCountry).slice(-50);",
+    to: "    const sameCountry=allRecordCalcHistory.slice(-50);" },
+
 ];
 
 module.exports = MUTATIONS;

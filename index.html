@@ -909,12 +909,17 @@ function load(){
     /* 記録も health/diary/plans/pulse と同じように整えてから使う。
        ここだけ素通しにすると、壊れた金額や不正な写真が
        再起動しても消えずに残ってしまう。 */
-    const recordCalcHistory=Array.isArray(s.recordCalcHistory) ? s.recordCalcHistory.slice(-50).filter(h=>h&&typeof h==="object").map(h=>({
+    const normalizedRecordCalcHistory=Array.isArray(s.recordCalcHistory) ? s.recordCalcHistory.filter(h=>h&&typeof h==="object").map(h=>({
       id:String(h.id||uid()), txId:String(h.txId||""), expr:String(h.expr||"").slice(0,120),
       result:String(h.result||"").slice(0,40), cat:String(h.cat||"food").slice(0,30),
       type:h.type==="income"?"income":"expense", country:Core.normalizeCountry(h.country),
       date:Core.validateDateString(h.date)?h.date:todayISO()
     })).filter(h=>h.expr&&h.result) : [];
+    /* 記録電卓履歴は国ごとに最新50件。別の国を使っても他国の履歴を押し出さない。 */
+    const recordCalcHistory=[];
+    for(const c of ["JP","US","GB","CA","AU"]){
+      recordCalcHistory.push(...normalizedRecordCalcHistory.filter(h=>h.country===c).slice(-50));
+    }
     // personalProfiles導入前の個人記録は、日本で入力された既存データとしてJPへ移す。
     let personalProfiles=normalizePersonalProfiles(s.personalProfiles);
     if(!s.personalProfiles || typeof s.personalProfiles!=="object") personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});
@@ -2786,7 +2791,10 @@ async function saveTx(){
   if(st.mode==="edit") rec.id=st.id;
   if(calcHistCandidate){
     calcHistCandidate.txId=rec.id;
-    state.recordCalcHistory=(state.recordCalcHistory||[]).concat([calcHistCandidate]).slice(-50);
+    const allRecordCalcHistory=(state.recordCalcHistory||[]).concat([calcHistCandidate]);
+    const sameCountry=allRecordCalcHistory.filter(h=>Core.normalizeCountry(h&&h.country)===recCountry).slice(-50);
+    const otherCountries=allRecordCalcHistory.filter(h=>Core.normalizeCountry(h&&h.country)!==recCountry);
+    state.recordCalcHistory=otherCountries.concat(sameCountry);
   }
 
   /* 記録は必ず core.js の normalizeTransaction を通してから state に入れる。

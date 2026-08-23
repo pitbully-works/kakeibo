@@ -1179,5 +1179,8 @@
   ],
   "編集した電卓履歴を現在国へ混ぜる": [
     "record_calc_country_test.js"
+  ],
+  "記録電卓履歴を全世界50件に戻す": [
+    "record_calc_country_cap_test.js"
   ]
 }
