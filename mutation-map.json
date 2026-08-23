@@ -1315,5 +1315,42 @@
  ],
  "v3→v4後に処理済み印を保存しない": [
   "birth_country_split_migration_test.js"
+ ],
+ "旧JPのお金設定をJPへ退避しない": [
+  "country_profiles.test.js"
+ ],
+ "初回USへJPの金額をコピーする": [
+  "country_profiles.test.js"
+ ],
+ "国切替で現在の金額を次の国へ持ち込む": [
+  "country_profiles.test.js"
+ ],
+ "USのお金設定をプロファイルへ保存しない": [
+  "country_profiles.test.js"
+ ],
+ "バックアップから国別お金プロファイルを外す": [
+  "country_profiles.test.js"
+ ],
+ "GBを選択対象から外す": [
+  "country_gb.test.js"
+ ],
+ "GBの通貨をUSDにする": [
+  "country_gb.test.js"
+ ],
+ "GBの日付を月日順にする": [
+  "country_gb.test.js"
+ ],
+ "GBの見出し日付を米国順にする": [
+  "country_gb.test.js"
+ ],
+ "GBの月区切り表示を米国順にする": [
+  "country_gb.test.js"
+ ],
+ "その通貨で表せない答えも記録させる": [
+  "chart_ocr_i18n_test.js",
+  "ci_test.js"
+ ],
+ "旧保存の空personalProfilesから個人記録を救出しない": [
+  "personal_profile_legacy_rescue_test.js"
  ]
 }
