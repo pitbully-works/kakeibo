@@ -13,7 +13,7 @@ function loadBlock(){
 
 test("旧保存でpersonalProfilesが空オブジェクトでもtop-level個人記録をJPへ救出する",()=>{
   const b=loadBlock();
-  assert.match(b,/const hasPersonalProfile=Core\.SUPPORTED_COUNTRIES\.some\(c=>Object\.prototype\.hasOwnProperty\.call\(personalProfiles,c\)\)/);
+  assert.match(b,/const hasPersonalProfile=Core\.SUPPORTED_COUNTRIES\.some\(c=>personalHasValue\(personalProfiles\[c\]\)\)/);
   assert.match(b,/if\(!hasPersonalProfile\) personalProfiles\.JP=normalizePersonalData\(\{health:s\.health,diary:s\.diary,plans:s\.plans,pulse:s\.pulse\}\)/);
 });
 
@@ -41,7 +41,7 @@ function restoreBlock(){
 
 test("バックアップ復元でも空personalProfilesなら旧top-level個人記録をJPへ救出する",()=>{
   const b=restoreBlock();
-  assert.match(b,/const hasRestoredPersonalProfile = Core\.SUPPORTED_COUNTRIES\.some\(c=>Object\.prototype\.hasOwnProperty\.call\(state\.personalProfiles,c\)\)/);
+  assert.match(b,/const hasRestoredPersonalProfile = Core\.SUPPORTED_COUNTRIES\.some\(c=>personalHasValue\(state\.personalProfiles\[c\]\)\)/);
   assert.match(b,/if\(!hasRestoredPersonalProfile\) \{/);
   assert.match(b,/state\.personalProfiles\.JP = normalizePersonalData\(\{health:restored\.health,diary:restored\.diary,plans:restored\.plans,pulse:restored\.pulse\}\)/);
 });
@@ -50,4 +50,17 @@ test("バックアップ復元でpersonalProfilesが配列でも存在判定だ�
   const b=restoreBlock();
   assert.doesNotMatch(b,/if\(!rawBackup \|\| !rawBackup\.personalProfiles \|\| typeof rawBackup\.personalProfiles!=="object"\)/);
   assert.match(b,/state\.personalProfiles = normalizePersonalProfiles\(rawBackup && rawBackup\.personalProfiles\)/);
+});
+
+
+test("空の国キーだけあるpersonalProfilesでも旧top-level個人記録を救出する",()=>{
+  const b=loadBlock();
+  assert.doesNotMatch(b,/hasOwnProperty\.call\(personalProfiles,c\)/);
+  assert.match(b,/some\(c=>personalHasValue\(personalProfiles\[c\]\)\)/);
+});
+
+test("復元時も空の国キーだけでは旧top-level個人記録を捨てない",()=>{
+  const b=restoreBlock();
+  assert.doesNotMatch(b,/hasOwnProperty\.call\(state\.personalProfiles,c\)/);
+  assert.match(b,/some\(c=>personalHasValue\(state\.personalProfiles\[c\]\)\)/);
 });

@@ -1384,6 +1384,16 @@ const MUTATIONS = [
     to: "  state.personalProfiles[c]=normalizePersonalData({health:state.health,diary:state.diary,plans:state.plans});" },
 
 
+  { name: "旧保存の空国キーを有効な個人記録と誤認する", guards: "空国キーでも旧top-level個人記録JP救出",
+    file: "index.html",
+    from: "    const hasPersonalProfile=Core.SUPPORTED_COUNTRIES.some(c=>personalHasValue(personalProfiles[c]));",
+    to: "    const hasPersonalProfile=Core.SUPPORTED_COUNTRIES.some(c=>Object.prototype.hasOwnProperty.call(personalProfiles,c));" },
+
+  { name: "復元時の空国キーを有効な個人記録と誤認する", guards: "復元時の空国キーでも旧top-level個人記録JP救出",
+    file: "index.html",
+    from: "    const hasRestoredPersonalProfile = Core.SUPPORTED_COUNTRIES.some(c=>personalHasValue(state.personalProfiles[c]));",
+    to: "    const hasRestoredPersonalProfile = Core.SUPPORTED_COUNTRIES.some(c=>Object.prototype.hasOwnProperty.call(state.personalProfiles,c));" },
+
   { name: "旧保存の空personalProfilesから個人記録を救出しない", guards: "旧top-level個人記録のJP救出",
     file: "index.html",
     from: "    if(!hasPersonalProfile) personalProfiles.JP=normalizePersonalData({health:s.health,diary:s.diary,plans:s.plans,pulse:s.pulse});",

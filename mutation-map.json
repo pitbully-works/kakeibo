@@ -1291,5 +1291,11 @@
  ],
  "バックアップ復元の空personalProfilesから個人記録を救出しない": [
   "personal_profile_legacy_rescue_test.js"
+ ],
+ "旧保存の空国キーを有効な個人記録と誤認する": [
+  "personal_profile_legacy_rescue_test.js"
+ ],
+ "復元時の空国キーを有効な個人記録と誤認する": [
+  "personal_profile_legacy_rescue_test.js"
  ]
 }
