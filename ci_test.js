@@ -15,6 +15,17 @@ const fullWorkflowPath = path.join(__dirname, ".github/workflows/mutation-full.y
 const wfFull = fs.existsSync(fullWorkflowPath) ? fs.readFileSync(fullWorkflowPath, "utf8") : "";
 const files = fs.readdirSync(__dirname);
 
+/* iPhone から見える直下コピーと、Actions が実際に読む隠しフォルダ側を
+   両方置いている。片方だけ更新される事故を通常テストで即座に止める。 */
+function assertWorkflowMirror(name) {
+  const visible = path.join(__dirname, name);
+  const actual = path.join(__dirname, ".github", "workflows", name);
+  assert.ok(fs.existsSync(visible), `直下の ${name} が無い`);
+  assert.ok(fs.existsSync(actual), `.github/workflows/${name} が無い`);
+  assert.equal(fs.readFileSync(visible, "utf8"), fs.readFileSync(actual, "utf8"),
+    `${name} の直下コピーと .github/workflows 側が一致していない`);
+}
+
 /* ---------- mutation スクリプトの一本化 ---------- */
 test("mutation スクリプトは run-mutations.js の1本だけ", () => {
   assert.ok(files.includes("run-mutations.js"), "run-mutations.js が無い");
@@ -71,6 +82,31 @@ test("テスト補助ファイルも重複していない", () => {
   const dup = [];
   helpers.forEach((f) => { const k = key(f); if (seen[k]) dup.push(seen[k] + " と " + f); seen[k] = f; });
   assert.deepEqual(dup, [], "補助ファイルが重複している: " + dup.join(" / "));
+});
+
+test("通常テスト workflow の直下コピーと実体が一致している", () => {
+  assertWorkflowMirror("test.yml");
+});
+
+test("完全mutation workflow の直下コピーと実体が一致している", () => {
+  assertWorkflowMirror("mutation-full.yml");
+});
+
+test("workflows フォルダに、誤アップロードした余分な workflow が残っていない", () => {
+  const workflowDir = path.join(__dirname, ".github", "workflows");
+  const actual = fs.readdirSync(workflowDir).filter((f) => /\.ya?ml$/i.test(f)).sort();
+  assert.deepEqual(actual, ["mutation-full.yml", "test.yml"],
+    "想定外の workflow がある: " + actual.join(" / "));
+});
+
+test("mutation のテスト実行が中断・起動失敗したときは検出扱いにしない", () => {
+  const libSrc = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");
+  const runner = fs.readFileSync(path.join(__dirname, "run-mutations.js"), "utf8");
+  assert.match(libSrc, /p\.on\("error"/, "子プロセス起動失敗を拾っていない");
+  assert.match(libSrc, /close", \(code, signal\)/, "シグナル終了を区別していない");
+  assert.match(libSrc, /status: "実行エラー"/, "テスト実行エラーを独立状態にしていない");
+  assert.match(runner, /executionErrors/, "実行エラーを最終判定していない");
+  assert.match(runner, /対象不明/, "複数箇所一致を最終判定していない");
 });
 
 /* ---------- 2段構え（①ふだんの検査 ②完全検査） ---------- */

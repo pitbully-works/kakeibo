@@ -123,6 +123,10 @@ function preflight() {
   const baseWs = lib.makeWorkspace();
   let base;
   try { base = await lib.runTests(baseWs); } finally { lib.removeWorkspace(baseWs); }
+  if (base.executionError) {
+    console.error("::error::通常テストを実行できませんでした: " + base.executionError);
+    process.exit(1);
+  }
   if (!base.ok) {
     console.error("変異させる前からテストが落ちています。先に直してください。");
     process.exit(1);
@@ -177,6 +181,8 @@ function preflight() {
   const caught = results.filter((r) => r.status === "検出");
   const missed = results.filter((r) => r.status === "見逃し");
   const skipped = results.filter((r) => r.status === "対象なし");
+  const ambiguous = results.filter((r) => r.status === "対象不明");
+  const executionErrors = results.filter((r) => r.status === "実行エラー");
 
   /* 対応表を作り直すのは、はっきり指示されたときだけ。
      ふだんのCIで勝手にファイルが増えると「差分が残っている」検査に引っかかるため。
@@ -215,12 +221,17 @@ function preflight() {
     `- **検出できた： ${caught.length} 件**`,
     `- 見逃した： ${missed.length} 件`,
     `- 対象なし： ${skipped.length} 件`,
+    `- 対象不明： ${ambiguous.length} 件`,
+    `- 実行エラー： ${executionErrors.length} 件`,
     `- かかった時間： ${took.toFixed(1)} 秒`,
     "",
     "| # | わざと壊した内容 | 守りたい振る舞い | 対象 | 結果 | 落ちたテスト数 |",
     "| --- | --- | --- | --- | --- | --- |",
     ...results.map((r, i) => `| ${i + 1} | ${r.name} | ${r.guards} | \`${r.file}\` | ${
-      r.status === "検出" ? "✅ 検出" : r.status === "見逃し" ? "❌ 見逃し" : "— 対象なし"
+      r.status === "検出" ? "✅ 検出"
+        : r.status === "見逃し" ? "❌ 見逃し"
+        : r.status === "対象なし" ? "— 対象なし"
+        : r.status === "対象不明" ? "❌ 対象不明" : "❌ 実行エラー"
     } | ${r.failedCount === null ? "-" : r.failedCount} |`),
     "",
     skipped.length
@@ -228,6 +239,14 @@ function preflight() {
         + "ソースを直したときに、変異の `from` も直してください。\n"
         + "このままだと、守れていないのに緑のままになります。\n\n"
         + skipped.map((r) => `- ${r.name}（${r.guards}）`).join("\n") + "\n"
+      : "",
+    ambiguous.length
+      ? "## 対象不明（変異の当たり先が複数あります）\n\n"
+        + ambiguous.map((r) => `- ${r.name}（${r.note || r.guards}）`).join("\n") + "\n"
+      : "",
+    executionErrors.length
+      ? "## 実行エラー（検出として数えてはいけません）\n\n"
+        + executionErrors.map((r) => `- ${r.name}（${r.note || "テスト実行エラー"}）`).join("\n") + "\n"
       : "",
     missed.length
       ? "## 見逃し（テストの穴）\n\n" + missed.map((r) => `- ${r.name}（${r.guards}）`).join("\n")
@@ -244,7 +263,8 @@ function preflight() {
   }
 
   console.log(`変異 ${results.length} 件中、検出 ${caught.length} 件 ／ 見逃し ${missed.length} 件`
-    + ` ／ 対象なし ${skipped.length} 件 ／ ${took.toFixed(1)} 秒`);
+    + ` ／ 対象なし ${skipped.length} 件 ／ 対象不明 ${ambiguous.length} 件`
+    + ` ／ 実行エラー ${executionErrors.length} 件 ／ ${took.toFixed(1)} 秒`);
 
   /* 見逃し（テストの穴）と、対象なし（変異が当たっていない）は、
      どちらも「守れていない」ことに変わりはない。両方で赤にする。 */
@@ -257,6 +277,16 @@ function preflight() {
   if (skipped.length) {
     skipped.forEach((r) => console.log("  対象なし: " + r.name));
     console.error(`::error::対象なしが ${skipped.length} 件あります（変異の当たり先が消えています）`);
+    bad = true;
+  }
+  if (ambiguous.length) {
+    ambiguous.forEach((r) => console.log("  対象不明: " + r.name));
+    console.error(`::error::対象不明が ${ambiguous.length} 件あります（変異の当たり先が1か所に定まりません）`);
+    bad = true;
+  }
+  if (executionErrors.length) {
+    executionErrors.forEach((r) => console.log("  実行エラー: " + r.name + " / " + (r.note || "")));
+    console.error(`::error::テスト実行エラーが ${executionErrors.length} 件あります（検出として数えません）`);
     bad = true;
   }
   if (bad) process.exit(1);

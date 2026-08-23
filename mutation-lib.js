@@ -85,9 +85,25 @@ function runTests(dir, testFiles) {
     if (Array.isArray(testFiles) && testFiles.length) args.push(...testFiles);
     const p = spawn("node", args, { cwd: dir, env: { ...process.env, FORCE_COLOR: "0" } });
     let out = "";
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
     p.stdout.on("data", (d) => { out += d; });
     p.stderr.on("data", (d) => { out += d; });
-    p.on("close", (code) => {
+    /* node 自体を起動できなかった場合を「mutation を検出した」と誤判定しない。 */
+    p.on("error", (e) => {
+      finish({ ok: false, failedCount: null, detectedBy: [],
+        executionError: `テスト実行を開始できません: ${e.message}` });
+    });
+    p.on("close", (code, signal) => {
+      if (signal) {
+        finish({ ok: false, failedCount: null, detectedBy: [],
+          executionError: `テスト実行がシグナル ${signal} で終了しました` });
+        return;
+      }
       const m = /^[#\u2139]\s*fail\s+(\d+)\s*$/m.exec(out);
       /* 落ちたテストが、どのファイルのものだったかを拾う。
          「この変異は、このテストが捕まえている」という対応表の材料になる。 */
@@ -95,7 +111,8 @@ function runTests(dir, testFiles) {
       const re = /^\s*location:\s*'(.+?):\d+:\d+'/gm;
       let g;
       while ((g = re.exec(out)) !== null) files.add(path.basename(g[1]));
-      resolve({ ok: code === 0, failedCount: m ? Number(m[1]) : null, detectedBy: [...files].sort() });
+      finish({ ok: code === 0, failedCount: m ? Number(m[1]) : null,
+        detectedBy: [...files].sort(), executionError: null });
     });
   });
 }
@@ -129,6 +146,10 @@ async function runMutation(m, opts) {
        全部走らせたときの判定と結果は同じになる（甘くならない）。 */
     if (Array.isArray(o.quickFiles) && o.quickFiles.length) {
       const quick = await runTests(dir, o.quickFiles);
+      if (quick.executionError) {
+        return { status: "実行エラー", failedCount: null, detectedBy: [],
+          note: quick.executionError, checkedBy: "早期検出（" + o.quickFiles.join(" / ") + "）" };
+      }
       if (!quick.ok) {
         return {
           status: "検出",
@@ -142,6 +163,11 @@ async function runMutation(m, opts) {
     /* ② 早く落ちなかったときだけ、指定のテスト（無指定なら全テスト）で確かめる。
        「見逃し」と判定するのは、必ずこちらを通ったときだけ。 */
     const res = await runTests(dir, o.testFiles);
+    if (res.executionError) {
+      return { status: "実行エラー", failedCount: null, detectedBy: [],
+        note: res.executionError, checkedBy: Array.isArray(o.testFiles) && o.testFiles.length
+          ? o.testFiles.join(" / ") : "全テスト" };
+    }
     return {
       status: res.ok ? "見逃し" : "検出",
       failedCount: res.failedCount,
