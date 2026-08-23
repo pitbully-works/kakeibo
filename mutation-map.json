@@ -1161,5 +1161,8 @@
   ],
   "写真一括削除で日記写真を残す": [
     "diary_photo_storage_test.js"
+  ],
+  "日記写真を選んだだけで本文をstateへ保存する": [
+    "diary_photo_draft_test.js"
   ]
 }

@@ -4614,7 +4614,8 @@ $("diaryPhotoInput").addEventListener("change",e=>{ const f=e.target.files&&e.ta
   const tEl=$("d-text"); const keepText=tEl?tEl.value:"";   // 入力中の本文を失わない
   const r=new FileReader();
   r.onload=()=>{ diaryPhotoPending=r.result;
-    const cur=state.diary[diaryEditDate||todayISO()]||{}; cur.text=keepText;   // 本文を保って再描画
+    /* 写真を選んだだけでは state.diary を変更しない。
+       再描画後に入力欄へ書きかけ本文を戻し、「日記を保存」を押した時だけ確定する。 */
     render(); const t2=$("d-text"); if(t2) t2.value=keepText; };
   r.onerror=()=>toast(L("写真を読み込めませんでした","Could not read that photo"));
   r.readAsDataURL(f);

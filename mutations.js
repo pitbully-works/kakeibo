@@ -1148,6 +1148,12 @@ const MUTATIONS = [
     from: "    Object.keys(d).forEach(date=>{ if(d[date]&&d[date].photo){ delete d[date].photo; n++; } });",
     to: "" },
 
+  /* ---- 日記写真：保存前の下書きをstateへ確定しない ---- */
+  { name: "日記写真を選んだだけで本文をstateへ保存する", guards: "日記本文は保存ボタンでのみ確定",
+    file: "index.html",
+    from: '    render(); const t2=$("d-text"); if(t2) t2.value=keepText;',
+    to: '    const cur=state.diary[diaryEditDate||todayISO()]||{}; cur.text=keepText; render(); const t2=$("d-text"); if(t2) t2.value=keepText;' },
+
 ];
 
 module.exports = MUTATIONS;
