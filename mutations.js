@@ -1405,6 +1405,12 @@ const MUTATIONS = [
     to: "    if(false && !hasRestoredPersonalProfile) {" },
 
 
+  { name: "v4処理済み端末でも生年月日分離を再実行する", guards: "v4移行は一度だけで再実行しない",
+    file: "index.html",
+    from: "  if(done>=COUNTRY_STORAGE_SPLIT_VERSION) return false;",
+    to: "  if(done>COUNTRY_STORAGE_SPLIT_VERSION) return false;" },
+
+
   { name: "生年月日の国別分離v4を実行しない", guards: "v3端末をv4へ一度だけ移行",
     file: "index.html",
     from: "const COUNTRY_STORAGE_SPLIT_VERSION = 4;",

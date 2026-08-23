@@ -1306,5 +1306,8 @@
  ],
  "v3移行で別入力の生年月日まで消す": [
   "birth_country_split_migration_test.js"
+ ],
+ "v4処理済み端末でも生年月日分離を再実行する": [
+  "birth_country_split_migration_test.js"
  ]
 }

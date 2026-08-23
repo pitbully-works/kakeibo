@@ -50,3 +50,15 @@ test("v4処理済み端末は既存の国別生年月日を変更しない",()=>
   assert.equal(app.run("state.moneyProfiles.JP.birth"),"1960-01-01");
   assert.equal(app.run("state.moneyProfiles.US.birth"),"1960-01-01","v4以降にユーザーが同じ日付を入力した可能性まで消してはいけない");
 });
+
+
+test("v4処理済み端末はJPと海外の金額構成が同じでも再移行して消さない",()=>{
+  const app=bootApp({state:{
+    countryStorageSplitVersion:4,
+    settings:profile("JP","1960-01-01",100),
+    moneyProfiles:{JP:profile("JP","1960-01-01",100),US:profile("US","1970-02-02",100)},
+    tx:[],health:{},diary:{},plans:{},pulse:[]
+  }});
+  assert.equal(app.run("state.moneyProfiles.US.goalTarget"),100,"v4済みの海外データを旧移行判定で消してはいけない");
+  assert.equal(app.run("state.moneyProfiles.US.birth"),"1970-02-02");
+});
