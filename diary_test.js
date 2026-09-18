@@ -191,6 +191,27 @@ test("日記の写真も保存前に縮小する", () => {
   assert.match(block, /resizeDataUrl\(photo, Core\.PHOTO_STORE_MAX/, "保存前に縮小していない");
 });
 
+test("端末保存では現在国の日記を二重保存しない", () => {
+  const app = bootApp({ state: { settings: { country:"JP" }, tx: [], diary: { "2026-07-01": { text:"写真", photo:PIMG } } } });
+  app.run(`save();`);
+  assert.equal(
+    app.run(`Object.prototype.hasOwnProperty.call(JSON.parse(localStorage.getItem(STORE_KEY)),"diary")`),
+    false,
+    "top-level diary が残り写真を二重保存している"
+  );
+  assert.equal(
+    app.run(`JSON.parse(localStorage.getItem(STORE_KEY)).personalProfiles.JP.diary["2026-07-01"].photo`),
+    PIMG,
+    "正本の国別日記写真まで消えている"
+  );
+});
+
+test("日記写真は容量不足時に小さくして再試行する", () => {
+  const block = appSrc.slice(appSrc.indexOf("async function saveDiary"), appSrc.indexOf("/* ---------- 健康ページ"));
+  assert.match(block, /resizeDataUrl\(photo, 560, 0\.42\)/, "容量不足時の縮小再試行が無い");
+  assert.match(block, /state\.diary=build\(true\);[\s\S]*if\(save\(\)\)/, "縮小後に写真付きで再保存していない");
+});
+
 test("日記写真は選択直後に表示用サイズへ縮小する", () => {
   const start=appSrc.indexOf('$("diaryPhotoInput").addEventListener("change"');
   const block=appSrc.slice(start,start+1800);
