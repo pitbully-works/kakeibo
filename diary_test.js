@@ -181,13 +181,27 @@ test("書き出しに日記の写真が含まれ、読み込みで戻る", () =>
 test("日記に写真を入れる導線がある（撮影・ライブラリ）", () => {
   assert.match(html, /id="diaryPhotoInput" accept="image\/\*"/, "写真入力が無い");
   assert.equal(/id="diaryPhotoInput"[^>]*capture=/.test(html), false, "capture指定でライブラリが選べない");
-  assert.match(appSrc, /data-act="add-diary-photo"/, "写真追加ボタンが無い");
+  assert.match(appSrc, /for="diaryPhotoInput"/, "写真追加ボタンがfile inputへ直接つながっていない");
+  assert.doesNotMatch(appSrc, /data-act="add-diary-photo"/, "iOSで不安定なJavaScript click導線が残っている");
   assert.match(appSrc, /data-act="rm-diary-photo"/, "写真削除ボタンが無い");
 });
 
 test("日記の写真も保存前に縮小する", () => {
   const block = appSrc.slice(appSrc.indexOf("async function saveDiary"), appSrc.indexOf("/* ---------- 健康ページ"));
   assert.match(block, /resizeDataUrl\(photo, Core\.PHOTO_STORE_MAX/, "保存前に縮小していない");
+});
+
+test("日記写真は選択直後に表示用サイズへ縮小する", () => {
+  const start=appSrc.indexOf('$("diaryPhotoInput").addEventListener("change"');
+  const block=appSrc.slice(start,start+1800);
+  assert.ok(start>=0,"日記写真のchange処理が無い");
+  assert.match(block,/resizeDataUrl\(r\.result, Core\.PHOTO_VIEW_MAX/, "選択直後に縮小していない");
+  assert.match(block,/input\.value=""/, "同じ写真を選び直せるよう入力を戻していない");
+});
+
+test("日記写真のfile inputはdisplay noneではなく画面外へ置く", () => {
+  assert.match(html,/id="diaryPhotoInput"[^>]*class="filepicker-offscreen"/, "日記写真inputがネイティブ操作可能な形になっていない");
+  assert.match(html,/\.filepicker-offscreen\{[^}]*left:-10000px/, "写真inputを画面外へ置く指定が無い");
 });
 
 /* =========================================================================
@@ -265,7 +279,7 @@ test("「写真を追加」が、押せる場所だと分かる見た目にな�
   const app = bootApp({ state: { settings:{}, tx:[], diary:{} } });
   const out = app.run(`view="diary"; render(); document.getElementById("app").innerHTML`);
   assert.match(out, /class="photobtn"/, "写真ボタンの見た目が変わっていない");
-  assert.match(out, /data-act="add-diary-photo"/, "写真ボタンの動きが無い");
+  assert.match(out, /for="diaryPhotoInput"/, "写真ボタンが写真入力へ直接つながっていない");
   assert.match(html, /\.photobtn\{/, "写真ボタンの見た目の指定が無い");
   assert.match(html, /border:2px dashed/, "枠が無く、押せる場所に見えない");
 });
