@@ -550,6 +550,9 @@
   /* 取り返しのつかない操作は、見た目でも他と区別する */
   .btn-quiet.danger{color:var(--terra);border-color:#f0d0c4}
   .hidden{display:none !important}
+  /* iOSの写真選択は display:none の file input をJavaScriptで押すより、
+     label から直接開く方が安定する。画面外へ置き、DOM上は有効なままにする。 */
+  .filepicker-offscreen{position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0;overflow:hidden}
 </style>
 </head>
 <body>
@@ -568,7 +571,7 @@
 <div class="sheet" id="sheet"></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="camInput" accept="image/*" capture="environment" class="hidden">
-<input type="file" id="diaryPhotoInput" accept="image/*" class="hidden">
+<input type="file" id="diaryPhotoInput" accept="image/*" class="filepicker-offscreen" tabindex="-1">
 <input type="file" id="backupInput" accept="application/json,.json" class="hidden">
 
 <script src="./core.js"></script>
@@ -1863,10 +1866,10 @@ function renderDiary(){
   }).join("") : `<div class="muted" style="font-size:12.5px;text-align:center;padding:10px">${L("まだ日記がありません","No diary entries yet")}</div>`;
   const photoBlock = curPhoto
     ? `<div style="margin-top:8px"><img src="${escapeAttr(curPhoto)}" style="width:100%;border-radius:10px;display:block"><button class="btn-quiet" data-act="rm-diary-photo" style="margin-top:6px">${L("🗑 写真を外す","🗑 Remove the photo")}</button></div>`
-    : `<button class="photobtn" data-act="add-diary-photo">
+    : `<label class="photobtn" for="diaryPhotoInput">
         <span class="pi">📷</span>
         <span>${L("写真を追加","Add a photo")}<small>${L("撮影・ライブラリから選べます","Take one or pick from your library")}</small></span>
-      </button>`;
+      </label>`;
   return `<div class="screen">
     ${planSection(editing)}
     <div class="stitle">${L(`日記（${editing.slice(5).replace("-","/")}）`, `Diary — ${editing.slice(5).replace("-","/")}`)}</div>
@@ -4773,7 +4776,6 @@ function handleAct(a,e){
     focusField("p-text"); return; }
   if(a==="new-diary"){ diaryEditDate=null; diaryPhotoPending=undefined; render(); return; }
   if(a==="edit-diary"){ const el=e&&e.target&&e.target.closest("[data-date]"); diaryEditDate=(el&&el.dataset.date)||null; diaryPhotoPending=undefined; render(); return; }
-  if(a==="add-diary-photo"){ const el=$("diaryPhotoInput"); if(el){ el.value=""; el.click(); } return; }
   if(a==="rm-diary-photo"){ diaryPhotoPending=null; render(); return; }
   if(a==="toggle-recurring"){ if(sheetState){ readSheetInputs(); sheetState.recurring=!sheetState.recurring; renderSheet(); } return; }
   if(a==="task"){ const el=e&&e.target&&e.target.closest("[data-task]"); if(el) goTask(el.dataset.task); return; }
@@ -4811,14 +4813,28 @@ $("camInput").addEventListener("change",e=>{
   }
 });
 $("backupInput").addEventListener("change",e=>{ onBackupPicked(e.target.files&&e.target.files[0]); });
-$("diaryPhotoInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return;
+$("diaryPhotoInput").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0];
+  if(!f) return;
+  const input=e.target;
   const tEl=$("d-text"); const keepText=tEl?tEl.value:"";   // 入力中の本文を失わない
   const r=new FileReader();
-  r.onload=()=>{ diaryPhotoPending=r.result;
-    /* 写真を選んだだけでは state.diary を変更しない。
-       再描画後に入力欄へ書きかけ本文を戻し、「日記を保存」を押した時だけ確定する。 */
-    render(); const t2=$("d-text"); if(t2) t2.value=keepText; };
-  r.onerror=()=>toast(L("写真を読み込めませんでした","Could not read that photo"));
+  r.onload=async()=>{
+    try{
+      /* iPhoneの高解像度写真を原寸のdata URLのまま画面へ持たない。
+         選択直後に表示用サイズへ縮めて、メモリ負荷と再描画失敗を減らす。 */
+      const ready=await resizeDataUrl(r.result, Core.PHOTO_VIEW_MAX, 0.85);
+      diaryPhotoPending=ready||r.result;
+      /* 写真を選んだだけでは state.diary を変更しない。
+         再描画後に入力欄へ書きかけ本文を戻し、「日記を保存」を押した時だけ確定する。 */
+      render(); const t2=$("d-text"); if(t2) t2.value=keepText;
+    }catch(err){
+      toast(L("写真を読み込めませんでした","Could not read that photo"));
+    }finally{
+      /* 同じ写真を続けて選び直しても change が発火するよう空に戻す。 */
+      input.value="";
+    }
+  };
+  r.onerror=()=>{ input.value=""; toast(L("写真を読み込めませんでした","Could not read that photo")); };
   r.readAsDataURL(f);
 });
 
