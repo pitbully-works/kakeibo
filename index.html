@@ -977,12 +977,24 @@ function syncMoneyProfile(){
   state.moneyProfiles=Core.normalizeMoneyProfiles(state.moneyProfiles, c==="JP"?state.settings:null);
   state.moneyProfiles[c]=Core.normalizeSettings(Object.assign({},state.settings,{country:c}));
 }
+function storageState(){
+  /* 現在表示中の個人データは personalProfiles[国] が正本。
+     health/diary/plans/pulse を top-level にも保存すると、写真を含む日記が
+     まるごと二重保存になり、iPhone の localStorage 上限へ早く到達する。
+     メモリ上の state は変えず、保存用スナップショットだけ重複を外す。 */
+  const out=Object.assign({}, state);
+  delete out.health;
+  delete out.diary;
+  delete out.plans;
+  delete out.pulse;
+  return out;
+}
 function save(){
   /* 移行を見送っている間は書き込まない。古い単位のまま上書きすると、
      次に開いたときに移行済みかどうかを判断できなくなる。 */
   if(migrationBlocked){ lastSaveError = new Error("QuotaExceededError"); lastSaveError.name="QuotaExceededError"; return false; }
   syncMoneyProfile(); syncPersonalProfile();
-  const text=JSON.stringify(state);
+  const text=JSON.stringify(storageState());
   try{
     localStorage.setItem(STORE_KEY, text);
     lastSaveError=null; return true;
@@ -1936,7 +1948,21 @@ async function saveDiary(){
     render(); toast((text.trim()===""&&!photo)?L("日記を消しました","Diary entry deleted"):L("日記を保存しました ✓","Diary saved ✓"));
     return;
   }
-  /* 容量オーバー：写真を落として本文だけで再挑戦 */
+  /* 容量上限に当たったら、写真を捨てる前にもう一段小さくして再挑戦する。
+     既存写真の編集ではなく、新しく選んだ写真だけを対象にする。 */
+  if(photo && diaryPhotoPending){
+    const smaller=await resizeDataUrl(photo, 560, 0.42);
+    if(smaller && smaller!==photo){
+      photo=smaller;
+      state.diary=build(true);
+      if(save()){
+        diaryEditDate=null; diaryPhotoPending=undefined;
+        render(); toast(L("日記を保存しました ✓","Diary saved ✓"));
+        return;
+      }
+    }
+  }
+  /* それでも容量オーバーなら、最後の手段として本文だけで再挑戦 */
   state.diary=build(false);
   if(photo && save()){
     diaryEditDate=null; diaryPhotoPending=undefined;
