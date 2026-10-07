@@ -25,6 +25,8 @@ function makeEl(id) {
  *   state        起動時に端末へ入っている保存データ
  *   storageFull  true なら保存が必ず失敗する
  *   maxBytes     保存する文字列がこの長さを超えたら失敗する（容量超過の再現）
+ *   now          日付依存テストの基準日時（省略時は実際の日時）
+ *   timeZone     初回の国推定に使う端末地域（既定は日本）
  */
 function bootApp(opts) {
   const o = opts || {};
@@ -83,6 +85,21 @@ function bootApp(opts) {
     Blob: function () {}, URL: { createObjectURL: () => "blob:", revokeObjectURL() {} },
     FileReader: function () {}, Image: ImageStub,
   };
+  // 実行サーバーの地域で初回表示国が変わると、日本語・円のテストが
+  // 米国表示になってしまう。端末地域を明示し、国別テストでは上書きできる。
+  sandbox.Intl = Object.create(Intl);
+  sandbox.Intl.DateTimeFormat = function (locales, options) {
+    return new Intl.DateTimeFormat(locales, Object.assign({ timeZone: o.timeZone || "Asia/Tokyo" }, options));
+  };
+  sandbox.Intl.DateTimeFormat.supportedLocalesOf = Intl.DateTimeFormat.supportedLocalesOf;
+  if (o.now) {
+    const instant = new Date(o.now).getTime();
+    if (!Number.isFinite(instant)) throw new Error("Invalid test clock");
+    sandbox.Date = class extends Date {
+      constructor(...args) { super(...(args.length ? args : [instant])); }
+      static now() { return instant; }
+    };
+  }
   /* 下のタブ。国を切り替えたときに、ことばが入れ替わるかを確かめるために要る。 */
   const navButtons = ["home", "summary", "calendar", "diary", "health", "calc", "pulse"].map((k) => {
     const el = makeEl("nav-" + k);

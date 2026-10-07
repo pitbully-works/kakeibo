@@ -6,7 +6,7 @@ const { bootApp } = require('./boot-app.cjs');
 const YM = '2026-08';
 function plain(html){ return String(html).replace(/<[^>]+>/g,' ').replace(/\s+/g,' '); }
 function screen(settings, tx, view){
-  const app=bootApp({state:{settings,tx}});
+  const app=bootApp({state:{settings,tx},now:"2026-08-15T12:00:00Z"});
   app.run(`view=${JSON.stringify(view)}; render();`);
   return app.el('app').innerHTML;
 }

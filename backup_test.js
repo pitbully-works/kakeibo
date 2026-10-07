@@ -382,7 +382,7 @@ test("復元すると予定が state と保存データの両方に入る", () =
   const app = restoreInApp({ settings: {}, tx: [], plans: {} }, backup);
   assert.equal(app.run(`state.plans["2026-08-01"][0].text`), "お姉帰る", "state に予定が入っていない");
   assert.equal(
-    app.run(`JSON.parse(localStorage.getItem("kakeibo:v1:state")).plans["2026-08-01"][0].text`),
+    app.run(`JSON.parse(localStorage.getItem("kakeibo:v1:state")).personalProfiles.JP.plans["2026-08-01"][0].text`),
     "お姉帰る", "端末の保存データに予定が入っていない");
 });
 

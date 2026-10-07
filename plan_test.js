@@ -143,11 +143,14 @@ test("予定を入れると保存される（時刻あり）", () => {
   app.el("p-time").value = "09:30";
   app.el("p-text").value = "歯医者";
   app.run(`addPlan("2026-08-03");`);
-  const saved = JSON.parse(app.saved()).plans["2026-08-03"];
+  const saved = JSON.parse(app.saved()).personalProfiles.JP.plans["2026-08-03"];
   assert.equal(saved.length, 1);
   assert.equal(saved[0].time, "09:30");
   assert.equal(saved[0].text, "歯医者");
   assert.equal(saved[0].done, false);
+  const restarted = bootApp({ store: app.storeDump() });
+  assert.equal(restarted.run('state.plans["2026-08-03"][0].text'), "歯医者",
+    "国別保存した予定が再起動後に戻らない");
 });
 
 test("時刻を入れなくても予定を入れられる", () => {
@@ -155,7 +158,7 @@ test("時刻を入れなくても予定を入れられる", () => {
   screen(app, "diary", "2026-08-03");
   app.el("p-text").value = "クリーニング";
   app.run(`addPlan("2026-08-03");`);
-  assert.equal(JSON.parse(app.saved()).plans["2026-08-03"][0].time, "");
+  assert.equal(JSON.parse(app.saved()).personalProfiles.JP.plans["2026-08-03"][0].time, "");
 });
 
 test("何も書かずに押しても、予定は増えない", () => {
@@ -170,17 +173,17 @@ test("何も書かずに押しても、予定は増えない", () => {
 test("チェックすると済みになり、もう一度押すと戻る", () => {
   const app = boot({ "2026-08-03": [plan("a", "14:00", "病院")] });
   app.run(`togglePlan("2026-08-03","a");`);
-  assert.equal(JSON.parse(app.saved()).plans["2026-08-03"][0].done, true);
+  assert.equal(JSON.parse(app.saved()).personalProfiles.JP.plans["2026-08-03"][0].done, true);
   app.run(`togglePlan("2026-08-03","a");`);
-  assert.equal(JSON.parse(app.saved()).plans["2026-08-03"][0].done, false);
+  assert.equal(JSON.parse(app.saved()).personalProfiles.JP.plans["2026-08-03"][0].done, false);
 });
 
 test("予定を消せる。最後の1件を消したら、その日ごと消える", () => {
   const app = boot({ "2026-08-03": [plan("a", "", "床屋"), plan("b", "", "買い物")] });
   app.run(`delPlan("2026-08-03","a");`);
-  assert.deepEqual(JSON.parse(app.saved()).plans["2026-08-03"].map((p) => p.text), ["買い物"]);
+  assert.deepEqual(JSON.parse(app.saved()).personalProfiles.JP.plans["2026-08-03"].map((p) => p.text), ["買い物"]);
   app.run(`delPlan("2026-08-03","b");`);
-  assert.equal(JSON.parse(app.saved()).plans["2026-08-03"], undefined);
+  assert.equal(JSON.parse(app.saved()).personalProfiles.JP.plans["2026-08-03"], undefined);
 });
 
 test("保存できないときは、書く前の状態へ完全に戻す", () => {

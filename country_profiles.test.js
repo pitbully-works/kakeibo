@@ -56,7 +56,9 @@ test("実際の画面切替でも、初回USはJPの金額を引き継がない"
   assert.equal(st.moneyProfiles.JP.lp.banks[0].balance,20000);
   assert.equal(st.settings.birth,"");
   // 個人記録は国別。USへ切り替えたら日本の健康記録は見えず、JP側に保持される。
-  assert.deepEqual(st.health,{});
+  assert.deepEqual(JSON.parse(app.run("JSON.stringify(state.health)")),{});
+  assert.deepEqual(st.personalProfiles.US.health,{});
+  assert.equal("health" in st,false,"個人記録を二重保存している");
   assert.equal(st.personalProfiles.JP.health["2026-08-10"].weight,62.5);
 });
 

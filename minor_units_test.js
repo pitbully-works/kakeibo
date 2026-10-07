@@ -43,7 +43,7 @@ function oldDevice(extra) {
 function bootOld(state, opts) {
   const seed = Object.assign({}, state);
   delete seed.dataVersion;
-  return bootApp(Object.assign({ rawState: JSON.stringify(seed) }, opts || {}));
+  return bootApp(Object.assign({ rawState: JSON.stringify(seed), now: "2026-08-15T12:00:00Z" }, opts || {}));
 }
 
 /* =========================================================================
@@ -592,10 +592,10 @@ test("記録・日記・健康・予定・心拍は、移行の影響を受け�
     plans: { [D(1)]: [{ id: "p1", time: "14:00", text: "病院", done: false }] },
   }));
   const saved = JSON.parse(app.saved());
-  assert.equal(saved.diary[D(1)].text, "あ");
-  assert.equal(saved.health[D(1)].weight, 62.5, "体重に100を掛けている");
-  assert.equal(saved.health[D(1)].bpHigh, 120, "血圧に100を掛けている");
-  assert.equal(saved.plans[D(1)][0].text, "病院");
+  assert.equal(saved.personalProfiles.JP.diary[D(1)].text, "あ");
+  assert.equal(saved.personalProfiles.JP.health[D(1)].weight, 62.5, "体重に100を掛けている");
+  assert.equal(saved.personalProfiles.JP.health[D(1)].bpHigh, 120, "血圧に100を掛けている");
+  assert.equal(saved.personalProfiles.JP.plans[D(1)][0].text, "病院");
 });
 
 /* =========================================================================

@@ -336,6 +336,19 @@ test("完全検査で自動生成した対応表は、commit 前に ci_test.js �
   assert.ok(commit > validate, "対応表を検証する前に commit している");
 });
 
+test("完全検査の権限は固定値で、検査成功後の対応表更新だけ書き込み可能", () => {
+  const inspection = wfFull.slice(wfFull.indexOf("  full:"), wfFull.indexOf("  update-map:"));
+  const update = wfFull.slice(wfFull.indexOf("  update-map:"));
+  assert.doesNotMatch(wfFull, /contents:\s*\$\{\{/,
+    "permissions に式を入れると GitHub が workflow を受け付けない");
+  assert.doesNotMatch(inspection, /contents: write/);
+  assert.match(update, /needs: full/);
+  assert.match(update, /if: inputs\.update_map/);
+  assert.match(update, /contents: write/);
+  assert.match(update, /ref: \$\{\{ github\.sha \}\}/,
+    "検査したコミット以外へ古い対応表を保存してしまう");
+});
+
 
 test("mutation のテスト実行にはタイムアウトがあり、無限待ちを検出扱いにしない", () => {
   const libSrc = fs.readFileSync(path.join(__dirname, "mutation-lib.js"), "utf8");

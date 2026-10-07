@@ -114,8 +114,8 @@ const MUTATIONS = [
   { name: "日付えらびを受け取らない", guards: "日付を選んだら切り替わる",
     file: "index.html", from: '  if(el && el.id === "d-date") pickDiaryDate(el.value);', to: "" },
   { name: "写真ボタンをただの文字に戻す", guards: "押せる場所だと分かる見た目",
-    file: "index.html", from: '    : `<button class="photobtn" data-act="add-diary-photo">',
-    to: '    : `<button class="btn-quiet" data-act="add-diary-photo">' },
+    file: "index.html", from: '    : `<label class="photobtn" for="diaryPhotoInput">',
+    to: '    : `<label class="btn-quiet" for="diaryPhotoInput">' },
 
   /* ---- いま見ている画面の印（下のタブ） ---- */
   { name: "いる画面の台の色を消す", guards: "いま見ている画面が色つきの台で分かる",
