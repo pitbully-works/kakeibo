@@ -8,5 +8,6 @@ test("ライフプランから家計簿へNISAを逆輸入しない",()=>{
   assert.doesNotMatch(html,/readLifePlanBridge/);
   assert.doesNotMatch(html,/applyLifePlanBridge/);
   assert.doesNotMatch(html,/lpbridge=/);
-  assert.doesNotMatch(html,/ライフプラン連携/);
+  // 紹介文やリンクの存在ではなく、入力を取り込む経路を禁止する。
+  assert.doesNotMatch(html,/location\.hash[\s\S]{0,100}lpbridge/);
 });
